@@ -1,19 +1,34 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Mail, Phone, Eye, EyeOff, ArrowLeft, ChevronRight } from "lucide-react";
+import { FcGoogle } from "react-icons/fc";
 
 type Mode = "choose" | "email-login" | "email-register" | "phone-send" | "phone-verify" | "phone-name";
 
 export default function AuthPage() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const { user, isLoading, loginMutation, registerMutation, sendOtpMutation, verifyOtpMutation } = useAuth();
+  const { toast } = useToast();
 
   const [mode, setMode] = useState<Mode>("choose");
   const [showPassword, setShowPassword] = useState(false);
+
+  // Show error from OAuth redirect
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const error = params.get("error");
+    if (error === "oauth_failed") {
+      toast({ title: "Sign in failed", description: "Something went wrong with Google sign in. Please try again.", variant: "destructive" });
+    } else if (error === "oauth_denied") {
+      toast({ title: "Sign in cancelled", description: "Google sign in was cancelled.", variant: "destructive" });
+    }
+  }, [search]);
 
   // Email form
   const [email, setEmail] = useState("");
@@ -96,6 +111,29 @@ export default function AuthPage() {
         {mode === "choose" && (
           <div className="space-y-3 pt-4">
             <h1 className="text-xl font-bold text-gray-900 dark:text-white text-center mb-6">Sign in or create account</h1>
+
+            {/* Google OAuth */}
+            <a
+              href="/api/auth/google"
+              className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center border border-gray-200 dark:border-gray-600">
+                  <FcGoogle className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <p className="font-semibold text-gray-900 dark:text-white text-sm">Continue with Google</p>
+                  <p className="text-xs text-gray-500">Quick sign in with your Google account</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            </a>
+
+            <div className="relative py-1">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200 dark:border-gray-700" /></div>
+              <div className="relative flex justify-center"><span className="bg-background px-3 text-xs text-gray-400 uppercase tracking-wider">or</span></div>
+            </div>
+
             <button
               onClick={() => setMode("phone-send")}
               className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-200 dark:border-gray-700 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-950/30 transition-colors"

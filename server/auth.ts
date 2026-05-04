@@ -1,5 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
+import { Strategy as GoogleOAuthStrategy } from "passport-google-oauth20";
 import { Express } from "express";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
@@ -58,6 +59,62 @@ export function setupAuth(app: Express) {
       },
     ),
   );
+
+  // Google OAuth strategy (only configured if credentials are present)
+  const googleClientId = process.env.GOOGLE_CLIENT_ID;
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const googleCallbackUrl = process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/api/auth/google/callback";
+
+  if (googleClientId && googleClientSecret) {
+    passport.use(
+      new GoogleOAuthStrategy(
+        {
+          clientID: googleClientId,
+          clientSecret: googleClientSecret,
+          callbackURL: googleCallbackUrl,
+        },
+        async (_accessToken, _refreshToken, profile, done) => {
+          try {
+            const googleId = profile.id;
+            const googleEmail = profile.emails?.[0]?.value?.toLowerCase().trim() ?? null;
+            const googleName = profile.displayName || profile.name?.givenName || "Google User";
+
+            // 1. Check if oauth_accounts already has this Google ID
+            const existingOAuth = await storage.getOAuthAccount("google", googleId);
+            if (existingOAuth) {
+              const user = await storage.getUser(existingOAuth.userId);
+              if (user) return done(null, user);
+            }
+
+            // 2. Check if a user with this email already exists → link
+            if (googleEmail) {
+              const existingUser = await storage.getUserByEmail(googleEmail);
+              if (existingUser) {
+                await storage.linkOAuthAccount(existingUser.id, "google", googleId, googleEmail);
+                return done(null, existingUser);
+              }
+            }
+
+            // 3. Neither found → create new user + oauth_accounts row
+            const newUser = await storage.createUser({
+              name: googleName,
+              email: googleEmail,
+              passwordHash: null,
+            });
+
+            await storage.createOAuthAccount(newUser.id, "google", googleId, googleEmail);
+
+            return done(null, newUser);
+          } catch (err) {
+            return done(err);
+          }
+        },
+      ),
+    );
+    console.log("[Auth] Google OAuth strategy configured");
+  } else {
+    console.log("[Auth] Google OAuth not configured (missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET)");
+  }
 
   passport.serializeUser((user, done) => done(null, (user as User).id));
   passport.deserializeUser(async (id: number, done) => {
@@ -166,6 +223,37 @@ export function setupAuth(app: Express) {
   app.get("/api/auth/user", (req, res) => {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     res.json(sanitizeUser(req.user as User));
+  });
+
+  // ── Google OAuth routes ──────────────────────────────────────────────────────
+
+  // Redirect to Google consent screen
+  app.get("/api/auth/google", (req, res, next) => {
+    if (!googleClientId || !googleClientSecret) {
+      return res.status(500).json({ message: "Google OAuth is not configured" });
+    }
+    passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
+  });
+
+  // Google OAuth callback
+  app.get("/api/auth/google/callback", (req, res, next) => {
+    passport.authenticate("google", (err: any, user: User | false, _info: any) => {
+      if (err) {
+        console.error("Google OAuth callback error:", err);
+        return res.redirect("/auth?error=oauth_failed");
+      }
+      if (!user) {
+        return res.redirect("/auth?error=oauth_denied");
+      }
+      req.login(user, (loginErr) => {
+        if (loginErr) {
+          console.error("Google OAuth login error:", loginErr);
+          return res.redirect("/auth?error=oauth_failed");
+        }
+        // Redirect to home/profile on success
+        res.redirect("/");
+      });
+    })(req, res, next);
   });
 
   // Update profile
