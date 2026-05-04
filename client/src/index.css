@@ -1,0 +1,136 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ── Surfaces ── */
+  --background: hsl(148 22% 96%);
+  --foreground: hsl(150 30% 8%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(150 30% 8%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(150 30% 8%);
+
+  /* ── Brand — deep forest green ── */
+  --primary: hsl(152 58% 18%);
+  --primary-foreground: hsl(0 0% 100%);
+  --primary-50:  hsl(152 48% 95%);
+  --primary-100: hsl(152 38% 90%);
+  --primary-200: hsl(152 30% 82%);
+  --primary-300: hsl(152 28% 68%);
+  --primary-500: hsl(152 52% 30%);
+  --primary-600: hsl(152 56% 22%);
+  --primary-700: hsl(152 58% 18%);
+  --primary-800: hsl(152 63% 13%);
+  --primary-900: hsl(152 65% 9%);
+  --primary-950: hsl(152 68% 6%);
+
+  /* ── Accent — warm golf gold ── */
+  --secondary: hsl(43 78% 50%);
+  --secondary-foreground: hsl(150 30% 8%);
+  --secondary-500: hsl(43 78% 50%);
+  --secondary-600: hsl(43 74% 43%);
+
+  --accent: hsl(43 78% 50%);
+  --accent-foreground: hsl(150 30% 8%);
+
+  /* ── Wolf / Banker ── */
+  --wolf: hsl(36 95% 52%);
+  --wolf-500: hsl(36 95% 52%);
+
+  /* ── States ── */
+  --destructive: hsl(354 82% 52%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  /* ── Chrome ── */
+  --border: hsl(152 14% 87%);
+  --input: hsl(152 12% 97%);
+  --ring: hsl(152 52% 30%);
+  --muted: hsl(152 10% 93%);
+  --muted-foreground: hsl(152 7% 44%);
+
+  /* ── Typography ── */
+  --font-sans: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* ── Shape ── */
+  --radius: 1rem;
+}
+
+.dark {
+  --background: hsl(152 22% 6%);
+  --foreground: hsl(152 10% 91%);
+  --card: hsl(152 18% 10%);
+  --card-foreground: hsl(152 10% 91%);
+  --popover: hsl(152 18% 10%);
+  --popover-foreground: hsl(152 10% 91%);
+
+  --primary: hsl(152 58% 18%);
+  --primary-foreground: hsl(0 0% 100%);
+  --primary-50:  hsl(152 28% 12%);
+  --primary-100: hsl(152 24% 16%);
+  --primary-200: hsl(152 20% 22%);
+  --primary-300: hsl(152 22% 34%);
+  --primary-500: hsl(152 48% 38%);
+  --primary-600: hsl(152 54% 26%);
+  --primary-700: hsl(152 58% 18%);
+  --primary-800: hsl(152 63% 13%);
+  --primary-900: hsl(152 65% 9%);
+  --primary-950: hsl(152 68% 6%);
+
+  --secondary: hsl(43 78% 50%);
+  --secondary-foreground: hsl(150 30% 8%);
+  --secondary-500: hsl(43 78% 50%);
+  --secondary-600: hsl(43 74% 43%);
+
+  --wolf: hsl(36 95% 52%);
+  --wolf-500: hsl(36 95% 52%);
+
+  --destructive: hsl(354 82% 52%);
+  --destructive-foreground: hsl(0 0% 100%);
+
+  --border: hsl(152 14% 17%);
+  --input: hsl(152 14% 13%);
+  --ring: hsl(152 48% 36%);
+  --muted: hsl(152 14% 13%);
+  --muted-foreground: hsl(152 7% 46%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3 {
+    letter-spacing: -0.015em;
+  }
+}
+
+@layer components {
+  /* Elevated card shadow — multi-layer for depth */
+  .shadow-card {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.04),
+      0 4px 12px rgba(0, 0, 0, 0.06),
+      0 0 0 1px rgba(0, 0, 0, 0.03);
+  }
+
+  .shadow-card-hover {
+    box-shadow:
+      0 4px 8px rgba(0, 0, 0, 0.07),
+      0 12px 28px rgba(0, 0, 0, 0.10),
+      0 0 0 1px rgba(0, 0, 0, 0.03);
+  }
+
+  .shadow-card-active {
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.08),
+      0 8px 20px rgba(0, 0, 0, 0.10);
+  }
+}
