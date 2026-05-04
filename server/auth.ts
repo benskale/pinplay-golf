@@ -385,9 +385,8 @@ export function setupAuth(app: Express) {
   app.get("/api/auth/invite-link", async (req, res) => {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     const user = req.user as User;
-    const baseUrl = process.env.REPLIT_DEV_DOMAIN
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-      : (process.env.BASE_URL || "https://pinplay.golf");
+    // Always use the public URL — never the Replit dev domain
+    const baseUrl = "https://pinplay.golf";
     const inviteLink = `${baseUrl}?ref=${user.id}`;
     const shareText = `Join me on PinPlay Golf! 🏌️ Track scores for 23 game types in real-time. ${inviteLink}`;
     res.json({ link: inviteLink, text: shareText });
