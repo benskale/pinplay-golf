@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"),
   handicapIndex: real("handicap_index"),
   homeCourse: text("home_course"),
+  avatarUrl: text("avatar_url"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -52,6 +53,24 @@ export const otpCodes = pgTable("otp_codes", {
   used: boolean("used").notNull().default(false),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
+
+// ── Favorites (quick-add players you play with often) ─────────────────────────
+
+export const favorites = pgTable("favorites", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  favoriteUserId: integer("favorite_user_id").notNull().references(() => users.id),
+  favoriteName: text("favorite_name").notNull(), // denormalized for quick lookup
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const insertFavoriteSchema = createInsertSchema(favorites).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertFavorite = z.infer<typeof insertFavoriteSchema>;
+export type Favorite = typeof favorites.$inferSelect;
 
 // ── Games ────────────────────────────────────────────────────────────────────
 

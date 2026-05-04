@@ -1,7 +1,7 @@
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, or, ilike, sql as sqlOp } from "drizzle-orm";
 import { db, pool } from "./db";
-import { games, users, otpCodes, oauthAccounts } from "@shared/schema";
-import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount } from "@shared/schema";
+import { games, users, otpCodes, oauthAccounts, favorites } from "@shared/schema";
+import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -35,6 +35,12 @@ export interface IStorage {
   getOAuthAccount(provider: string, providerId: string): Promise<OAuthAccount | undefined>;
   createOAuthAccount(userId: number, provider: string, providerId: string, email?: string | null): Promise<OAuthAccount>;
   linkOAuthAccount(userId: number, provider: string, providerId: string, email?: string | null): Promise<OAuthAccount | undefined>;
+
+  // Favorites
+  getFavorites(userId: number): Promise<(Favorite & { avatarUrl: string | null })[]>;
+  addFavorite(userId: number, favoriteUserId: number, favoriteName: string): Promise<Favorite>;
+  removeFavorite(userId: number, favoriteUserId: number): Promise<boolean>;
+  searchUsers(query: string, excludeUserId: number): Promise<User[]>;
 
   // Session store
   sessionStore: session.Store;
@@ -199,6 +205,65 @@ export class DatabaseStorage implements IStorage {
     if (existing) return existing;
     return this.createOAuthAccount(userId, provider, providerId, email);
   }
+
+  // Favorites ─────────────────────────────────────────────────────────────────
+
+  async getFavorites(userId: number): Promise<(Favorite & { avatarUrl: string | null })[]> {
+    const rows = await db
+      .select({
+        id: favorites.id,
+        userId: favorites.userId,
+        favoriteUserId: favorites.favoriteUserId,
+        favoriteName: favorites.favoriteName,
+        createdAt: favorites.createdAt,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(favorites)
+      .innerJoin(users, eq(favorites.favoriteUserId, users.id))
+      .where(eq(favorites.userId, userId))
+      .orderBy(favorites.favoriteName);
+    return rows;
+  }
+
+  async addFavorite(userId: number, favoriteUserId: number, favoriteName: string): Promise<Favorite> {
+    // Upsert — ignore if already exists
+    const [fav] = await db
+      .insert(favorites)
+      .values({ userId, favoriteUserId, favoriteName })
+      .onConflictDoNothing()
+      .returning();
+    if (fav) return fav;
+    // Already exists — fetch it
+    const [existing] = await db
+      .select()
+      .from(favorites)
+      .where(and(eq(favorites.userId, userId), eq(favorites.favoriteUserId, favoriteUserId)));
+    return existing!;
+  }
+
+  async removeFavorite(userId: number, favoriteUserId: number): Promise<boolean> {
+    const result = await db
+      .delete(favorites)
+      .where(and(eq(favorites.userId, userId), eq(favorites.favoriteUserId, favoriteUserId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async searchUsers(query: string, excludeUserId: number): Promise<User[]> {
+    const pattern = `%${query}%`;
+    return db
+      .select()
+      .from(users)
+      .where(
+        and(
+          or(
+            ilike(users.name, pattern),
+            ilike(users.email, pattern),
+          ),
+          sqlOp`${users.id} != ${excludeUserId}`
+        )
+      )
+      .limit(10);
+  }
 }
 
 // ── Fallback in-memory (games only, no user persistence) ─────────────────────
@@ -256,7 +321,7 @@ export class MemStorage implements IStorage {
   async getUserByEmail(email: string) { return [...this.userMap.values()].find(u => u.email === email); }
   async getUserByPhone(phone: string) { return [...this.userMap.values()].find(u => u.phone === phone); }
   async createUser(insertUser: InsertUser): Promise<User> {
-    const user: User = { ...insertUser, id: this.nextUserId++, createdAt: new Date(), email: insertUser.email ?? null, phone: insertUser.phone ?? null, passwordHash: insertUser.passwordHash ?? null, handicapIndex: insertUser.handicapIndex ?? null, homeCourse: insertUser.homeCourse ?? null };
+    const user: User = { ...insertUser, id: this.nextUserId++, createdAt: new Date(), email: insertUser.email ?? null, phone: insertUser.phone ?? null, passwordHash: insertUser.passwordHash ?? null, handicapIndex: insertUser.handicapIndex ?? null, homeCourse: insertUser.homeCourse ?? null, avatarUrl: insertUser.avatarUrl ?? null };
     this.userMap.set(user.id, user);
     return user;
   }
@@ -278,6 +343,14 @@ export class MemStorage implements IStorage {
   async linkOAuthAccount(userId: number, provider: string, providerId: string, email?: string | null): Promise<import("@shared/schema").OAuthAccount | undefined> {
     return this.createOAuthAccount(userId, provider, providerId, email);
   }
+
+  // Favorites stubs (not supported in memory mode)
+  async getFavorites(_userId: number): Promise<(import("@shared/schema").Favorite & { avatarUrl: string | null })[]> { return []; }
+  async addFavorite(_userId: number, _favoriteUserId: number, _favoriteName: string): Promise<import("@shared/schema").Favorite> {
+    return { id: 1, userId: _userId, favoriteUserId: _favoriteUserId, favoriteName: _favoriteName, createdAt: new Date() };
+  }
+  async removeFavorite(_userId: number, _favoriteUserId: number): Promise<boolean> { return true; }
+  async searchUsers(_query: string, _excludeUserId: number): Promise<import("@shared/schema").User[]> { return []; }
 }
 
 // ── Export singleton ──────────────────────────────────────────────────────────
