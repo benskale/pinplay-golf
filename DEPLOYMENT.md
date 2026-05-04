@@ -9,6 +9,24 @@
 - **Security**: Should be a strong, randomly generated string (minimum 32 characters)
 - **Example**: `openssl rand -base64 32`
 
+### GOOGLE_CLIENT_ID
+- **Purpose**: Google OAuth 2.0 Client ID for "Sign in with Google"
+- **Required**: Only if Google sign-in is enabled
+- **How to get**: [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → Create OAuth 2.0 Client ID (Web application)
+- **Example**: `123456789-abc.apps.googleusercontent.com`
+
+### GOOGLE_CLIENT_SECRET
+- **Purpose**: Google OAuth 2.0 Client Secret
+- **Required**: Only if Google sign-in is enabled
+- **How to get**: Same place as Client ID — shown once when creating credentials
+- **Security**: Keep this secret, never commit to source control
+
+### GOOGLE_CALLBACK_URL
+- **Purpose**: The URL Google redirects to after authentication
+- **Required**: No — defaults to `http://localhost:5000/api/auth/google/callback`
+- **Production**: Set to `https://pinplay.golf/api/auth/google/callback`
+- **Note**: This URL must also be added as an Authorized Redirect URI in Google Cloud Console
+
 ## Health Check Endpoint
 
 The application includes a health check endpoint at `/health` that returns:

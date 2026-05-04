@@ -23,6 +23,25 @@ export const insertUserSchema = createInsertSchema(users).omit({
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
+// ── OAuth accounts (Google, Apple, etc.) ──────────────────────────────────────
+
+export const oauthAccounts = pgTable("oauth_accounts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  provider: text("provider").notNull(), // "google" | "apple" | "email" | "phone"
+  providerId: text("provider_id").notNull(), // Google sub, Apple user ID, etc.
+  email: text("email"), // from OAuth response (nullable)
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const insertOAuthAccountSchema = createInsertSchema(oauthAccounts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertOAuthAccount = z.infer<typeof insertOAuthAccountSchema>;
+export type OAuthAccount = typeof oauthAccounts.$inferSelect;
+
 // ── OTP codes (phone verification) ───────────────────────────────────────────
 
 export const otpCodes = pgTable("otp_codes", {

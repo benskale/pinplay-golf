@@ -1,7 +1,7 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db, pool } from "./db";
-import { games, users, otpCodes } from "@shared/schema";
-import type { Game, InsertGame, UpdateGame, User, InsertUser } from "@shared/schema";
+import { games, users, otpCodes, oauthAccounts } from "@shared/schema";
+import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -30,6 +30,11 @@ export interface IStorage {
   // OTP
   createOtp(contact: string, code: string, expiresAt: Date): Promise<void>;
   verifyOtp(contact: string, code: string): Promise<boolean>;
+
+  // OAuth
+  getOAuthAccount(provider: string, providerId: string): Promise<OAuthAccount | undefined>;
+  createOAuthAccount(userId: number, provider: string, providerId: string, email?: string | null): Promise<OAuthAccount>;
+  linkOAuthAccount(userId: number, provider: string, providerId: string, email?: string | null): Promise<OAuthAccount | undefined>;
 
   // Session store
   sessionStore: session.Store;
@@ -169,6 +174,31 @@ export class DatabaseStorage implements IStorage {
     await db.update(otpCodes).set({ used: true }).where(eq(otpCodes.id, row.id));
     return true;
   }
+
+  // OAuth ─────────────────────────────────────────────────────────────────────
+
+  async getOAuthAccount(provider: string, providerId: string): Promise<OAuthAccount | undefined> {
+    const [account] = await db
+      .select()
+      .from(oauthAccounts)
+      .where(and(eq(oauthAccounts.provider, provider), eq(oauthAccounts.providerId, providerId)));
+    return account;
+  }
+
+  async createOAuthAccount(userId: number, provider: string, providerId: string, email?: string | null): Promise<OAuthAccount> {
+    const [account] = await db
+      .insert(oauthAccounts)
+      .values({ userId, provider, providerId, email: email ?? null })
+      .returning();
+    return account;
+  }
+
+  async linkOAuthAccount(userId: number, provider: string, providerId: string, email?: string | null): Promise<OAuthAccount | undefined> {
+    // Check if already linked
+    const existing = await this.getOAuthAccount(provider, providerId);
+    if (existing) return existing;
+    return this.createOAuthAccount(userId, provider, providerId, email);
+  }
 }
 
 // ── Fallback in-memory (games only, no user persistence) ─────────────────────
@@ -239,6 +269,15 @@ export class MemStorage implements IStorage {
   }
   async createOtp(_contact: string, _code: string, _expiresAt: Date) {}
   async verifyOtp(_contact: string, _code: string) { return false; }
+
+  // OAuth stubs (not supported in memory mode)
+  async getOAuthAccount(_provider: string, _providerId: string): Promise<import("@shared/schema").OAuthAccount | undefined> { return undefined; }
+  async createOAuthAccount(userId: number, provider: string, providerId: string, email?: string | null): Promise<import("@shared/schema").OAuthAccount> {
+    return { id: 1, userId, provider, providerId, email: email ?? null, createdAt: new Date() };
+  }
+  async linkOAuthAccount(userId: number, provider: string, providerId: string, email?: string | null): Promise<import("@shared/schema").OAuthAccount | undefined> {
+    return this.createOAuthAccount(userId, provider, providerId, email);
+  }
 }
 
 // ── Export singleton ──────────────────────────────────────────────────────────
