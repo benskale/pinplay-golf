@@ -78,12 +78,19 @@ export function setupAuth(app: Express) {
             const googleId = profile.id;
             const googleEmail = profile.emails?.[0]?.value?.toLowerCase().trim() ?? null;
             const googleName = profile.displayName || profile.name?.givenName || "Google User";
+            const googlePhoto = profile.photos?.[0]?.value ?? null;
 
             // 1. Check if oauth_accounts already has this Google ID
             const existingOAuth = await storage.getOAuthAccount("google", googleId);
             if (existingOAuth) {
-              const user = await storage.getUser(existingOAuth.userId);
-              if (user) return done(null, user);
+              let user = await storage.getUser(existingOAuth.userId);
+              if (user) {
+                // Auto-update Google photo if user has no custom avatar
+                if (googlePhoto && !user.avatarUrl) {
+                  user = (await storage.updateUser(user.id, { avatarUrl: googlePhoto })) ?? user;
+                }
+                return done(null, user);
+              }
             }
 
             // 2. Check if a user with this email already exists → link
@@ -91,6 +98,11 @@ export function setupAuth(app: Express) {
               const existingUser = await storage.getUserByEmail(googleEmail);
               if (existingUser) {
                 await storage.linkOAuthAccount(existingUser.id, "google", googleId, googleEmail);
+                // Set Google photo if no avatar yet
+                if (googlePhoto && !existingUser.avatarUrl) {
+                  const updated = await storage.updateUser(existingUser.id, { avatarUrl: googlePhoto });
+                  return done(null, updated ?? existingUser);
+                }
                 return done(null, existingUser);
               }
             }
@@ -100,6 +112,7 @@ export function setupAuth(app: Express) {
               name: googleName,
               email: googleEmail,
               passwordHash: null,
+              avatarUrl: googlePhoto,
             });
 
             await storage.createOAuthAccount(newUser.id, "google", googleId, googleEmail);
@@ -260,11 +273,12 @@ export function setupAuth(app: Express) {
   app.patch("/api/auth/profile", async (req, res) => {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     try {
-      const { name, handicapIndex, homeCourse } = req.body;
+      const { name, handicapIndex, homeCourse, avatarUrl } = req.body;
       const updated = await storage.updateUser((req.user as User).id, {
         ...(name !== undefined && { name: name.trim() }),
         ...(handicapIndex !== undefined && { handicapIndex: handicapIndex === "" ? null : Number(handicapIndex) }),
         ...(homeCourse !== undefined && { homeCourse: homeCourse.trim() || null }),
+        ...(avatarUrl !== undefined && { avatarUrl: avatarUrl || null }),
       });
       if (!updated) return res.status(404).json({ message: "User not found" });
       res.json(sanitizeUser(updated));
@@ -291,5 +305,91 @@ export function setupAuth(app: Express) {
       if (err) return res.status(500).json({ message: "Logout failed" });
       res.json({ message: "Logged out" });
     });
+  });
+
+  // Upload avatar image
+  app.post("/api/auth/avatar", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { image } = req.body; // base64 data URL
+      if (!image || typeof image !== "string") return res.status(400).json({ message: "Image data required" });
+      // Limit to ~2MB base64 (~1.5MB image)
+      if (image.length > 2_700_000) return res.status(400).json({ message: "Image too large (max ~2MB)" });
+      const updated = await storage.updateUser((req.user as User).id, { avatarUrl: image });
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      res.json(sanitizeUser(updated));
+    } catch (err) {
+      console.error("Avatar upload error:", err);
+      res.status(500).json({ message: "Failed to save avatar" });
+    }
+  });
+
+  // ── Favorites ────────────────────────────────────────────────────────────────
+
+  // Get favorites list
+  app.get("/api/auth/favorites", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const favs = await storage.getFavorites((req.user as User).id);
+      res.json(favs);
+    } catch (err) {
+      console.error("Get favorites error:", err);
+      res.status(500).json({ message: "Failed to fetch favorites" });
+    }
+  });
+
+  // Search users to add as favorites
+  app.get("/api/auth/search-users", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const q = (req.query.q as string || "").trim();
+      if (q.length < 2) return res.json([]);
+      const results = await storage.searchUsers(q, (req.user as User).id);
+      res.json(results.map((u: User) => ({ id: u.id, name: u.name, avatarUrl: u.avatarUrl ?? null })));
+    } catch (err) {
+      console.error("Search users error:", err);
+      res.status(500).json({ message: "Failed to search users" });
+    }
+  });
+
+  // Add favorite
+  app.post("/api/auth/favorites", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const { favoriteUserId, favoriteName } = req.body;
+      if (!favoriteUserId || !favoriteName) return res.status(400).json({ message: "User ID and name required" });
+      const userId = (req.user as User).id;
+      if (favoriteUserId === userId) return res.status(400).json({ message: "Can't add yourself" });
+      const fav = await storage.addFavorite(userId, favoriteUserId, favoriteName);
+      res.status(201).json(fav);
+    } catch (err) {
+      console.error("Add favorite error:", err);
+      res.status(500).json({ message: "Failed to add favorite" });
+    }
+  });
+
+  // Remove favorite
+  app.delete("/api/auth/favorites/:favoriteUserId", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const ok = await storage.removeFavorite((req.user as User).id, parseInt(req.params.favoriteUserId));
+      if (!ok) return res.status(404).json({ message: "Favorite not found" });
+      res.json({ message: "Removed" });
+    } catch (err) {
+      console.error("Remove favorite error:", err);
+      res.status(500).json({ message: "Failed to remove favorite" });
+    }
+  });
+
+  // Generate invite link
+  app.get("/api/auth/invite-link", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
+    const user = req.user as User;
+    const baseUrl = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : (process.env.BASE_URL || "https://pinplay.golf");
+    const inviteLink = `${baseUrl}?ref=${user.id}`;
+    const shareText = `Join me on PinPlay Golf! 🏌️ Track scores for 23 game types in real-time. ${inviteLink}`;
+    res.json({ link: inviteLink, text: shareText });
   });
 }

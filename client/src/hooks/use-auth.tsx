@@ -10,6 +10,7 @@ export type AuthUser = {
   phone: string | null;
   handicapIndex: number | null;
   homeCourse: string | null;
+  avatarUrl: string | null;
   createdAt: string;
 };
 
@@ -17,7 +18,7 @@ type RegisterData = { name: string; email: string; password: string };
 type LoginData = { email: string; password: string };
 type OtpSendData = { phone: string };
 type OtpVerifyData = { phone: string; code: string; name?: string };
-type ProfileData = { name?: string; handicapIndex?: number | null; homeCourse?: string | null };
+type ProfileData = { name?: string; handicapIndex?: number | null; homeCourse?: string | null; avatarUrl?: string | null };
 
 type AuthContextType = {
   user: AuthUser | null;
@@ -27,6 +28,7 @@ type AuthContextType = {
   sendOtpMutation: UseMutationResult<{ message: string; devCode?: string }, Error, OtpSendData>;
   verifyOtpMutation: UseMutationResult<AuthUser | { needsName: true }, Error, OtpVerifyData>;
   updateProfileMutation: UseMutationResult<AuthUser, Error, ProfileData>;
+  uploadAvatarMutation: UseMutationResult<AuthUser, Error, string>;
   logoutMutation: UseMutationResult<void, Error, void>;
 };
 
@@ -110,6 +112,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onError: (err) => toast({ title: "Couldn't save profile", description: err.message, variant: "destructive" }),
   });
 
+  const uploadAvatarMutation = useMutation<AuthUser, Error, string>({
+    mutationFn: async (imageDataUrl: string) => {
+      const res = await apiRequest("POST", "/api/auth/avatar", { image: imageDataUrl });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: (user) => {
+      queryClient.setQueryData(["/api/auth/user"], user);
+      toast({ title: "Avatar updated" });
+    },
+    onError: (err) => toast({ title: "Couldn't save avatar", description: err.message, variant: "destructive" }),
+  });
+
   const logoutMutation = useMutation<void, Error, void>({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/auth/logout");
@@ -127,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user, isLoading,
       registerMutation, loginMutation,
       sendOtpMutation, verifyOtpMutation,
-      updateProfileMutation, logoutMutation,
+      updateProfileMutation, uploadAvatarMutation, logoutMutation,
     }}>
       {children}
     </AuthContext.Provider>
