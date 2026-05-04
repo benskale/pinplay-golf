@@ -1,11 +1,23 @@
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import GameSetup from "@/components/game-setup";
 import { useAuth } from "@/hooks/use-auth";
 import { User } from "lucide-react";
+import { useEffect } from "react";
 
 export default function Home() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const { user } = useAuth();
+
+  // If someone arrives via ?ref= link and isn't logged in, send them to sign up
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    if (params.has("ref") && user === null) {
+      // Small delay to let auth check complete
+      const t = setTimeout(() => setLocation("/auth"), 300);
+      return () => clearTimeout(t);
+    }
+  }, [search, user, setLocation]);
 
   return (
     <div className="min-h-screen bg-background font-sans">
