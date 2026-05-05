@@ -530,7 +530,7 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
                 </Card>
               )}
 
-              {/* ── CLOSEST TO THE PIN (par 3s) ── */}
+              {/* ── CLOSEST TO THE PIN SELECTOR (par 3s only) ── */}
               {isPar3 && (
                 <Card className="border-emerald-200 dark:border-emerald-800">
                   <CardContent className="p-4">
@@ -562,32 +562,6 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
                         </button>
                       ))}
                     </div>
-                    {/* Show running CTP tally */}
-                    {game.holeHistory?.length > 0 && (() => {
-                      const ctpWins: Record<string, number> = {};
-                      game.holeHistory.forEach(h => {
-                        if (h.metadata?.closestToPin && h.metadata.closestToPin !== "none") {
-                          const p = h.metadata.closestToPin;
-                          ctpWins[p] = (ctpWins[p] || 0) + 1;
-                        }
-                      });
-                      if (Object.keys(ctpWins).length === 0) return null;
-                      return (
-                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-                          <p className="text-[0.6875rem] text-muted-foreground font-medium mb-1.5">CTP This Round</p>
-                          <div className="flex gap-3">
-                            {game.players.map(p => (
-                              <div key={p} className="text-center">
-                                <span className={`text-sm font-bold ${ctpWins[p] ? "text-emerald-600 dark:text-emerald-400" : "text-gray-300 dark:text-gray-600"}`}>
-                                  {ctpWins[p] || 0}
-                                </span>
-                                <p className="text-[0.625rem] text-gray-500 truncate max-w-[60px]">{p.split(" ")[0]}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
                   </CardContent>
                 </Card>
               )}
@@ -732,6 +706,65 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
                   </div>
                 </CardContent>
               </Card>
+
+              {/* ── CLOSEST TO THE PIN TRACKER (always visible) ── */}
+              {(() => {
+                const ctpWins: Record<string, number> = {};
+                const ctpHoles: { hole: number; winner: string }[] = [];
+                game.holeHistory.forEach(h => {
+                  if (h.metadata?.closestToPin && h.metadata.closestToPin !== "none") {
+                    const w = h.metadata.closestToPin;
+                    ctpWins[w] = (ctpWins[w] || 0) + 1;
+                    ctpHoles.push({ hole: h.hole, winner: w });
+                  }
+                });
+                // Show tracker once any CTP data exists or on a par 3
+                const hasData = Object.keys(ctpWins).length > 0;
+                if (!hasData && !isPar3) return null;
+                return (
+                  <Card className="border-emerald-200 dark:border-emerald-800">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Target className="w-4 h-4 text-emerald-500" />
+                        <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">
+                          Closest to the Pin 🎯
+                        </h3>
+                      </div>
+                      {!hasData && isPar3 ? (
+                        <p className="text-[0.75rem] text-gray-400 dark:text-gray-500">Select a winner above to start tracking</p>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          {game.players.map(player => {
+                            const wins = ctpWins[player] || 0;
+                            const wonHoles = ctpHoles.filter(c => c.winner === player).map(c => c.hole);
+                            return (
+                              <div key={player} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl ${
+                                wins > 0
+                                  ? "bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-200 dark:ring-emerald-800"
+                                  : "bg-gray-50 dark:bg-gray-800/50"
+                              }`}>
+                                <span className={`text-xl font-display font-extrabold leading-none tabular-nums ${
+                                  wins > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-300 dark:text-gray-600"
+                                }`}>
+                                  {wins}
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="text-[0.8125rem] font-semibold text-gray-800 dark:text-gray-200 truncate">{player.split(" ")[0]}</p>
+                                  {wonHoles.length > 0 && (
+                                    <p className="text-[0.625rem] text-emerald-500 dark:text-emerald-400 truncate">
+                                      {wonHoles.length === 1 ? `Hole ${wonHoles[0]}` : `Holes ${wonHoles.join(", ")}`}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })()}
 
               {/* ── HOLE HISTORY ── */}
               <Card>
