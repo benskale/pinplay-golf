@@ -18,7 +18,7 @@ type RegisterData = { name: string; email: string; password: string };
 type LoginData = { email: string; password: string };
 type OtpSendData = { phone: string };
 type OtpVerifyData = { phone: string; code: string; name?: string };
-type ProfileData = { name?: string; handicapIndex?: number | null; homeCourse?: string | null; avatarUrl?: string | null };
+type ProfileData = { name?: string; phone?: string | null; handicapIndex?: number | null; homeCourse?: string | null; avatarUrl?: string | null };
 
 type AuthContextType = {
   user: AuthUser | null;

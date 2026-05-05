@@ -273,9 +273,10 @@ export function setupAuth(app: Express) {
   app.patch("/api/auth/profile", async (req, res) => {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     try {
-      const { name, handicapIndex, homeCourse, avatarUrl } = req.body;
+      const { name, handicapIndex, homeCourse, avatarUrl, phone } = req.body;
       const updated = await storage.updateUser((req.user as User).id, {
         ...(name !== undefined && { name: name.trim() }),
+        ...(phone !== undefined && { phone: phone?.trim() || null }),
         ...(handicapIndex !== undefined && { handicapIndex: handicapIndex === "" ? null : Number(handicapIndex) }),
         ...(homeCourse !== undefined && { homeCourse: homeCourse.trim() || null }),
         ...(avatarUrl !== undefined && { avatarUrl: avatarUrl || null }),
