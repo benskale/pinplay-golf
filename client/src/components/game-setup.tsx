@@ -227,12 +227,12 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
         {PLAYER_COUNT_OPTIONS.map(opt => (
           <button
             key={opt.count}
-            className="w-full flex items-center justify-between p-4 bg-card rounded-2xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-card hover:shadow-card-hover"
+            className="w-full flex items-center justify-between p-4 bg-card rounded-xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-card hover:shadow-card-hover"
             onClick={() => handleSelectCount(opt.count)}
           >
             <div className="flex items-center gap-4">
               {/* Number badge */}
-              <div className="w-12 h-12 rounded-xl bg-primary-700 dark:bg-primary-700 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <div className="w-12 h-12 rounded-lg bg-secondary-500 flex items-center justify-center flex-shrink-0 shadow-sm">
                 <span className="text-xl font-bold text-white leading-none">{opt.count}</span>
               </div>
               <div>
@@ -268,7 +268,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
         {games.map(game => (
           <button
             key={game.id}
-            className="w-full flex items-center justify-between p-4 bg-card rounded-2xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-card hover:shadow-card-hover"
+            className="w-full flex items-center justify-between p-4 bg-card rounded-xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-card hover:shadow-card-hover"
             onClick={() => handleSelectGame(game)}
           >
             <div className="flex-1 min-w-0 pr-3">
@@ -312,7 +312,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
         <p className="text-[0.8125rem] text-primary-800 dark:text-primary-200 leading-relaxed">{selectedGame?.description}</p>
       </div>
 
-      <div className="bg-card rounded-2xl shadow-card p-5 space-y-5">
+      <div className="bg-card rounded-xl shadow-card p-5 space-y-5">
 
           {/* Course Search */}
           <div className="mb-5" ref={dropdownRef}>
@@ -562,7 +562,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
           )}
 
           <Button
-            className="w-full bg-primary-700 hover:bg-primary-800 dark:bg-primary-600 dark:hover:bg-primary-700 text-white py-3 rounded-xl font-semibold text-[0.9375rem] shadow-sm"
+            className="w-full bg-secondary-500 hover:bg-secondary-600 text-white py-3 rounded-lg font-semibold text-[0.9375rem] shadow-sm"
             onClick={handleStartGame}
             disabled={createGameMutation.isPending || loadingCourse}
             data-testid="button-start-game"

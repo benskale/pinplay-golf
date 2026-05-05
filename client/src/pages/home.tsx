@@ -22,7 +22,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background font-sans">
       {/* ── Premium hero ── */}
-      <div className="relative" style={{ background: "radial-gradient(ellipse 80% 55% at 50% 35%, #2e7d52 0%, #0f3520 55%, #081f10 100%)" }}>
+      <div className="relative hero-texture" style={{ background: "radial-gradient(ellipse 70% 50% at 50% 40%, #1a3a2a 0%, #0d1f15 50%, #070f0a 100%)" }}>
         <div className="max-w-md mx-auto px-6 pt-10 pb-20 text-center relative">
 
           {/* Profile button — top right */}
