@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Loader2, ChevronDown, ChevronUp, CheckCircle, MapPin, Search, X,
   Users, ChevronRight, ArrowLeft, Shuffle
@@ -64,6 +65,59 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
   const [loadingCourse, setLoadingCourse] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  // Fetch favorites (includes handicapIndex from server)
+  const { data: favoritesData } = useQuery<{ favoriteName: string; handicapIndex: number | null }[]>({
+    queryKey: ["/api/auth/favorites"],
+    enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch("/api/auth/favorites", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Build a lookup: name → handicap for auto-fill
+  const handicapLookup = useRef<Record<string, number>>({});
+
+  // Populate lookup from auth user + favorites
+  useEffect(() => {
+    const lookup: Record<string, number> = {};
+    // Logged-in user's own handicap
+    if (user?.name && user.handicapIndex != null) {
+      lookup[user.name.toLowerCase()] = user.handicapIndex;
+    }
+    // Favorites' handicaps
+    if (favoritesData) {
+      for (const fav of favoritesData) {
+        if (fav.handicapIndex != null) {
+          lookup[fav.favoriteName.toLowerCase()] = fav.handicapIndex;
+        }
+      }
+    }
+    handicapLookup.current = lookup;
+  }, [user, favoritesData]);
+
+  // Auto-fill handicap when player name changes
+  useEffect(() => {
+    if (!selectedGame?.needsHandicap) return;
+    const updated = { ...handicaps };
+    let changed = false;
+    for (let i = 0; i < playerCount; i++) {
+      const name = players[i]?.trim();
+      if (!name) continue;
+      // Don't overwrite a manually-set handicap
+      if (handicaps[name] !== undefined && handicaps[name] !== 0) continue;
+      const autoHcp = handicapLookup.current[name.toLowerCase()];
+      if (autoHcp !== undefined) {
+        updated[name] = autoHcp;
+        changed = true;
+      }
+    }
+    if (changed) setHandicaps(updated);
+  }, [players, playerCount, selectedGame?.needsHandicap]);
 
   // Keep players array in sync with player count
   useEffect(() => {
@@ -373,59 +427,66 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
           {/* Player Names */}
           <div className="space-y-3 mb-5">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Player Names</p>
-            {players.slice(0, playerCount).map((player, index) => (
-              <div key={index} className="flex items-center space-x-3">
-                <div className="w-9 h-9 bg-primary-50 dark:bg-primary-950 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-primary-700 dark:text-primary-300 font-medium text-sm">{index + 1}</span>
-                </div>
-                <Input
-                  type="text"
-                  placeholder={`Player ${index + 1} Name`}
-                  value={player}
-                  onChange={(e) => {
-                    const newPlayers = [...players];
-                    newPlayers[index] = e.target.value;
-                    setPlayers(newPlayers);
-                  }}
-                  className="flex-1"
-                />
-                {/* Team toggle for team games */}
-                {selectedGame?.isTeamGame && (
-                  <button
-                    className={`px-3 py-1.5 rounded-lg text-sm font-bold border-2 transition-colors ${
-                      (teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A"
-                        ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300"
-                        : "border-orange-500 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300"
-                    }`}
-                    onClick={() => setTeamAssignment(prev => ({
-                      ...prev,
-                      [`player_${index}`]: (prev[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A" ? "B" : "A"
-                    }))}
-                  >
-                    {(teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A" ? "Team A" : "Team B"}
-                  </button>
-                )}
-                {/* Handicap input for handicap games */}
-                {selectedGame?.needsHandicap && (
-                  <div className="flex-shrink-0">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="54"
-                      placeholder="Hdcp"
-                      value={handicaps[player] ?? ""}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        setHandicaps(prev => ({ ...prev, [player]: isNaN(val) ? 0 : val }));
-                      }}
-                      className="w-16 text-center text-sm"
-                    />
+            {players.slice(0, playerCount).map((player, index) => {
+              const autoHcp = player.trim() ? handicapLookup.current[player.trim().toLowerCase()] : undefined;
+              const hasAutoHcp = autoHcp !== undefined && handicaps[player] === autoHcp;
+              return (
+                <div key={index} className="flex items-center space-x-3">
+                  <div className="w-9 h-9 bg-primary-50 dark:bg-primary-950 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-primary-700 dark:text-primary-300 font-medium text-sm">{index + 1}</span>
                   </div>
-                )}
-              </div>
-            ))}
+                  <Input
+                    type="text"
+                    placeholder={`Player ${index + 1} Name`}
+                    value={player}
+                    onChange={(e) => {
+                      const newPlayers = [...players];
+                      newPlayers[index] = e.target.value;
+                      setPlayers(newPlayers);
+                    }}
+                    className="flex-1"
+                  />
+                  {/* Team toggle for team games */}
+                  {selectedGame?.isTeamGame && (
+                    <button
+                      className={`px-3 py-1.5 rounded-lg text-sm font-bold border-2 transition-colors ${
+                        (teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A"
+                          ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300"
+                          : "border-orange-500 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300"
+                      }`}
+                      onClick={() => setTeamAssignment(prev => ({
+                        ...prev,
+                        [`player_${index}`]: (prev[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A" ? "B" : "A"
+                      }))}
+                    >
+                      {(teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A" ? "Team A" : "Team B"}
+                    </button>
+                  )}
+                  {/* Handicap input for handicap games */}
+                  {selectedGame?.needsHandicap && (
+                    <div className="flex-shrink-0 relative">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="54"
+                        placeholder="Hdcp"
+                        value={handicaps[player] ?? ""}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setHandicaps(prev => ({ ...prev, [player]: isNaN(val) ? 0 : val }));
+                        }}
+                        className={`w-16 text-center text-sm ${hasAutoHcp ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {selectedGame?.needsHandicap && (
-              <p className="text-xs text-gray-400 ml-12">Handicap index (0 = scratch). Used to calculate net scores.</p>
+              <p className="text-xs text-gray-400 ml-12">
+                Handicap index (0 = scratch). Used to calculate net scores.
+                {user?.handicapIndex != null && <span className="text-emerald-500"> Green = auto-filled from profile.</span>}
+              </p>
             )}
             {selectedGame?.isTeamGame && (
               <p className="text-xs text-gray-400 ml-12">Tap Team A/B to reassign players to teams.</p>
