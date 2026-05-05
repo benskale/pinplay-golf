@@ -177,7 +177,7 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* ── Premium sticky header ── */}
-      <header className="text-white z-50 sticky top-0" style={{ background: "linear-gradient(160deg, #081f10 0%, #0f3520 60%, #155e35 100%)" }}>
+      <header className="text-white z-50 sticky top-0 hero-texture" style={{ background: "linear-gradient(160deg, #070f0a 0%, #0d1f15 60%, #1a3a2a 100%)" }}>
         <div className="max-w-md mx-auto px-4 pt-4 pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -207,10 +207,10 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
         <div className="max-w-md mx-auto px-4 pt-2 pb-0 flex gap-1">
           {(["scoring", "scorecard"] as Tab[]).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`flex items-center justify-center gap-1.5 px-4 py-2 text-[0.8125rem] font-medium rounded-t-lg transition-colors ${
+              className={`flex items-center justify-center gap-1.5 px-4 py-2 text-[0.8125rem] font-medium rounded-t-lg transition-colors border-b-2 ${
                 tab === t
-                  ? "bg-background text-primary-700 dark:text-primary-400"
-                  : "text-white/60 hover:text-white/90"
+                  ? "text-secondary-500 border-secondary-500"
+                  : "text-white/60 hover:text-white/90 border-transparent"
               }`}>
               {t === "scoring" ? <ClipboardList className="w-3.5 h-3.5" /> : <TableProperties className="w-3.5 h-3.5" />}
               {t === "scoring" ? "Scoring" : "Scorecard"}
@@ -233,7 +233,7 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
                     <div className="flex items-baseline gap-3">
                       <div>
                         <p className="text-[0.6875rem] font-semibold uppercase tracking-widest text-muted-foreground leading-none mb-0.5">Hole</p>
-                        <span className="text-4xl font-bold text-primary-700 dark:text-primary-400 leading-none tracking-tight">{game.currentHole}</span>
+                        <span className="text-5xl font-display font-extrabold text-primary-700 dark:text-primary-300 leading-none tracking-tighter tabular-nums">{game.currentHole}</span>
                       </div>
                       <span className="text-[0.8125rem] font-medium text-muted-foreground mt-1">
                         Par {currentPar}
@@ -478,7 +478,7 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
                               </span>
                             </div>
                             <button
-                              className="w-9 h-9 rounded-lg bg-primary-700 flex items-center justify-center text-white hover:bg-primary-800 active:scale-95 transition-all shadow-sm"
+                              className="w-9 h-9 rounded-md bg-primary-700 flex items-center justify-center text-white hover:bg-primary-800 active:scale-95 transition-all shadow-sm"
                               onClick={() => handleStrokeChange(player, (stroke || currentPar) + 1)}>
                               <Plus className="w-3.5 h-3.5" />
                             </button>
@@ -682,7 +682,7 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
                   )}
 
                   <Button
-                    className="w-full bg-primary-700 hover:bg-primary-800 dark:bg-primary-600 dark:hover:bg-primary-700 text-white py-3 font-semibold text-[0.9375rem] rounded-xl shadow-sm"
+                    className="w-full bg-secondary-500 hover:bg-secondary-600 text-white py-3 font-semibold text-[0.9375rem] rounded-lg shadow-sm"
                     onClick={handleCompleteHole}
                     disabled={!calculatedResult}
                     data-testid="button-complete-hole">
