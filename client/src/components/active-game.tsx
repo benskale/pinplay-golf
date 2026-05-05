@@ -6,7 +6,7 @@ import { ShareModal } from "@/components/share-modal";
 import Scorecard from "@/components/scorecard";
 import {
   Share2, Crown, Minus, Plus, TableProperties, ClipboardList,
-  Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap
+  Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target
 } from "lucide-react";
 import PinPlayLogo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
@@ -59,6 +59,9 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
   // Dots/Junk achievements per player
   const [dotAchievements, setDotAchievements] = useState<Record<string, string[]>>({});
 
+  // Closest to the Pin (par 3s)
+  const [closestToPin, setClosestToPin] = useState<string | "none" | null>(null);
+
   const { toast } = useToast();
 
   if (!game?.players?.length) {
@@ -78,6 +81,7 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
   const isBanker = game.gameType === "banker";
   const isStrokes = ["stroke_play", "match_play", "nassau", "nassau_4", "best_ball_2", "best_ball_4",
     "skins", "skins_3", "skins_4", "stableford", "par_birdie", "sixes", "split_sixes"].includes(game.gameType);
+  const isPar3 = currentPar === 3;
   const isTeamStrokes = ["scramble", "alternate_shot", "alternate_shot_4", "shamble"].includes(game.gameType);
 
   // For team-score games, only enter one score per team
@@ -99,6 +103,7 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
     if (isHammer) meta.hammerValue = hammerValue;
     if (isDots) meta.dots = dotAchievements;
     if (isBanker) {} // banker uses currentWolfIndex automatically
+    if (closestToPin) meta.closestToPin = closestToPin;
     return meta;
   }, [isWolfGame, rotatingPlayer, wolfDecision, isBBB, bbbWinners, isHammer, hammerValue, isDots, dotAchievements, isBanker]);
 
@@ -150,6 +155,7 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
     setBbbWinners({});
     setHammerValue(1);
     setDotAchievements({});
+    setClosestToPin(null);
 
     toast({ title: `Hole ${game.currentHole} Complete!`, description: calculatedResult.result });
   };
@@ -520,6 +526,68 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
                         </div>
                       </div>
                     ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ── CLOSEST TO THE PIN (par 3s) ── */}
+              {isPar3 && (
+                <Card className="border-emerald-200 dark:border-emerald-800">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Target className="w-4 h-4 text-emerald-500" />
+                      <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">
+                        Closest to the Pin 🎯
+                      </h3>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+                          closestToPin === "none"
+                            ? "bg-gray-500 text-white border-gray-500 shadow-sm"
+                            : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-gray-400"
+                        }`}
+                        onClick={() => setClosestToPin(closestToPin === "none" ? null : "none")}>
+                        No one 🚫
+                      </button>
+                      {game.players.map(player => (
+                        <button key={player}
+                          className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+                            closestToPin === player
+                              ? "bg-emerald-500 text-white border-emerald-500 shadow-sm"
+                              : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-emerald-400"
+                          }`}
+                          onClick={() => setClosestToPin(closestToPin === player ? null : player)}>
+                          {player.split(" ")[0]}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Show running CTP tally */}
+                    {game.holeHistory?.length > 0 && (() => {
+                      const ctpWins: Record<string, number> = {};
+                      game.holeHistory.forEach(h => {
+                        if (h.metadata?.closestToPin && h.metadata.closestToPin !== "none") {
+                          const p = h.metadata.closestToPin;
+                          ctpWins[p] = (ctpWins[p] || 0) + 1;
+                        }
+                      });
+                      if (Object.keys(ctpWins).length === 0) return null;
+                      return (
+                        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+                          <p className="text-[0.6875rem] text-muted-foreground font-medium mb-1.5">CTP This Round</p>
+                          <div className="flex gap-3">
+                            {game.players.map(p => (
+                              <div key={p} className="text-center">
+                                <span className={`text-sm font-bold ${ctpWins[p] ? "text-emerald-600 dark:text-emerald-400" : "text-gray-300 dark:text-gray-600"}`}>
+                                  {ctpWins[p] || 0}
+                                </span>
+                                <p className="text-[0.625rem] text-gray-500 truncate max-w-[60px]">{p.split(" ")[0]}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </CardContent>
                 </Card>
               )}
