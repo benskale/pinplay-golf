@@ -149,7 +149,10 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
       });
     }
 
-    gameActions.completeHole(calculatedResult.pointDeltas, fullStrokes, calculatedResult.result, calculatedResult.metadata);
+    // Merge CTP into metadata since calcHoleResult doesn't pass it through
+    const finalMeta = { ...calculatedResult.metadata };
+    if (closestToPin) finalMeta.closestToPin = closestToPin;
+    gameActions.completeHole(calculatedResult.pointDeltas, fullStrokes, calculatedResult.result, finalMeta);
     setWolfDecision(null);
     setHoleStrokes({});
     setBbbWinners({});
