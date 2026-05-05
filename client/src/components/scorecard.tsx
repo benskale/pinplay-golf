@@ -1,8 +1,19 @@
 import type { Game } from "@shared/schema";
-import { Flag } from "lucide-react";
+import { Flag, Target } from "lucide-react";
 
 interface ScorecardProps {
   game: Game;
+}
+
+// Build a lookup: hole number → CTP winner name (or "none")
+function getCtpByHole(holeHistory: Game["holeHistory"]): Record<number, string | null> {
+  const ctp: Record<number, string | null> = {};
+  for (const h of holeHistory) {
+    if (h.metadata?.closestToPin) {
+      ctp[h.hole] = h.metadata.closestToPin;
+    }
+  }
+  return ctp;
 }
 
 function scoreLabel(strokes: number, par: number) {
@@ -62,6 +73,43 @@ export default function Scorecard({ game }: ScorecardProps) {
 
   const completedHoles = holeHistory.length;
 
+  // Closest to the Pin data
+  const ctpByHole = getCtpByHole(holeHistory);
+  const ctpWins: Record<string, number> = {};
+  const ctpHoles: { hole: number; winner: string }[] = [];
+  for (const h of holeHistory) {
+    if (h.metadata?.closestToPin && h.metadata.closestToPin !== "none") {
+      const w = h.metadata.closestToPin;
+      ctpWins[w] = (ctpWins[w] || 0) + 1;
+      ctpHoles.push({ hole: h.hole, winner: w });
+    }
+  }
+
+  // Render a CTP row for a 9-hole segment
+  const CtpRow = ({ holeNumbers }: { holeNumbers: number[] }) => {
+    const hasAny = holeNumbers.some(h => holes[h - 1] === 3 && ctpByHole[h]);
+    if (!hasAny) return null;
+    return (
+      <tr className="bg-emerald-50/40 dark:bg-emerald-950/20">
+        <td className="px-3 py-1 text-[0.625rem] font-medium text-emerald-600 dark:text-emerald-400 sticky left-0 bg-inherit z-10 flex items-center gap-1">
+          <Target className="w-2.5 h-2.5" />CTP
+        </td>
+        {holeNumbers.map(h => (
+          <td key={h} className="px-2 py-1 text-center">
+            {holes[h - 1] === 3 && ctpByHole[h] && ctpByHole[h] !== "none" ? (
+              <span className="text-[0.625rem] font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                {ctpByHole[h]!.split(" ")[0].slice(0, 3)}
+              </span>
+            ) : holes[h - 1] === 3 && ctpByHole[h] === "none" ? (
+              <span className="text-[0.5rem] text-gray-400">—</span>
+            ) : null}
+          </td>
+        ))}
+        <td colSpan={1} />
+      </tr>
+    );
+  };
+
   return (
     <div className="space-y-4">
       {game.courseName && (
@@ -101,6 +149,7 @@ export default function Scorecard({ game }: ScorecardProps) {
                 ))}
                 <td className="px-3 py-1 text-center text-[0.625rem] font-semibold text-gray-500 dark:text-gray-400 tabular-nums">{front9Par}</td>
               </tr>
+              <CtpRow holeNumbers={front9.map((_, i) => i + 1)} />
             </thead>
             <tbody>
               {players.map((player, pi) => {
@@ -152,6 +201,7 @@ export default function Scorecard({ game }: ScorecardProps) {
                 <td className="px-3 py-1 text-center text-[0.625rem] font-semibold text-gray-500 dark:text-gray-400 tabular-nums">{back9Par}</td>
                 <td className="px-3 py-1 text-center text-[0.625rem] font-semibold text-gray-500 dark:text-gray-400 tabular-nums">{totalPar}</td>
               </tr>
+              <CtpRow holeNumbers={back9.map((_, i) => i + 10)} />
             </thead>
             <tbody>
               {players.map((player, pi) => {
@@ -201,6 +251,47 @@ export default function Scorecard({ game }: ScorecardProps) {
           <div key={item.label} className={`text-[0.625rem] px-2 py-0.5 rounded-md font-medium ${item.color}`}>{item.label}</div>
         ))}
       </div>
+
+      {/* Closest to the Pin Summary */}
+      {Object.keys(ctpWins).length > 0 && (
+        <div className="mt-2 p-4 rounded-xl border border-emerald-200/80 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20">
+          <div className="flex items-center gap-2 mb-3">
+            <Target className="w-4 h-4 text-emerald-500" />
+            <h4 className="text-[0.8125rem] font-semibold text-gray-800 dark:text-gray-200">Closest to the Pin 🎯</h4>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {players.map(player => {
+              const wins = ctpWins[player] || 0;
+              const wonHoles = ctpHoles.filter(c => c.winner === player).map(c => c.hole);
+              return (
+                <div key={player} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg ${
+                  wins > 0
+                    ? "bg-emerald-100/60 dark:bg-emerald-900/30"
+                    : "bg-gray-100/50 dark:bg-gray-800/30"
+                }`}>
+                  <span className={`text-lg font-display font-extrabold leading-none tabular-nums ${
+                    wins > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-300 dark:text-gray-600"
+                  }`}>
+                    {wins}
+                  </span>
+                  <div className="min-w-0">
+                    <p className={`text-[0.75rem] font-medium leading-tight ${
+                      wins > 0 ? "text-gray-800 dark:text-gray-200" : "text-gray-400 dark:text-gray-500"
+                    }`}>
+                      {player.split(" ")[0]}
+                    </p>
+                    {wonHoles.length > 0 && (
+                      <p className="text-[0.625rem] text-emerald-500/70 dark:text-emerald-400/60 leading-tight">
+                        Hole{wonHoles.length > 1 ? "s" : ""} {wonHoles.join(", ")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
