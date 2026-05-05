@@ -53,6 +53,7 @@ export default function ProfilePage() {
   const [name, setName] = useState(user?.name ?? "");
   const [handicap, setHandicap] = useState(user?.handicapIndex?.toString() ?? "");
   const [homeCourse, setHomeCourse] = useState(user?.homeCourse ?? "");
+  const [phone, setPhone] = useState(user?.phone ?? "");
   const [editing, setEditing] = useState(false);
   const [showInviteShare, setShowInviteShare] = useState(false);
   const [expandedGame, setExpandedGame] = useState<string | null>(null);
@@ -173,6 +174,7 @@ export default function ProfilePage() {
     e.preventDefault();
     updateProfileMutation.mutate({
       name,
+      phone: phone || null,
       handicapIndex: handicap === "" ? null : parseFloat(handicap),
       homeCourse: homeCourse || null,
     }, { onSuccess: () => setEditing(false) });
@@ -344,6 +346,7 @@ export default function ProfilePage() {
                   setHandicap(user.handicapIndex?.toString() ?? "");
                   setCourseQuery(user.homeCourse ?? "");
                   setHomeCourse(user.homeCourse ?? "");
+                  setPhone(user.phone ?? "");
                   setEditing(true);
                 }}
                   className="text-xs text-primary-600 dark:text-primary-400 font-semibold hover:underline">
@@ -357,6 +360,10 @@ export default function ProfilePage() {
                 <div className="space-y-1">
                   <Label className="text-xs text-gray-500">Name</Label>
                   <Input value={name} onChange={e => setName(e.target.value)} className="rounded-xl h-11" required />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Phone</Label>
+                  <Input type="tel" placeholder="(555) 123-4567" value={phone} onChange={e => setPhone(e.target.value)} className="rounded-xl h-11" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-gray-500">GHIN Handicap Index</Label>

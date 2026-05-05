@@ -26,7 +26,7 @@ export default function Home() {
         <div className="max-w-md mx-auto px-6 pt-10 pb-20 text-center relative">
 
           {/* Profile button — top right */}
-          <div className="absolute top-0 right-0">
+          <div className="absolute top-4 right-2">
             <button
               onClick={() => setLocation(user ? "/profile" : "/auth")}
               className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
