@@ -332,7 +332,13 @@ export function setupAuth(app: Express) {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     try {
       const favs = await storage.getFavorites((req.user as User).id);
-      res.json(favs);
+      res.json(favs.map((f: any) => ({
+        id: f.id,
+        favoriteUserId: f.favoriteUserId,
+        favoriteName: f.favoriteName,
+        avatarUrl: f.avatarUrl,
+        handicapIndex: f.handicapIndex,
+      })));
     } catch (err) {
       console.error("Get favorites error:", err);
       res.status(500).json({ message: "Failed to fetch favorites" });

@@ -37,7 +37,7 @@ export interface IStorage {
   linkOAuthAccount(userId: number, provider: string, providerId: string, email?: string | null): Promise<OAuthAccount | undefined>;
 
   // Favorites
-  getFavorites(userId: number): Promise<(Favorite & { avatarUrl: string | null })[]>;
+  getFavorites(userId: number): Promise<(Favorite & { avatarUrl: string | null; handicapIndex: number | null })[]>;
   addFavorite(userId: number, favoriteUserId: number, favoriteName: string): Promise<Favorite>;
   removeFavorite(userId: number, favoriteUserId: number): Promise<boolean>;
   searchUsers(query: string, excludeUserId: number): Promise<User[]>;
@@ -208,7 +208,7 @@ export class DatabaseStorage implements IStorage {
 
   // Favorites ─────────────────────────────────────────────────────────────────
 
-  async getFavorites(userId: number): Promise<(Favorite & { avatarUrl: string | null })[]> {
+  async getFavorites(userId: number): Promise<(Favorite & { avatarUrl: string | null; handicapIndex: number | null })[]> {
     const rows = await db
       .select({
         id: favorites.id,
@@ -217,6 +217,7 @@ export class DatabaseStorage implements IStorage {
         favoriteName: favorites.favoriteName,
         createdAt: favorites.createdAt,
         avatarUrl: users.avatarUrl,
+        handicapIndex: users.handicapIndex,
       })
       .from(favorites)
       .innerJoin(users, eq(favorites.favoriteUserId, users.id))
