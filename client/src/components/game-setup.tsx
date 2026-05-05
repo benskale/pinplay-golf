@@ -102,7 +102,6 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
 
   // Auto-fill handicap when player name changes
   useEffect(() => {
-    if (!selectedGame?.needsHandicap) return;
     const updated = { ...handicaps };
     let changed = false;
     for (let i = 0; i < playerCount; i++) {
@@ -117,7 +116,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
       }
     }
     if (changed) setHandicaps(updated);
-  }, [players, playerCount, selectedGame?.needsHandicap]);
+  }, [players, playerCount]);
 
   // Keep players array in sync with player count
   useEffect(() => {
@@ -462,32 +461,27 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
                       {(teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A" ? "Team A" : "Team B"}
                     </button>
                   )}
-                  {/* Handicap input for handicap games */}
-                  {selectedGame?.needsHandicap && (
-                    <div className="flex-shrink-0 relative">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="54"
-                        placeholder="Hdcp"
-                        value={handicaps[player] ?? ""}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          setHandicaps(prev => ({ ...prev, [player]: isNaN(val) ? 0 : val }));
-                        }}
-                        className={`w-16 text-center text-sm ${hasAutoHcp ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
-                      />
-                    </div>
-                  )}
+                  {/* Handicap input — always shown */}
+                  <div className="flex-shrink-0 relative">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="54"
+                      placeholder="Hdcp"
+                      value={handicaps[player] ?? ""}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setHandicaps(prev => ({ ...prev, [player]: isNaN(val) ? 0 : val }));
+                      }}
+                      className={`w-16 text-center text-sm ${hasAutoHcp ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
+                    />
+                  </div>
                 </div>
               );
             })}
-            {selectedGame?.needsHandicap && (
-              <p className="text-xs text-gray-400 ml-12">
-                Handicap index (0 = scratch). Used to calculate net scores.
-                {user?.handicapIndex != null && <span className="text-emerald-500"> Green = auto-filled from profile.</span>}
-              </p>
-            )}
+            <p className="text-xs text-gray-400 ml-12">
+              Handicap index (0 = scratch). {user?.handicapIndex != null && <span className="text-emerald-500">Green = auto-filled from profile. </span>}Optional — only used for handicap games.
+            </p>
             {selectedGame?.isTeamGame && (
               <p className="text-xs text-gray-400 ml-12">Tap Team A/B to reassign players to teams.</p>
             )}
