@@ -208,16 +208,33 @@ export default function ProfilePage() {
       toast({ title: "Invalid file", description: "Please select an image", variant: "destructive" });
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast({ title: "Too large", description: "Max 2MB", variant: "destructive" });
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "Too large", description: "Max 10MB", variant: "destructive" });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
+    // Resize to 256x256 avatar using canvas — keeps base64 to ~15-30KB
+    const img = new Image();
+    img.onload = () => {
+      const SIZE = 256;
+      const canvas = document.createElement("canvas");
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const ctx = canvas.getContext("2d")!;
+      // Center-crop to square
+      const scale = Math.max(SIZE / img.width, SIZE / img.height);
+      const sw = SIZE / scale;
+      const sh = SIZE / scale;
+      const sx = (img.width - sw) / 2;
+      const sy = (img.height - sh) / 2;
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
       uploadAvatarMutation.mutate(dataUrl);
+      URL.revokeObjectURL(img.src);
     };
-    reader.readAsDataURL(file);
+    img.onerror = () => {
+      toast({ title: "Couldn't read image", description: "Try a different photo", variant: "destructive" });
+    };
+    img.src = URL.createObjectURL(file);
     // Reset input so same file can be re-selected
     e.target.value = "";
   };

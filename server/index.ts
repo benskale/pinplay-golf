@@ -6,8 +6,8 @@ import { storage } from "./storage";
 
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: false, limit: "5mb" }));
 
 const sessionSecret = process.env.SESSION_SECRET || "fallback-dev-secret-key";
 
