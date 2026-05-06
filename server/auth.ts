@@ -289,13 +289,27 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Get game history for current user
+  // Get game history for current user (created + played in)
   app.get("/api/auth/games", async (req, res) => {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     try {
-      const history = await storage.getGamesByUser((req.user as User).id);
-      res.json(history);
+      const user = req.user as User;
+      const [created, played] = await Promise.all([
+        storage.getGamesByUser(user.id),
+        storage.getGamesByPlayerName(user.name),
+      ]);
+      // Deduplicate by game id
+      const seen = new Set<string>();
+      const all = [...created, ...played].filter(g => {
+        if (seen.has(g.id)) return false;
+        seen.add(g.id);
+        return true;
+      });
+      // Sort newest first
+      all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      res.json(all);
     } catch (err) {
+      console.error("Get games error:", err);
       res.status(500).json({ message: "Failed to fetch game history" });
     }
   });
