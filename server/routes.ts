@@ -76,6 +76,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.isAuthenticated?.() && req.user) {
         (gameData as any).userId = (req.user as any).id;
       }
+      // Always store session ID so games can be linked if user logs in later
+      (gameData as any).sessionId = req.sessionID;
       const game = await storage.createGame(gameData);
       res.json(game);
     } catch (error) {

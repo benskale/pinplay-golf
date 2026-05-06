@@ -20,6 +20,8 @@ export interface IStorage {
   deleteGame(id: string): Promise<boolean>;
   getGamesByUser(userId: number): Promise<Game[]>;
   getGamesByPlayerName(name: string): Promise<Game[]>;
+  getGamesBySession(sessionId: string): Promise<Game[]>;
+  linkGamesToUser(sessionId: string, userId: number): Promise<number>;
 
   // Users
   getUser(id: number): Promise<User | undefined>;
@@ -136,6 +138,24 @@ export class DatabaseStorage implements IStorage {
       .from(games)
       .where(sqlOp`${games.players} @> ${JSON.stringify([name])}`)
       .orderBy(desc(games.createdAt));
+  }
+
+  async getGamesBySession(sessionId: string): Promise<Game[]> {
+    return db
+      .select()
+      .from(games)
+      .where(sqlOp`${games.sessionId} = ${sessionId}`);
+  }
+
+  async linkGamesToUser(sessionId: string, userId: number): Promise<number> {
+    const sessionGames = await this.getGamesBySession(sessionId);
+    if (sessionGames.length === 0) return 0;
+    // Only link games that don't already have a userId
+    const unlinked = sessionGames.filter(g => g.userId === null);
+    for (const game of unlinked) {
+      await db.update(games).set({ userId }).where(sqlOp`${games.id} = ${game.id}`);
+    }
+    return unlinked.length;
   }
 
   // Users ──────────────────────────────────────────────────────────────────────
@@ -296,6 +316,16 @@ export class MemStorage implements IStorage {
   async getGamesByPlayerName(name: string) {
     return [...this.gameMap.values()].filter(g => (g.players as string[]).includes(name));
   }
+  async getGamesBySession(sessionId: string) {
+    return [...this.gameMap.values()].filter(g => g.sessionId === sessionId);
+  }
+  async linkGamesToUser(sessionId: string, userId: number) {
+    const sessionGames = [...this.gameMap.values()].filter(g => g.sessionId === sessionId && g.userId === null);
+    for (const game of sessionGames) {
+      game.userId = userId;
+    }
+    return sessionGames.length;
+  }
   async createGame(insertGame: InsertGame): Promise<Game> {
     const id = randomUUID();
     const now = new Date();
@@ -307,6 +337,7 @@ export class MemStorage implements IStorage {
     players.forEach(p => { scores[p] = []; strokes[p] = []; totalScores[p] = 0; wolfCounts[p] = 0; });
     const game: Game = {
       id, userId: insertGame.userId ?? null,
+      sessionId: insertGame.sessionId ?? null,
       gameType: insertGame.gameType ?? "wolf", players,
       teams: (insertGame.teams as string[][] | undefined) ?? [],
       handicaps: (insertGame.handicaps as Record<string, number> | undefined) ?? {},

@@ -77,6 +77,7 @@ export type Favorite = typeof favorites.$inferSelect;
 export const games = pgTable("games", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: integer("user_id"),
+  sessionId: text("session_id"),
   gameType: text("game_type").notNull().default("wolf"),
   players: jsonb("players").$type<string[]>().notNull(),
   teams: jsonb("teams").$type<string[][]>().notNull().default([]),

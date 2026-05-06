@@ -1,11 +1,21 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Strategy as GoogleOAuthStrategy } from "passport-google-oauth20";
-import { Express } from "express";
+import { Express, type Request, type Response } from "express";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import type { User } from "@shared/schema";
+
+/** After login/register, link any anonymous games from this session to the user. */
+async function linkSessionGames(req: Request, userId: number): Promise<number> {
+  try {
+    return await storage.linkGamesToUser(req.sessionID, userId);
+  } catch (err) {
+    console.error("linkSessionGames error:", err);
+    return 0;
+  }
+}
 
 declare global {
   namespace Express {
@@ -157,8 +167,9 @@ export function setupAuth(app: Express) {
         passwordHash: await hashPassword(password),
       });
 
-      req.login(user, (err) => {
+      req.login(user, async (err) => {
         if (err) return res.status(500).json({ message: "Login failed after registration" });
+        await linkSessionGames(req, user.id);
         res.status(201).json(sanitizeUser(user));
       });
     } catch (err) {
@@ -169,11 +180,12 @@ export function setupAuth(app: Express) {
 
   // Login with email + password
   app.post("/api/auth/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: User | false, info: any) => {
+    passport.authenticate("local", async (err: any, user: User | false, info: any) => {
       if (err) return next(err);
       if (!user) return res.status(401).json({ message: info?.message ?? "Invalid credentials" });
-      req.login(user, (loginErr) => {
+      req.login(user, async (loginErr) => {
         if (loginErr) return next(loginErr);
+        await linkSessionGames(req, user.id);
         res.json(sanitizeUser(user));
       });
     })(req, res, next);
@@ -222,8 +234,9 @@ export function setupAuth(app: Express) {
         user = await storage.createUser({ phone: normalised, name: name.trim() });
       }
 
-      req.login(user, (err) => {
+      req.login(user, async (err) => {
         if (err) return res.status(500).json({ message: "Login failed" });
+        await linkSessionGames(req, user!.id);
         res.json(sanitizeUser(user!));
       });
     } catch (err) {
@@ -258,11 +271,12 @@ export function setupAuth(app: Express) {
       if (!user) {
         return res.redirect("/auth?error=oauth_denied");
       }
-      req.login(user, (loginErr) => {
+      req.login(user, async (loginErr) => {
         if (loginErr) {
           console.error("Google OAuth login error:", loginErr);
           return res.redirect("/auth?error=oauth_failed");
         }
+        await linkSessionGames(req, (user as User).id);
         // Redirect to home/profile on success
         res.redirect("/");
       });
