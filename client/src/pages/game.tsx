@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle, Users } from "lucide-react";
 import PinPlayLogo from "@/components/logo";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiRequest } from "@/lib/queryClient";
 import type { Game } from "@shared/schema";
 
 interface GameParams {
@@ -128,7 +129,12 @@ export default function Game() {
 
   return (
     <div className="bg-gray-50 dark:bg-gray-900 font-sans min-h-screen">
-      <ActiveGame game={currentGame} myPlayer={myPlayer ?? undefined} gameActions={gameActions} />
+      <ActiveGame game={currentGame} myPlayer={myPlayer ?? undefined} gameActions={gameActions} onAbort={async () => {
+        try {
+          await apiRequest("DELETE", `/api/games/${gameId}`);
+        } catch {}
+        setLocation("/");
+      }} />
 
       {/* Player Identity Picker */}
       {showPlayerPicker && (
