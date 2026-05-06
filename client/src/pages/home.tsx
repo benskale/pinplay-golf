@@ -1,8 +1,11 @@
 import { useLocation, useSearch } from "wouter";
 import GameSetup from "@/components/game-setup";
 import { useAuth } from "@/hooks/use-auth";
-import { User } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { User, Play, ChevronRight, Trophy } from "lucide-react";
 import { useEffect } from "react";
+import type { Game } from "@shared/schema";
+import { GAME_DEFINITIONS } from "@/lib/game-logic";
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -18,6 +21,21 @@ export default function Home() {
       return () => clearTimeout(t);
     }
   }, [search, user, setLocation]);
+
+  // Fetch all games for logged-in user (active + completed)
+  const { data: myGames = [] } = useQuery<Game[]>({
+    queryKey: ["/api/auth/games"],
+    enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch("/api/auth/games", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const activeGames = myGames.filter(g => g.active);
+  const completedGames = myGames.filter(g => !g.active);
 
   return (
     <div className="min-h-screen bg-background font-sans">
@@ -60,6 +78,87 @@ export default function Home() {
 
       {/* ── Setup content ── */}
       <main className="max-w-md mx-auto px-4 pb-24 -mt-1">
+
+        {/* Active Games */}
+        {activeGames.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Active Games</h2>
+            </div>
+            <div className="space-y-2">
+              {activeGames.map(game => {
+                const gameDef = GAME_DEFINITIONS[game.gameType];
+                const holesPlayed = game.holeHistory?.length ?? 0;
+                return (
+                  <button
+                    key={game.id}
+                    onClick={() => setLocation(`/game/${game.id}`)}
+                    className="w-full flex items-center justify-between p-3.5 bg-card rounded-xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-card hover:shadow-card-hover border border-green-200/50 dark:border-green-800/30"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+                        <Play className="w-4 h-4 text-green-600 dark:text-green-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 dark:text-gray-50 text-sm truncate">
+                          {gameDef?.name ?? game.gameType}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {game.courseName ? `${game.courseName} · ` : ""}
+                          Hole {game.currentHole}
+                          {holesPlayed > 0 ? ` (${holesPlayed} played)` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex -space-x-1.5">
+                        {(game.players as string[]).slice(0, 4).map((p, i) => (
+                          <div key={i} className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 border-2 border-white dark:border-gray-900 flex items-center justify-center">
+                            <span className="text-[0.5rem] font-bold text-gray-600 dark:text-gray-300">{p.charAt(0).toUpperCase()}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Recent Completed Games */}
+        {completedGames.length > 0 && !activeGames.length && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Trophy className="w-3.5 h-3.5 text-gray-400" />
+              <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400">Recent Rounds</h2>
+            </div>
+            <div className="space-y-2">
+              {completedGames.slice(0, 3).map(game => {
+                const gameDef = GAME_DEFINITIONS[game.gameType];
+                return (
+                  <button
+                    key={game.id}
+                    onClick={() => setLocation(`/game/${game.id}`)}
+                    className="w-full flex items-center justify-between p-3 bg-card rounded-xl text-left group transition-colors hover:bg-gray-75 dark:hover:bg-gray-800/50"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{gameDef?.name ?? game.gameType}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {game.courseName ? `${game.courseName} · ` : ""}
+                        {new Date(game.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 flex-shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <GameSetup onGameCreated={(id) => setLocation(`/game/${id}`)} />
       </main>
     </div>

@@ -19,6 +19,7 @@ export interface IStorage {
   updateGame(id: string, updates: UpdateGame): Promise<Game | undefined>;
   deleteGame(id: string): Promise<boolean>;
   getGamesByUser(userId: number): Promise<Game[]>;
+  getGamesByPlayerName(name: string): Promise<Game[]>;
 
   // Users
   getUser(id: number): Promise<User | undefined>;
@@ -125,6 +126,15 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(games)
       .where(eq(games.userId, userId))
+      .orderBy(desc(games.createdAt));
+  }
+
+  async getGamesByPlayerName(name: string): Promise<Game[]> {
+    // JSONB contains: players array contains the name string
+    return db
+      .select()
+      .from(games)
+      .where(sqlOp`${games.players} @> ${JSON.stringify([name])}`)
       .orderBy(desc(games.createdAt));
   }
 
@@ -282,6 +292,9 @@ export class MemStorage implements IStorage {
   async getGame(id: string) { return this.gameMap.get(id); }
   async getGamesByUser(userId: number) {
     return [...this.gameMap.values()].filter(g => g.userId === userId);
+  }
+  async getGamesByPlayerName(name: string) {
+    return [...this.gameMap.values()].filter(g => (g.players as string[]).includes(name));
   }
   async createGame(insertGame: InsertGame): Promise<Game> {
     const id = randomUUID();
