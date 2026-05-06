@@ -352,7 +352,7 @@ export function setupAuth(app: Express) {
       const q = (req.query.q as string || "").trim();
       if (q.length < 2) return res.json([]);
       const results = await storage.searchUsers(q, (req.user as User).id);
-      res.json(results.map((u: User) => ({ id: u.id, name: u.name, avatarUrl: u.avatarUrl ?? null })));
+      res.json(results.map((u: User) => ({ id: u.id, name: u.name, avatarUrl: u.avatarUrl ?? null, handicapIndex: u.handicapIndex ?? null })));
     } catch (err) {
       console.error("Search users error:", err);
       res.status(500).json({ message: "Failed to search users" });

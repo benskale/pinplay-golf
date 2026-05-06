@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Loader2, ChevronDown, ChevronUp, CheckCircle, MapPin, Search, X,
-  Users, ChevronRight, ArrowLeft, Shuffle
+  Users, ChevronRight, ArrowLeft, Shuffle, UserCircle
 } from "lucide-react";
 import { getGamesForPlayerCount, type GameDef } from "@/lib/game-logic";
 
@@ -67,6 +67,15 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
   const { toast } = useToast();
   const { user } = useAuth();
 
+  // Self-removal from Player 1 slot
+  const [selfRemoved, setSelfRemoved] = useState(false);
+
+  // Per-player autocomplete
+  const [playerSearchText, setPlayerSearchText] = useState<Record<number, string>>({});
+  const [activeDropdown, setActiveDropdown] = useState<number | null>(null);
+  const [debouncedPlayerSearch, setDebouncedPlayerSearch] = useState("");
+  const playerDropdownRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
   // Fetch favorites (includes handicapIndex from server)
   const { data: favoritesData } = useQuery<{ favoriteName: string; handicapIndex: number | null }[]>({
     queryKey: ["/api/auth/favorites"],
@@ -118,6 +127,44 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
     if (changed) setHandicaps(updated);
   }, [players, playerCount]);
 
+  // Auto-fill Player 1 with logged-in user
+  useEffect(() => {
+    if (step === "players" && user && !selfRemoved) {
+      setPlayers(prev => {
+        const updated = [...prev];
+        if (!updated[0]) {
+          updated[0] = user.name;
+        }
+        return updated;
+      });
+      if (user.handicapIndex != null) {
+        const hcp = user.handicapIndex;
+        setHandicaps(prev => ({ ...prev, [user.name]: hcp }));
+      }
+    }
+  }, [step, user, selfRemoved]);
+
+  // Debounce player search for autocomplete
+  useEffect(() => {
+    if (activeDropdown === null) return;
+    const query = playerSearchText[activeDropdown] || "";
+    const timer = setTimeout(() => setDebouncedPlayerSearch(query), 300);
+    return () => clearTimeout(timer);
+  }, [playerSearchText, activeDropdown]);
+
+  // Close player dropdown on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (activeDropdown === null) return;
+      const ref = playerDropdownRefs.current[activeDropdown];
+      if (ref && !ref.contains(e.target as Node)) {
+        setActiveDropdown(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [activeDropdown]);
+
   // Keep players array in sync with player count
   useEffect(() => {
     setPlayers(prev => {
@@ -152,6 +199,25 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
       if (!res.ok) return { courses: [] };
       return res.json();
     },
+  });
+
+  // User search for player autocomplete
+  interface UserSearchResult {
+    id: number;
+    name: string;
+    avatarUrl: string | null;
+    handicapIndex: number | null;
+  }
+
+  const { data: userSearchResults = [] } = useQuery<UserSearchResult[]>({
+    queryKey: ["/api/auth/search-users", debouncedPlayerSearch],
+    enabled: debouncedPlayerSearch.length >= 1 && activeDropdown !== null,
+    queryFn: async () => {
+      const res = await fetch(`/api/auth/search-users?q=${encodeURIComponent(debouncedPlayerSearch)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 30_000,
   });
 
   const handleSelectCourse = async (course: CourseResult) => {
@@ -198,6 +264,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
   const handleSelectCount = (count: number) => {
     setPlayerCount(count);
     setSelectedGame(null);
+    setSelfRemoved(false);
     setStep("game");
   };
 
@@ -427,60 +494,152 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
           <div className="space-y-3 mb-5">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Player Names</p>
             {players.slice(0, playerCount).map((player, index) => {
+              const isSelf = !!(user && index === 0 && player === user.name && !selfRemoved);
               const autoHcp = player.trim() ? handicapLookup.current[player.trim().toLowerCase()] : undefined;
               const hasAutoHcp = autoHcp !== undefined && handicaps[player] === autoHcp;
+              const showUserDropdown = activeDropdown === index && !isSelf && player.length >= 1 && userSearchResults.length > 0;
+
               return (
-                <div key={index} className="flex items-center space-x-3">
-                  <div className="w-9 h-9 bg-primary-50 dark:bg-primary-950 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-primary-700 dark:text-primary-300 font-medium text-sm">{index + 1}</span>
+                <div key={index} className="relative" ref={el => { playerDropdownRefs.current[index] = el; }}>
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isSelf
+                        ? "bg-primary-100 dark:bg-primary-900/40"
+                        : "bg-primary-50 dark:bg-primary-950"
+                    }`}>
+                      {isSelf ? (
+                        <UserCircle className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                      ) : (
+                        <span className="text-primary-700 dark:text-primary-300 font-medium text-sm">{index + 1}</span>
+                      )}
+                    </div>
+                    <div className="flex-1 relative">
+                      <Input
+                        type="text"
+                        placeholder={`Player ${index + 1} Name`}
+                        value={player}
+                        onChange={(e) => {
+                          const newPlayers = [...players];
+                          newPlayers[index] = e.target.value;
+                          setPlayers(newPlayers);
+                          if (isSelf) {
+                            setSelfRemoved(true);
+                          } else {
+                            setPlayerSearchText(prev => ({ ...prev, [index]: e.target.value }));
+                            setActiveDropdown(index);
+                          }
+                        }}
+                        onFocus={() => {
+                          if (!isSelf && player.length >= 1) {
+                            setPlayerSearchText(prev => ({ ...prev, [index]: player }));
+                            setActiveDropdown(index);
+                          }
+                        }}
+                        className={`flex-1 ${isSelf ? "border-primary-300 bg-primary-50/30 dark:bg-primary-950/20 pr-16" : ""}`}
+                      />
+                      {isSelf && (
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                          <span className="text-[0.625rem] px-1.5 py-0.5 rounded-full bg-primary-200/60 dark:bg-primary-800/40 text-primary-700 dark:text-primary-300 font-semibold uppercase tracking-wide">You</span>
+                          <button
+                            onClick={() => {
+                              const newPlayers = [...players];
+                              newPlayers[0] = "";
+                              setPlayers(newPlayers);
+                              setSelfRemoved(true);
+                              if (user?.name) {
+                                setHandicaps(prev => {
+                                  const updated = { ...prev };
+                                  delete updated[user.name];
+                                  return updated;
+                                });
+                              }
+                            }}
+                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {/* Team toggle for team games */}
+                    {selectedGame?.isTeamGame && (
+                      <button
+                        className={`px-3 py-1.5 rounded-lg text-sm font-bold border-2 transition-colors ${
+                          (teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300"
+                            : "border-orange-500 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300"
+                        }`}
+                        onClick={() => setTeamAssignment(prev => ({
+                          ...prev,
+                          [`player_${index}`]: (prev[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A" ? "B" : "A"
+                        }))}
+                      >
+                        {(teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A" ? "Team A" : "Team B"}
+                      </button>
+                    )}
+                    {/* Handicap input — always shown */}
+                    <div className="flex-shrink-0 relative">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="54"
+                        placeholder="Hdcp"
+                        value={handicaps[player] ?? ""}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setHandicaps(prev => ({ ...prev, [player]: isNaN(val) ? 0 : val }));
+                        }}
+                        className={`w-16 text-center text-sm ${hasAutoHcp ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
+                      />
+                    </div>
                   </div>
-                  <Input
-                    type="text"
-                    placeholder={`Player ${index + 1} Name`}
-                    value={player}
-                    onChange={(e) => {
-                      const newPlayers = [...players];
-                      newPlayers[index] = e.target.value;
-                      setPlayers(newPlayers);
-                    }}
-                    className="flex-1"
-                  />
-                  {/* Team toggle for team games */}
-                  {selectedGame?.isTeamGame && (
-                    <button
-                      className={`px-3 py-1.5 rounded-lg text-sm font-bold border-2 transition-colors ${
-                        (teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A"
-                          ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300"
-                          : "border-orange-500 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300"
-                      }`}
-                      onClick={() => setTeamAssignment(prev => ({
-                        ...prev,
-                        [`player_${index}`]: (prev[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A" ? "B" : "A"
-                      }))}
-                    >
-                      {(teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A" ? "Team A" : "Team B"}
-                    </button>
+
+                  {/* User autocomplete dropdown */}
+                  {showUserDropdown && (
+                    <div className="absolute z-20 left-12 mt-1 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg overflow-hidden" style={{ right: '4.5rem' }}>
+                      {userSearchResults.map(u => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          className="w-full flex items-center space-x-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700 text-left border-b border-gray-100 dark:border-gray-700 last:border-0"
+                          onClick={() => {
+                            const newPlayers = [...players];
+                            newPlayers[index] = u.name;
+                            setPlayers(newPlayers);
+                            if (u.handicapIndex != null) {
+                              setHandicaps(prev => ({ ...prev, [u.name]: u.handicapIndex! }));
+                            }
+                            setActiveDropdown(null);
+                            setPlayerSearchText(prev => ({ ...prev, [index]: "" }));
+                          }}
+                        >
+                          {u.avatarUrl && !u.avatarUrl.startsWith("data:") ? (
+                            <img src={u.avatarUrl} className="w-7 h-7 rounded-full object-cover flex-shrink-0" alt="" />
+                          ) : (
+                            <div className="w-7 h-7 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center flex-shrink-0">
+                              <span className="text-xs font-medium text-gray-500">{u.name.charAt(0).toUpperCase()}</span>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{u.name}</p>
+                            {u.handicapIndex != null ? (
+                              <p className="text-xs text-emerald-600 dark:text-emerald-400">Hdcp: {u.handicapIndex}</p>
+                            ) : (
+                              <p className="text-xs text-gray-400">No handicap set</p>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   )}
-                  {/* Handicap input — always shown */}
-                  <div className="flex-shrink-0 relative">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="54"
-                      placeholder="Hdcp"
-                      value={handicaps[player] ?? ""}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        setHandicaps(prev => ({ ...prev, [player]: isNaN(val) ? 0 : val }));
-                      }}
-                      className={`w-16 text-center text-sm ${hasAutoHcp ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
-                    />
-                  </div>
                 </div>
               );
             })}
             <p className="text-xs text-gray-400 ml-12">
-              Handicap index (0 = scratch). {user?.handicapIndex != null && <span className="text-emerald-500">Green = auto-filled from profile. </span>}Optional — only used for handicap games.
+              Handicap index (0 = scratch).{" "}
+              {user?.handicapIndex != null && <span className="text-emerald-500">Green = auto-filled from profile. </span>}
+              {user && <span className="text-primary-500">Start typing a name to search PinPlay users. </span>}
+              Optional — only used for handicap games.
             </p>
             {selectedGame?.isTeamGame && (
               <p className="text-xs text-gray-400 ml-12">Tap Team A/B to reassign players to teams.</p>
