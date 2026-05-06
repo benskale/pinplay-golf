@@ -6,7 +6,7 @@ import { ShareModal } from "@/components/share-modal";
 import Scorecard from "@/components/scorecard";
 import {
   Share2, Crown, Minus, Plus, TableProperties, ClipboardList,
-  Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target
+  Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target, MoreVertical, Trash2
 } from "lucide-react";
 import PinPlayLogo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
@@ -28,6 +28,7 @@ interface ActiveGameProps {
       metadata: Record<string, any>,
     ) => void;
   };
+  onAbort?: () => void;
 }
 
 type Tab = "scoring" | "scorecard";
@@ -42,8 +43,9 @@ const STROKE_COLOR_CLASSES = (diff: number) => {
 const STROKE_LABEL = (diff: number) =>
   diff <= -2 ? `${Math.abs(diff)} under` : diff === -1 ? "Birdie" : diff === 0 ? "Par" : diff === 1 ? "Bogey" : `${diff} over`;
 
-export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGameProps) {
+export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: ActiveGameProps) {
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [tab, setTab] = useState<Tab>("scoring");
   const [holeStrokes, setHoleStrokes] = useState<Record<string, number>>({});
 
@@ -193,7 +195,7 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
                 }
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 relative">
               {myPlayer && (
                 <span className="text-[0.6875rem] font-medium px-2.5 py-1 rounded-full" style={{ background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.9)" }}>
                   {myPlayer.split(" ")[0]}
@@ -202,6 +204,28 @@ export default function ActiveGame({ game, myPlayer, gameActions }: ActiveGamePr
               <Button variant="ghost" size="sm" className="w-8 h-8 p-0 rounded-full hover:bg-white/15 text-white" onClick={() => setShowShareModal(true)}>
                 <Share2 className="w-4 h-4" />
               </Button>
+              <Button variant="ghost" size="sm" className="w-8 h-8 p-0 rounded-full hover:bg-white/15 text-white" onClick={() => setShowMenu(v => !v)}>
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+              {showMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                  <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg overflow-hidden z-50 min-w-[160px]">
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        if (confirm("End this round? Incomplete data will be saved.")) {
+                          onAbort?.();
+                        }
+                      }}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-left"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      End & Delete Round
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

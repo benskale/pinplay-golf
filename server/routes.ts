@@ -94,6 +94,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete game (only the creator can delete)
+  app.delete("/api/games/:id", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) return res.status(401).json({ message: "Not authenticated" });
+      const game = await storage.getGame(req.params.id);
+      if (!game) return res.status(404).json({ message: "Game not found" });
+      if (game.userId !== (req.user as any).id) return res.status(403).json({ message: "Only the game creator can delete this game" });
+      await storage.deleteGame(req.params.id);
+      broadcastToGame(req.params.id, { type: "game_updated", game: { ...game, active: false, deleted: true } });
+      res.json({ message: "Game deleted" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete game" });
+    }
+  });
+
   // Update game
   app.patch("/api/games/:id", async (req, res) => {
     try {

@@ -154,6 +154,19 @@ export default function ProfilePage() {
     onError: (err: Error) => toast({ title: "Couldn't remove", description: err.message, variant: "destructive" }),
   });
 
+  // Delete game mutation
+  const deleteGameMutation = useMutation({
+    mutationFn: async (gameId: string) => {
+      const res = await apiRequest("DELETE", `/api/games/${gameId}`);
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/games"] });
+      toast({ title: "Round deleted" });
+    },
+    onError: (err: Error) => toast({ title: "Couldn't delete round", description: err.message, variant: "destructive" }),
+  });
+
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   // Debounce course search
@@ -667,6 +680,19 @@ export default function ProfilePage() {
                             className="w-full text-center text-xs text-primary-600 dark:text-primary-400 font-semibold hover:underline pt-1"
                           >
                             View Full Game →
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm("Delete this round? This can't be undone.")) {
+                                deleteGameMutation.mutate(game.id);
+                              }
+                            }}
+                            disabled={deleteGameMutation.isPending}
+                            className="w-full flex items-center justify-center gap-1.5 text-xs text-red-500 hover:text-red-600 dark:text-red-400 font-medium hover:underline pt-2"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            {deleteGameMutation.isPending ? "Deleting..." : "Delete Round"}
                           </button>
                         </div>
                       )}
