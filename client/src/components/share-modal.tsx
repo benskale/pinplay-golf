@@ -9,9 +9,10 @@ interface ShareModalProps {
   isOpen: boolean;
   onClose: () => void;
   gameId: string;
+  isCompleted?: boolean;
 }
 
-export function ShareModal({ isOpen, onClose, gameId }: ShareModalProps) {
+export function ShareModal({ isOpen, onClose, gameId, isCompleted }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
@@ -45,12 +46,16 @@ export function ShareModal({ isOpen, onClose, gameId }: ShareModalProps) {
   };
 
   const handleWhatsAppShare = () => {
-    const text = encodeURIComponent(`Join our Wolf game! Click here to track scores: ${gameUrl}`);
+    const text = isCompleted
+      ? encodeURIComponent(`Check out our round! See the final scores: ${gameUrl}`)
+      : encodeURIComponent(`Join our Wolf game! Click here to track scores: ${gameUrl}`);
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
   const handleSMSShare = () => {
-    const text = encodeURIComponent(`Join our Wolf game! Click here to track scores: ${gameUrl}`);
+    const text = isCompleted
+      ? encodeURIComponent(`Check out our round! See the final scores: ${gameUrl}`)
+      : encodeURIComponent(`Join our Wolf game! Click here to track scores: ${gameUrl}`);
     window.open(`sms:?body=${text}`, '_blank');
   };
 
@@ -72,7 +77,10 @@ export function ShareModal({ isOpen, onClose, gameId }: ShareModalProps) {
         <div className="space-y-4">
           <div className="mb-4 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
             <p className="text-sm text-green-700 dark:text-green-300" data-testid="text-sharing-info">
-              📱 <strong>Share with your golf group!</strong> Others can track live scores and see who's winning in real-time. Only you can enter points.
+              {isCompleted
+                ? <>📱 <strong>Share the results!</strong> Others can view the final scorecard and claim the round to their profile.</>
+                : <>📱 <strong>Share with your golf group!</strong> Others can track live scores and see who's winning in real-time. Only you can enter points.</>
+              }
             </p>
           </div>
           

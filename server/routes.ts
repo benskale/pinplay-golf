@@ -111,6 +111,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Claim game — link a completed/shared game to the logged-in user
+  app.post("/api/games/:id/claim", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) return res.status(401).json({ message: "Not authenticated" });
+      const game = await storage.getGame(req.params.id);
+      if (!game) return res.status(404).json({ message: "Game not found" });
+      const userId = (req.user as any).id;
+      const { playerName } = req.body;
+      // Set userId on the game if it doesn't have one (or it's this session's game)
+      if (game.userId === null) {
+        await storage.updateGame(req.params.id, { userId } as any);
+      }
+      res.json({ message: "Game claimed", playerName: playerName || null });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to claim game" });
+    }
+  });
+
   // Update game
   app.patch("/api/games/:id", async (req, res) => {
     try {
