@@ -1,9 +1,10 @@
 import { useLocation, useSearch } from "wouter";
 import GameSetup from "@/components/game-setup";
+import Onboarding from "@/components/onboarding";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
-import { User, Play, ChevronRight, Trophy } from "lucide-react";
-import { useEffect } from "react";
+import { User, Play, ChevronRight, Trophy, ArrowRight, Clock } from "lucide-react";
+import { useState, useEffect } from "react";
 import type { Game } from "@shared/schema";
 import { GAME_DEFINITIONS } from "@/lib/game-logic";
 
@@ -12,11 +13,22 @@ export default function Home() {
   const search = useSearch();
   const { user } = useAuth();
 
+  // Onboarding state
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    const seen = localStorage.getItem("pinplay_onboarding_seen");
+    if (!seen) {
+      // Small delay so the page renders first
+      const t = setTimeout(() => setShowOnboarding(true), 600);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
   // If someone arrives via ?ref= link and isn't logged in, send them to sign up
   useEffect(() => {
     const params = new URLSearchParams(search);
     if (params.has("ref") && user === null) {
-      // Small delay to let auth check complete
       const t = setTimeout(() => setLocation("/auth"), 300);
       return () => clearTimeout(t);
     }
@@ -36,6 +48,7 @@ export default function Home() {
 
   const activeGames = myGames.filter(g => g.active);
   const completedGames = myGames.filter(g => !g.active);
+  const mostRecentActive = activeGames.length > 0 ? activeGames[0] : null;
 
   return (
     <div className="min-h-screen bg-background font-sans">
@@ -79,15 +92,48 @@ export default function Home() {
       {/* ── Setup content ── */}
       <main className="max-w-md mx-auto px-4 pb-24 -mt-1">
 
-        {/* Active Games */}
-        {activeGames.length > 0 && (
+        {/* ── Continue Round Banner (prominent CTA) ── */}
+        {mostRecentActive && (
+          <div className="mb-5 -mt-1">
+            <button
+              onClick={() => setLocation(`/game/${mostRecentActive.id}`)}
+              className="w-full p-4 rounded-2xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg border-2 border-green-400/50 dark:border-green-600/40"
+              style={{ background: "linear-gradient(135deg, #065f46 0%, #064e3b 100%)" }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                    <Play className="w-5 h-5 text-green-300" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                      <span className="text-sm font-bold text-white">Continue Your Round</span>
+                    </div>
+                    <p className="text-xs text-green-200/80 mt-0.5">
+                      {GAME_DEFINITIONS[mostRecentActive.gameType]?.name ?? mostRecentActive.gameType}
+                      {mostRecentActive.courseName ? ` · ${mostRecentActive.courseName}` : ""}
+                      {" · Hole "}{mostRecentActive.currentHole}
+                    </p>
+                  </div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-green-300 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+              </div>
+            </button>
+          </div>
+        )}
+
+        {/* Active Games (show remaining ones if multiple) */}
+        {activeGames.length > 1 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Active Games</h2>
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                {mostRecentActive ? "Other Active Games" : "Active Games"}
+              </h2>
             </div>
             <div className="space-y-2">
-              {activeGames.map(game => {
+              {activeGames.filter(g => g !== mostRecentActive).map(game => {
                 const gameDef = GAME_DEFINITIONS[game.gameType];
                 const holesPlayed = game.holeHistory?.length ?? 0;
                 return (
@@ -111,16 +157,7 @@ export default function Home() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <div className="flex -space-x-1.5">
-                        {(game.players as string[]).slice(0, 4).map((p, i) => (
-                          <div key={i} className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 border-2 border-white dark:border-gray-900 flex items-center justify-center">
-                            <span className="text-[0.5rem] font-bold text-gray-600 dark:text-gray-300">{p.charAt(0).toUpperCase()}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
                   </button>
                 );
               })}
@@ -129,7 +166,7 @@ export default function Home() {
         )}
 
         {/* Recent Completed Games */}
-        {completedGames.length > 0 && !activeGames.length && (
+        {completedGames.length > 0 && activeGames.length <= 1 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
               <Trophy className="w-3.5 h-3.5 text-gray-400" />
@@ -171,6 +208,9 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      {/* Onboarding overlay */}
+      {showOnboarding && <Onboarding onDismiss={() => setShowOnboarding(false)} />}
     </div>
   );
 }
