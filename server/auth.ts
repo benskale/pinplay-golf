@@ -157,12 +157,16 @@ export function setupAuth(app: Express) {
       const { email, password, name } = req.body;
       if (!email || !password || !name) return res.status(400).json({ message: "Name, email and password are required" });
       if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+      if (password.length > 128) return res.status(400).json({ message: "Password too long" });
+
+      const cleanName = name.trim().replace(/[\x00-\x1F\x7F<>]/g, "").replace(/\s+/g, " ").slice(0, 50);
+      if (cleanName.length < 1) return res.status(400).json({ message: "Name is required" });
 
       const existing = await storage.getUserByEmail(email.toLowerCase().trim());
       if (existing) return res.status(400).json({ message: "An account with this email already exists" });
 
       const user = await storage.createUser({
-        name: name.trim(),
+        name: cleanName,
         email: email.toLowerCase().trim(),
         passwordHash: await hashPassword(password),
       });
@@ -288,11 +292,12 @@ export function setupAuth(app: Express) {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     try {
       const { name, handicapIndex, homeCourse, avatarUrl, phone } = req.body;
+      const sanitizedName = name !== undefined ? name.trim().replace(/[\x00-\x1F\x7F<>]/g, "").replace(/\s+/g, " ").slice(0, 50) : undefined;
       const updated = await storage.updateUser((req.user as User).id, {
-        ...(name !== undefined && { name: name.trim() }),
-        ...(phone !== undefined && { phone: phone?.trim() || null }),
+        ...(name !== undefined && { name: sanitizedName }),
+        ...(phone !== undefined && { phone: phone?.trim().replace(/[^\d+\-() ]/g, "") || null }),
         ...(handicapIndex !== undefined && { handicapIndex: handicapIndex === "" ? null : Number(handicapIndex) }),
-        ...(homeCourse !== undefined && { homeCourse: homeCourse.trim() || null }),
+        ...(homeCourse !== undefined && { homeCourse: homeCourse.trim().replace(/[\x00-\x1F\x7F<>]/g, "").slice(0, 200) || null }),
         ...(avatarUrl !== undefined && { avatarUrl: avatarUrl || null }),
       });
       if (!updated) return res.status(404).json({ message: "User not found" });
