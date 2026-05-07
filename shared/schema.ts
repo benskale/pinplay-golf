@@ -116,6 +116,27 @@ export type InsertGame = z.infer<typeof insertGameSchema>;
 export type UpdateGame = z.infer<typeof updateGameSchema>;
 export type Game = typeof games.$inferSelect;
 
+// ── Input sanitization ────────────────────────────────────────────────────────
+
+/** Sanitize a player name: trim, collapse whitespace, strip HTML/control chars, enforce length. */
+export function sanitizePlayerName(name: unknown): string {
+  if (typeof name !== "string") return "";
+  return name
+    .trim()
+    .replace(/[\x00-\x1F\x7F<>]/g, "") // strip control chars + angle brackets
+    .replace(/\s+/g, " ")              // collapse whitespace
+    .slice(0, 50);                      // max 50 chars
+}
+
+/** Validate an array of player names: 2-4 players, each 1-50 chars after sanitization. */
+export function validatePlayers(players: unknown): string[] {
+  if (!Array.isArray(players)) throw new Error("Players must be an array");
+  if (players.length < 2 || players.length > 4) throw new Error("Must have 2-4 players");
+  const sanitized = players.map((p: any) => sanitizePlayerName(p));
+  if (sanitized.some(p => p.length < 1)) throw new Error("Player names cannot be empty");
+  return sanitized;
+}
+
 // ── WebSocket messages ────────────────────────────────────────────────────────
 
 export const wsMessageSchema = z.union([

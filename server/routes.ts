@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { insertGameSchema, updateGameSchema, wsMessageSchema } from "@shared/schema";
+import { insertGameSchema, updateGameSchema, wsMessageSchema, validatePlayers, sanitizePlayerName } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import * as schema from "@shared/schema";
@@ -103,6 +103,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create game
   app.post("/api/games", async (req, res) => {
     try {
+      // Sanitize player names
+      if (req.body.players) {
+        req.body.players = validatePlayers(req.body.players);
+      }
+      // Sanitize player names in handicaps keys
+      if (req.body.handicaps && typeof req.body.handicaps === "object") {
+        const clean: Record<string, number> = {};
+        for (const [key, val] of Object.entries(req.body.handicaps)) {
+          clean[sanitizePlayerName(key)] = val as number;
+        }
+        req.body.handicaps = clean;
+      }
+      // Sanitize course name
+      if (typeof req.body.courseName === "string") {
+        req.body.courseName = req.body.courseName.trim().replace(/[\x00-\x1F\x7F<>]/g, "").slice(0, 200);
+      }
       const gameData = insertGameSchema.parse(req.body);
       // Attach userId if logged in
       if (req.isAuthenticated?.() && req.user) {
