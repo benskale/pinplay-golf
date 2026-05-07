@@ -1,0 +1,21 @@
+{
+  "name": "PinPlay Golf",
+  "short_name": "PinPlay",
+  "description": "Score every format, every round. 23 golf game types with real-time multiplayer scoring.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1f15",
+  "theme_color": "#1a3a2a",
+  "categories": ["sports", "lifestyle", "utilities"],
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "prefer_related_applications": false
+}

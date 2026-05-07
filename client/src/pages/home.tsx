@@ -160,6 +160,16 @@ export default function Home() {
         )}
 
         <GameSetup onGameCreated={(id) => setLocation(`/game/${id}`)} />
+
+        {/* Footer */}
+        <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800 text-center space-y-2">
+          <p className="text-xs text-gray-400">© 2026 Silver Springs Ventures LLC</p>
+          <div className="flex items-center justify-center gap-3">
+            <button onClick={() => setLocation("/privacy")} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Privacy Policy</button>
+            <span className="text-gray-300 dark:text-gray-700">·</span>
+            <button onClick={() => setLocation("/terms")} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Terms of Service</button>
+          </div>
+        </div>
       </main>
     </div>
   );
