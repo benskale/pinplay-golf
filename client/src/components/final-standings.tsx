@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Trophy, Crown, Award, RotateCcw, TableProperties, ClipboardList, Save, UserPlus, CheckCircle2, HandMetal } from "lucide-react";
 import { ShareModal } from "@/components/share-modal";
 import { GhinExportModal } from "@/components/ghin-export-modal";
+import RoundStats from "@/components/round-stats";
 import Scorecard from "@/components/scorecard";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -349,6 +350,9 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
             </div>
           </CardContent>
         </Card>
+
+        {/* Round Stats (birdies, pars, bogeys breakdown) */}
+        <RoundStats game={game} />
 
         {/* Full Scorecard */}
         <Card>
