@@ -8,6 +8,8 @@ import Home from "@/pages/home";
 import Game from "@/pages/game";
 import AuthPage from "@/pages/auth";
 import ProfilePage from "@/pages/profile";
+import PrivacyPage from "@/pages/privacy";
+import TermsPage from "@/pages/terms";
 import { AuthProvider } from "@/hooks/use-auth";
 
 function Router() {
@@ -17,6 +19,8 @@ function Router() {
       <Route path="/game/:gameId" component={Game} />
       <Route path="/auth" component={AuthPage} />
       <Route path="/profile" component={ProfilePage} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
       <Route component={NotFound} />
     </Switch>
   );
