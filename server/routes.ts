@@ -4,6 +4,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { insertGameSchema, updateGameSchema, wsMessageSchema } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
+import * as schema from "@shared/schema";
 
 const gameConnections = new Map<string, Set<WebSocket>>();
 
@@ -22,6 +25,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health check
   app.get("/health", (_req, res) => {
     res.json({ status: "healthy", timestamp: new Date().toISOString(), uptime: process.uptime() });
+  });
+
+  // Admin stats (requires ADMIN_SECRET env var passed as ?key=...)
+  app.get("/api/admin/stats", async (req, res) => {
+    const adminSecret = process.env.ADMIN_SECRET;
+    const providedKey = req.query.key as string;
+    if (!adminSecret || providedKey !== adminSecret) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const [userCount, gameCount, activeGames, completedGames] = await Promise.all([
+        db.select({ id: schema.users.id }).from(schema.users),
+        db.select({ id: schema.games.id }).from(schema.games),
+        db.select({ id: schema.games.id }).from(schema.games).where(eq(schema.games.active, true)),
+        db.select({ id: schema.games.id }).from(schema.games).where(eq(schema.games.active, false)),
+      ]);
+      const oauthUsers = await db.select({ id: schema.oauthAccounts.id }).from(schema.oauthAccounts);
+
+      res.json({
+        users: userCount.length,
+        games: gameCount.length,
+        activeGames: activeGames.length,
+        completedGames: completedGames.length,
+        oauthConnections: oauthUsers.length,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch stats" });
+    }
   });
 
   // Golf course search
