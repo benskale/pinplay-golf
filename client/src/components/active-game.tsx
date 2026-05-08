@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShareModal } from "@/components/share-modal";
 import Scorecard from "@/components/scorecard";
+import EditHoleModal from "@/components/edit-hole-modal";
 import {
   Share2, Crown, Minus, Plus, TableProperties, ClipboardList,
   Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target, MoreVertical, Trash2
@@ -27,6 +28,7 @@ interface ActiveGameProps {
       result: string,
       metadata: Record<string, any>,
     ) => void;
+    editHole: (holeNumber: number, newStrokes: Record<string, number>) => void;
   };
   onAbort?: () => void;
 }
@@ -63,6 +65,9 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
 
   // Closest to the Pin (par 3s)
   const [closestToPin, setClosestToPin] = useState<string | "none" | null>(null);
+
+  // Edit hole modal
+  const [editHoleNumber, setEditHoleNumber] = useState<number | null>(null);
 
   const { toast } = useToast();
 
@@ -179,6 +184,13 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
       : { label: "Team B", color: "bg-orange-500 text-white" };
   };
 
+  // Edit hole handler — sends via WebSocket for active games
+  const handleEditHoleSave = (holeNumber: number, newStrokes: Record<string, number>) => {
+    gameActions.editHole(holeNumber, newStrokes);
+    setEditHoleNumber(null);
+    toast({ title: `Hole ${holeNumber} updated` });
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* ── Premium sticky header ── */}
@@ -249,7 +261,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
       <main className="flex-1 overflow-y-auto bg-background">
         <div className="max-w-md mx-auto px-4 py-4 space-y-3 pb-24">
           {tab === "scorecard" ? (
-            <Card><CardContent className="p-4"><Scorecard game={game} /></CardContent></Card>
+            <Card><CardContent className="p-4"><Scorecard game={game} onEditHole={setEditHoleNumber} /></CardContent></Card>
           ) : (
             <>
               {/* Hole Info + Status */}
@@ -865,6 +877,16 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
       </main>
 
       <ShareModal isOpen={showShareModal} onClose={() => setShowShareModal(false)} gameId={game.id} />
+
+      {editHoleNumber !== null && (
+        <EditHoleModal
+          game={game}
+          holeNumber={editHoleNumber}
+          open={editHoleNumber !== null}
+          onOpenChange={(open) => { if (!open) setEditHoleNumber(null); }}
+          onSave={handleEditHoleSave}
+        />
+      )}
     </div>
   );
 }

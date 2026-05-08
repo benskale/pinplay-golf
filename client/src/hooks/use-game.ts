@@ -39,5 +39,13 @@ export function useGame(
     [gameId, sendMessage, game],
   );
 
-  return { updateStrokes, completeHole };
+  const editHole = useCallback(
+    (holeNumber: number, newStrokes: Record<string, number>) => {
+      if (!gameId) return;
+      sendMessage({ type: "edit_hole", gameId, holeNumber, newStrokes });
+    },
+    [gameId, sendMessage],
+  );
+
+  return { updateStrokes, completeHole, editHole };
 }

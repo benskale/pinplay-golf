@@ -1,8 +1,9 @@
 import type { Game } from "@shared/schema";
-import { Flag, Target } from "lucide-react";
+import { Flag, Target, Pencil } from "lucide-react";
 
 interface ScorecardProps {
   game: Game;
+  onEditHole?: (holeNumber: number) => void;
 }
 
 // Build a lookup: hole number → CTP winner name (or "none")
@@ -27,7 +28,7 @@ function scoreLabel(strokes: number, par: number) {
   return { label: `+${diff}`, color: "text-red-700 dark:text-red-500 font-bold" };
 }
 
-function ScoreCell({ strokes, par }: { strokes: number; par: number }) {
+function ScoreCell({ strokes, par, holeNumber, onEditHole }: { strokes: number; par: number; holeNumber: number; onEditHole?: (holeNumber: number) => void }) {
   if (!strokes) return <td className="px-2 py-2 text-center text-[0.625rem] text-gray-300 dark:text-gray-600">-</td>;
   const diff = strokes - par;
   let cellClass = "px-2 py-2 text-center text-[0.6875rem] font-semibold tabular-nums ";
@@ -37,10 +38,22 @@ function ScoreCell({ strokes, par }: { strokes: number; par: number }) {
   else if (diff === 1) cellClass += "bg-orange-50/70 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 rounded-md";
   else cellClass += "bg-red-100/70 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-md";
 
+  if (onEditHole) {
+    return (
+      <td
+        className={`${cellClass} cursor-pointer hover:ring-2 hover:ring-emerald-400/50 hover:ring-offset-1 transition-all relative group`}
+        onClick={() => onEditHole(holeNumber)}
+      >
+        {strokes}
+        <Pencil className="w-2 h-2 absolute top-0.5 right-0.5 text-gray-400 opacity-0 group-hover:opacity-70 transition-opacity" />
+      </td>
+    );
+  }
+
   return <td className={cellClass}>{strokes}</td>;
 }
 
-export default function Scorecard({ game }: ScorecardProps) {
+export default function Scorecard({ game, onEditHole }: ScorecardProps) {
   const { players, pars, strokes, holeHistory } = game;
   const holes = pars.length === 18 ? pars : Array(18).fill(4);
 
@@ -161,7 +174,7 @@ export default function Scorecard({ game }: ScorecardProps) {
                       {player.split(" ")[0]}
                     </td>
                     {front9.map((par, i) => (
-                      <ScoreCell key={i} strokes={getPlayerStrokes(player, i + 1)} par={par} />
+                      <ScoreCell key={i} strokes={getPlayerStrokes(player, i + 1)} par={par} holeNumber={i + 1} onEditHole={onEditHole} />
                     ))}
                     <td className="px-3 py-2.5 text-center tabular-nums">
                       {out > 0 ? (
@@ -214,7 +227,7 @@ export default function Scorecard({ game }: ScorecardProps) {
                       {player.split(" ")[0]}
                     </td>
                     {back9.map((par, i) => (
-                      <ScoreCell key={i} strokes={getPlayerStrokes(player, i + 10)} par={par} />
+                      <ScoreCell key={i} strokes={getPlayerStrokes(player, i + 10)} par={par} holeNumber={i + 10} onEditHole={onEditHole} />
                     ))}
                     <td className="px-3 py-2.5 text-center tabular-nums">
                       {inTotal > 0 ? (

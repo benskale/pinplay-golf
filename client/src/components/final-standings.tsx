@@ -5,12 +5,14 @@ import { ShareModal } from "@/components/share-modal";
 import { GhinExportModal } from "@/components/ghin-export-modal";
 import RoundStats from "@/components/round-stats";
 import Scorecard from "@/components/scorecard";
+import EditHoleModal from "@/components/edit-hole-modal";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import type { Game } from "@shared/schema";
 import { GAME_DEFINITIONS, isLowerBetter } from "@/lib/game-logic";
+import { useToast } from "@/hooks/use-toast";
 
 interface FinalStandingsProps {
   game: Game;
@@ -25,11 +27,28 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
   const [claimingPlayer, setClaimingPlayer] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [claimed, setClaimed] = useState(false);
+  const [editHoleNumber, setEditHoleNumber] = useState<number | null>(null);
+  const [updatedGame, setUpdatedGame] = useState<Game | null>(null);
   const { user } = useAuth();
+  const { toast } = useToast();
   const [, setLocation] = useLocation();
 
   const gameDef = GAME_DEFINITIONS[game.gameType];
   const gameName = gameDef?.name ?? game.gameType;
+  const displayGame = updatedGame || game;
+
+  // Edit hole handler for completed games (uses REST PATCH)
+  const handleEditHoleSave = async (holeNumber: number, newStrokes: Record<string, number>) => {
+    try {
+      const res = await apiRequest("PATCH", `/api/games/${game.id}/hole/${holeNumber}`, { strokes: newStrokes });
+      const updated = await res.json();
+      setUpdatedGame(updated);
+      setEditHoleNumber(null);
+      toast({ title: `Hole ${holeNumber} updated` });
+    } catch (err) {
+      toast({ title: "Failed to update hole", variant: "destructive" });
+    }
+  };
   const lower = isLowerBetter(game.gameType);
   const isWolfGame = game.gameType === "wolf" || game.gameType === "wolf_3";
 
@@ -70,7 +89,7 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
   // Count hole wins per player
   const holeWins: Record<string, number> = {};
   game.players.forEach(p => { holeWins[p] = 0; });
-  game.holeHistory.forEach(hole => {
+  displayGame.holeHistory.forEach(hole => {
     const vals = Object.values(hole.points);
     const best = lower ? Math.min(...vals) : Math.max(...vals);
     if (lower ? best < 999 : best > 0) {
@@ -82,13 +101,13 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
 
   // Sort players — lower-is-better games sort ascending
   const sortedPlayers = [...game.players].sort((a, b) => {
-    const sa = game.totalScores[a] ?? 0;
-    const sb = game.totalScores[b] ?? 0;
+    const sa = displayGame.totalScores[a] ?? 0;
+    const sb = displayGame.totalScores[b] ?? 0;
     return lower ? sa - sb : sb - sa;
   });
 
   const winner = sortedPlayers[0];
-  const winnerScore = game.totalScores[winner] ?? 0;
+  const winnerScore = displayGame.totalScores[winner] ?? 0;
 
   const getPositionIcon = (index: number) => {
     if (index === 0) return <Trophy className="w-6 h-6 text-yellow-500" />;
@@ -312,13 +331,13 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
                       <p className="font-semibold text-gray-800 dark:text-gray-200">{player}</p>
                       <p className="text-sm text-gray-600 dark:text-gray-400">
                         {holeWins[player]} holes won
-                        {isWolfGame && ` • Wolf ${game.wolfCounts?.[player] ?? 0}×`}
+                        {isWolfGame && ` • Wolf ${displayGame.wolfCounts?.[player] ?? 0}×`}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-xl font-bold text-primary-700 dark:text-primary-400">
-                      {game.totalScores[player] ?? 0}
+                      {displayGame.totalScores[player] ?? 0}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {lower ? "strokes" : "points"}
@@ -337,7 +356,7 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
             <div className="grid grid-cols-2 gap-4 text-center">
               <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <p className="text-2xl font-bold text-primary-700 dark:text-primary-400">
-                  {game.holeHistory.length}
+                  {displayGame.holeHistory.length}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Holes Played</p>
               </div>
@@ -352,7 +371,7 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
         </Card>
 
         {/* Round Stats (birdies, pars, bogeys breakdown) */}
-        <RoundStats game={game} />
+        <RoundStats game={displayGame} />
 
         {/* Full Scorecard */}
         <Card>
@@ -361,7 +380,7 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
               <TableProperties className="w-5 h-5 text-primary-600 dark:text-primary-400" />
               <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Full Scorecard</h3>
             </div>
-            <Scorecard game={game} />
+            <Scorecard game={displayGame} onEditHole={setEditHoleNumber} />
           </CardContent>
         </Card>
 
@@ -401,8 +420,18 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
       <GhinExportModal
         isOpen={showGhinModal}
         onClose={() => setShowGhinModal(false)}
-        game={game}
+        game={displayGame}
       />
+
+      {editHoleNumber !== null && (
+        <EditHoleModal
+          game={displayGame}
+          holeNumber={editHoleNumber}
+          open={editHoleNumber !== null}
+          onOpenChange={(open) => { if (!open) setEditHoleNumber(null); }}
+          onSave={handleEditHoleSave}
+        />
+      )}
     </div>
   );
 }

@@ -159,6 +159,12 @@ export const wsMessageSchema = z.union([
       metadata: z.record(z.string(), z.any()),
     }),
   }),
+  z.object({
+    type: z.literal("edit_hole"),
+    gameId: z.string(),
+    holeNumber: z.number().int().min(1).max(18),
+    newStrokes: z.record(z.string(), z.number()),
+  }),
   z.object({ type: z.literal("game_updated"), game: z.any() }),
 ]);
 
