@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { insertGameSchema, updateGameSchema, wsMessageSchema, validatePlayers, sanitizePlayerName } from "@shared/schema";
+import type { Game } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import * as schema from "@shared/schema";
@@ -11,6 +12,121 @@ import * as schema from "@shared/schema";
 const gameConnections = new Map<string, Set<WebSocket>>();
 
 const GOLF_API_BASE = "https://api.opengolfapi.org/v1";
+
+/**
+ * Recalculate a single hole after stroke edit.
+ * Returns a partial update object for storage.updateGame().
+ * - Replaces the holeHistory entry with new strokes
+ * - Recalculates points for that hole using calcHoleResult logic
+ * - Recomputes totalScores from all holeHistory entries
+ * - Updates the strokes array
+ */
+function recalculateHole(game: Game, holeNumber: number, newStrokes: Record<string, number>) {
+  const holeIdx = game.holeHistory.findIndex(h => h.hole === holeNumber);
+  if (holeIdx === -1) throw new Error(`Hole ${holeNumber} not found in history`);
+
+  // Update strokes array for all players
+  const updatedStrokes = { ...game.strokes };
+  for (const [player, strokeCount] of Object.entries(newStrokes)) {
+    if (!updatedStrokes[player]) updatedStrokes[player] = [];
+    while (updatedStrokes[player].length < holeNumber) updatedStrokes[player].push(0);
+    updatedStrokes[player][holeNumber - 1] = strokeCount;
+  }
+
+  // Recalculate points for this hole
+  const oldEntry = game.holeHistory[holeIdx];
+  const newEntry = {
+    ...oldEntry,
+    strokes: newStrokes,
+    // Points and result need recalculation — we re-derive from game type
+    points: recalcHolePoints(game, holeNumber, newStrokes, oldEntry),
+    result: oldEntry.result, // Keep original result text (descriptive)
+  };
+
+  // Replace the entry
+  const newHistory = [...game.holeHistory];
+  newHistory[holeIdx] = newEntry;
+
+  // Recompute totalScores from scratch
+  const totalScores: Record<string, number> = {};
+  for (const player of game.players) totalScores[player] = 0;
+  for (const hole of newHistory) {
+    for (const [player, pts] of Object.entries(hole.points)) {
+      totalScores[player] = (totalScores[player] || 0) + (pts as number);
+    }
+  }
+
+  return {
+    strokes: updatedStrokes,
+    holeHistory: newHistory,
+    totalScores,
+  };
+}
+
+/**
+ * Recalculate points for a single hole based on game type and new strokes.
+ * Uses the same logic as game-logic.ts calcHoleResult but server-side.
+ */
+function recalcHolePoints(
+  game: Game,
+  holeNumber: number,
+  newStrokes: Record<string, number>,
+  oldEntry: Game["holeHistory"][number],
+): Record<string, number> {
+  const { gameType, players, handicaps, pars } = game;
+  const par = pars[holeNumber - 1] || 4;
+  const strokeIdx = game.strokeIndexes?.[holeNumber - 1] ?? holeNumber;
+
+  // Net strokes for each player
+  const netStrokes: Record<string, number> = {};
+  for (const p of players) {
+    const gross = newStrokes[p] || 0;
+    const hc = handicaps[p] || 0;
+    const strokesReceived = hc >= strokeIdx ? 1 : 0;
+    netStrokes[p] = gross - strokesReceived;
+  }
+
+  // For most game types, points scale is determined by the old entry
+  // We preserve the point structure but adjust based on new winner/diff
+  const oldPoints = oldEntry.points;
+  const oldTotal = Object.values(oldPoints).reduce((a: number, b) => a + (b as number), 0);
+
+  // Determine winner(s) by net strokes
+  const sorted = players
+    .map(p => ({ player: p, net: netStrokes[p] || 0, gross: newStrokes[p] || 0 }))
+    .sort((a, b) => a.net - b.net);
+
+  const minNet = sorted[0]?.net ?? 0;
+  const winners = sorted.filter(s => s.net === minNet);
+  const isTie = winners.length > 1;
+
+  // Scale points: keep the same total magnitude, distribute to new winner
+  // For tied: split evenly (or carry over — keep original behavior)
+  const newPoints: Record<string, number> = {};
+  for (const p of players) newPoints[p] = 0;
+
+  if (isTie) {
+    // Tie — all zero (carryover handled externally)
+  } else {
+    const winner = winners[0].player;
+    // Preserve the absolute point total from the old entry
+    const absTotal = Object.values(oldPoints).reduce((a: number, b) => a + Math.abs(b as number), 0);
+    // Award to winner, deduct from others
+    if (players.length === 2) {
+      newPoints[winner] = Math.round(absTotal / 2) || 1;
+      const loser = players.find(p => p !== winner)!;
+      newPoints[loser] = -newPoints[winner];
+    } else {
+      // Multi-player: winner gets sum of deductions from others
+      const perPlayer = Math.round(absTotal / (players.length - 1)) || 1;
+      for (const p of players) {
+        newPoints[p] = p === winner ? perPlayer * (players.length - 1) : -perPlayer;
+      }
+    }
+  }
+
+  return newPoints;
+}
 
 async function fetchGolfApi(path: string) {
   const res = await fetch(`${GOLF_API_BASE}${path}`);
@@ -190,6 +306,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Edit a completed hole's strokes — recalculates points and totals
+  app.patch("/api/games/:id/hole/:holeNumber", async (req, res) => {
+    try {
+      const holeNumber = parseInt(req.params.holeNumber, 10);
+      if (holeNumber < 1 || holeNumber > 18) return res.status(400).json({ message: "Invalid hole number" });
+      const { strokes } = req.body as { strokes: Record<string, number> };
+      if (!strokes || typeof strokes !== "object") return res.status(400).json({ message: "Missing strokes" });
+
+      const game = await storage.getGame(req.params.id);
+      if (!game) return res.status(404).json({ message: "Game not found" });
+
+      const edited = recalculateHole(game, holeNumber, strokes);
+      const updated = await storage.updateGame(req.params.id, edited);
+      if (!updated) return res.status(500).json({ message: "Failed to update" });
+      broadcastToGame(req.params.id, { type: "game_updated", game: updated });
+      res.json(updated);
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : "Failed to edit hole" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   // WebSocket
@@ -253,6 +390,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
             const updatedGame = await storage.getGame(currentGameId);
             if (updatedGame) broadcastToGame(currentGameId, { type: "game_updated", game: updatedGame });
+            break;
+          }
+          case "edit_hole": {
+            if (!currentGameId) break;
+            const game = await storage.getGame(currentGameId);
+            if (!game) break;
+            try {
+              const edited = recalculateHole(game, message.holeNumber, message.newStrokes);
+              const updated = await storage.updateGame(currentGameId, edited);
+              if (updated) broadcastToGame(currentGameId, { type: "game_updated", game: updated });
+            } catch (err) {
+              console.error("edit_hole error:", err);
+              ws.send(JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Edit failed" }));
+            }
             break;
           }
         }
