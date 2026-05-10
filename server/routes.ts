@@ -14,6 +14,33 @@ const gameConnections = new Map<string, Set<WebSocket>>();
 const GOLF_API_BASE = "https://api.opengolfapi.org/v1";
 
 /**
+ * Self-heal strokes array from holeHistory.
+ * Reconstructs each player's strokes array so it matches holeHistory exactly.
+ * Returns the game object (mutates in place for efficiency on reads).
+ */
+function fixStrokes(game: Game): Game {
+  if (!game.holeHistory || game.holeHistory.length === 0) return game;
+  const fixed: Record<string, number[]> = {};
+  for (const player of game.players) {
+    fixed[player] = [];
+  }
+  for (const hole of game.holeHistory) {
+    for (const [player, score] of Object.entries(hole.strokes)) {
+      if (!fixed[player]) fixed[player] = [];
+      fixed[player][hole.hole - 1] = score as number;
+    }
+  }
+  // Fill any gaps with 0
+  for (const player of game.players) {
+    for (let i = 0; i < game.holeHistory.length; i++) {
+      if (fixed[player][i] === undefined) fixed[player][i] = 0;
+    }
+  }
+  game.strokes = fixed;
+  return game;
+}
+
+/**
  * Recalculate a single hole after stroke edit.
  * Returns a partial update object for storage.updateGame().
  * - Replaces the holeHistory entry with new strokes
@@ -254,7 +281,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const game = await storage.getGame(req.params.id);
       if (!game) return res.status(404).json({ message: "Game not found" });
-      res.json(game);
+      res.json(fixStrokes(game));
     } catch {
       res.status(500).json({ message: "Failed to fetch game" });
     }
@@ -320,8 +347,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const edited = recalculateHole(game, holeNumber, strokes);
       const updated = await storage.updateGame(req.params.id, edited);
       if (!updated) return res.status(500).json({ message: "Failed to update" });
-      broadcastToGame(req.params.id, { type: "game_updated", game: updated });
-      res.json(updated);
+      broadcastToGame(req.params.id, { type: "game_updated", game: fixStrokes(updated) });
+      res.json(fixStrokes(updated));
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "Failed to edit hole" });
     }
@@ -358,7 +385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             currentStrokes[message.playerName][message.hole - 1] = message.strokes;
             await storage.updateGame(currentGameId, { strokes: currentStrokes });
             const updated = await storage.getGame(currentGameId);
-            if (updated) broadcastToGame(currentGameId, { type: "game_updated", game: updated });
+            if (updated) broadcastToGame(currentGameId, { type: "game_updated", game: fixStrokes(updated) });
             break;
           }
           case "complete_hole": {
@@ -379,6 +406,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               result: message.holeData.result,
               metadata: message.holeData.metadata,
             }];
+            // Update strokes array from hole data to prevent gaps
+            const updatedStrokes = { ...game.strokes };
+            const holeIndex = message.holeData.hole - 1;
+            for (const [player, score] of Object.entries(message.holeData.strokes)) {
+              if (!updatedStrokes[player]) updatedStrokes[player] = [];
+              while (updatedStrokes[player].length <= holeIndex) updatedStrokes[player].push(0);
+              updatedStrokes[player][holeIndex] = score as number;
+            }
             const isGameComplete = game.currentHole >= 18;
             await storage.updateGame(currentGameId, {
               currentHole: isGameComplete ? 18 : game.currentHole + 1,
@@ -386,10 +421,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               totalScores: newTotalScores,
               wolfCounts: newWolfCounts,
               holeHistory: newHoleHistory,
+              strokes: updatedStrokes,
               active: !isGameComplete,
             });
             const updatedGame = await storage.getGame(currentGameId);
-            if (updatedGame) broadcastToGame(currentGameId, { type: "game_updated", game: updatedGame });
+            if (updatedGame) broadcastToGame(currentGameId, { type: "game_updated", game: fixStrokes(updatedGame) });
             break;
           }
           case "edit_hole": {
@@ -399,7 +435,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             try {
               const edited = recalculateHole(game, message.holeNumber, message.newStrokes);
               const updated = await storage.updateGame(currentGameId, edited);
-              if (updated) broadcastToGame(currentGameId, { type: "game_updated", game: updated });
+              if (updated) broadcastToGame(currentGameId, { type: "game_updated", game: fixStrokes(updated) });
             } catch (err) {
               console.error("edit_hole error:", err);
               ws.send(JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Edit failed" }));
