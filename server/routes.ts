@@ -3,13 +3,14 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { insertGameSchema, updateGameSchema, wsMessageSchema, validatePlayers, sanitizePlayerName } from "@shared/schema";
+import { insertGameSchema, updateGameSchema, wsMessageSchema, validatePlayers, sanitizePlayerName, insertTournamentSchema } from "@shared/schema";
 import type { Game } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import * as schema from "@shared/schema";
 
 const gameConnections = new Map<string, Set<WebSocket>>();
+const tournamentConnections = new Map<string, Set<WebSocket>>();
 
 const GOLF_API_BASE = "https://api.opengolfapi.org/v1";
 
@@ -159,6 +160,26 @@ async function fetchGolfApi(path: string) {
   const res = await fetch(`${GOLF_API_BASE}${path}`);
   if (!res.ok) throw new Error(`Golf API error: ${res.status}`);
   return res.json();
+}
+
+// ── Tournament WebSocket broadcasting ────────────────────────────────────────
+
+function joinTournamentRoom(tournamentId: string, ws: WebSocket) {
+  if (!tournamentConnections.has(tournamentId)) tournamentConnections.set(tournamentId, new Set());
+  tournamentConnections.get(tournamentId)!.add(ws);
+}
+
+function leaveTournamentRoom(tournamentId: string, ws: WebSocket) {
+  const conns = tournamentConnections.get(tournamentId);
+  if (conns) { conns.delete(ws); if (conns.size === 0) tournamentConnections.delete(tournamentId); }
+}
+
+function broadcastToTournament(tournamentId: string, message: any) {
+  const conns = tournamentConnections.get(tournamentId);
+  if (conns) {
+    const str = JSON.stringify(message);
+    conns.forEach(ws => { if (ws.readyState === WebSocket.OPEN) ws.send(str); });
+  }
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -327,6 +348,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const game = await storage.updateGame(req.params.id, updates);
       if (!game) return res.status(404).json({ message: "Game not found" });
       broadcastToGame(req.params.id, { type: "game_updated", game });
+      // If this game is part of a tournament, broadcast tournament update
+      if (game.tournamentId) {
+        broadcastTournamentScoreUpdate(game.tournamentId, game);
+      }
       res.json(game);
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "Invalid update data" });
@@ -348,11 +373,415 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updated = await storage.updateGame(req.params.id, edited);
       if (!updated) return res.status(500).json({ message: "Failed to update" });
       broadcastToGame(req.params.id, { type: "game_updated", game: fixStrokes(updated) });
+      // If this game is part of a tournament, broadcast tournament update
+      if (updated.tournamentId) {
+        broadcastTournamentScoreUpdate(updated.tournamentId, updated);
+      }
       res.json(fixStrokes(updated));
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "Failed to edit hole" });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TOURNAMENT ROUTES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Create tournament (auth required)
+  app.post("/api/tournaments", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const { name, date, courseName, courseId, format, maxPlayers, settings } = req.body;
+
+      if (!name || typeof name !== "string" || name.trim().length < 1) {
+        return res.status(400).json({ message: "Tournament name is required" });
+      }
+      if (!date) {
+        return res.status(400).json({ message: "Tournament date is required" });
+      }
+
+      const tournament = await storage.createTournament({
+        creatorId: user.id,
+        name: name.trim().replace(/[\x00-\x1F\x7F<>]/g, "").slice(0, 200),
+        date: new Date(date),
+        courseName: courseName?.trim() || "",
+        courseId: courseId || null,
+        format: format || "stroke_play",
+        maxPlayers: maxPlayers || null,
+        settings: settings || {},
+        status: "open",
+      });
+
+      // Auto-join the creator
+      await storage.joinTournament(tournament.id, user.id, user.name);
+
+      // Return tournament with creator auto-joined
+      const players = await storage.getTournamentPlayers(tournament.id);
+      res.status(201).json({ ...tournament, players });
+    } catch (error) {
+      console.error("Create tournament error:", error);
+      res.status(500).json({ message: "Failed to create tournament" });
+    }
+  });
+
+  // Get tournament + players (public)
+  app.get("/api/tournaments/:id", async (req, res) => {
+    try {
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+
+      const players = await storage.getTournamentPlayers(req.params.id);
+      const games = await storage.getTournamentGames(req.params.id);
+
+      // Get creator info
+      let creator = null;
+      if (tournament.creatorId) {
+        const creatorUser = await storage.getUser(tournament.creatorId);
+        if (creatorUser) {
+          const { passwordHash, ...safe } = creatorUser;
+          creator = safe;
+        }
+      }
+
+      // Check if current user is registered
+      let isRegistered = false;
+      let isCreator = false;
+      if (req.isAuthenticated?.() && req.user) {
+        const userId = (req.user as any).id;
+        isRegistered = players.some(p => p.userId === userId);
+        isCreator = tournament.creatorId === userId;
+      }
+
+      res.json({
+        ...tournament,
+        players,
+        games,
+        creator,
+        isRegistered,
+        isCreator,
+        playerCount: players.length,
+      });
+    } catch (error) {
+      console.error("Get tournament error:", error);
+      res.status(500).json({ message: "Failed to fetch tournament" });
+    }
+  });
+
+  // Get tournament leaderboard (public)
+  app.get("/api/tournaments/:id/leaderboard", async (req, res) => {
+    try {
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+
+      const leaderboard = await storage.getTournamentLeaderboard(req.params.id);
+      res.json(leaderboard);
+    } catch (error) {
+      console.error("Get leaderboard error:", error);
+      res.status(500).json({ message: "Failed to fetch leaderboard" });
+    }
+  });
+
+  // Join tournament (auth required)
+  app.post("/api/tournaments/:id/join", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+
+      // Check if tournament is joinable
+      if (tournament.status === "cancelled") {
+        return res.status(400).json({ message: "Tournament has been cancelled" });
+      }
+      if (tournament.status === "complete") {
+        return res.status(400).json({ message: "Tournament is already complete" });
+      }
+
+      // Check max players
+      if (tournament.maxPlayers) {
+        const players = await storage.getTournamentPlayers(req.params.id);
+        if (players.length >= tournament.maxPlayers) {
+          return res.status(400).json({ message: "Tournament is full" });
+        }
+      }
+
+      const tp = await storage.joinTournament(req.params.id, user.id, user.name);
+      const updatedPlayers = await storage.getTournamentPlayers(req.params.id);
+
+      // Broadcast tournament update
+      const updatedTournament = await storage.getTournament(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { ...updatedTournament, players: updatedPlayers },
+      });
+
+      res.json({ player: tp, players: updatedPlayers });
+    } catch (error) {
+      console.error("Join tournament error:", error);
+      res.status(500).json({ message: "Failed to join tournament" });
+    }
+  });
+
+  // Leave tournament (auth required)
+  app.delete("/api/tournaments/:id/leave", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+
+      // Creator can't leave their own tournament
+      if (tournament.creatorId === user.id) {
+        return res.status(400).json({ message: "Tournament creator cannot leave. Cancel the tournament instead." });
+      }
+
+      const ok = await storage.leaveTournament(req.params.id, user.id);
+      if (!ok) return res.status(400).json({ message: "You are not registered for this tournament" });
+
+      const updatedPlayers = await storage.getTournamentPlayers(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { ...tournament, players: updatedPlayers },
+      });
+
+      res.json({ message: "Left tournament", players: updatedPlayers });
+    } catch (error) {
+      console.error("Leave tournament error:", error);
+      res.status(500).json({ message: "Failed to leave tournament" });
+    }
+  });
+
+  // Update tournament (creator only)
+  app.patch("/api/tournaments/:id", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can update this" });
+      }
+
+      const { name, date, courseName, courseId, format, maxPlayers, settings } = req.body;
+      const updates: any = {};
+      if (name !== undefined) updates.name = name.trim().replace(/[\x00-\x1F\x7F<>]/g, "").slice(0, 200);
+      if (date !== undefined) updates.date = new Date(date);
+      if (courseName !== undefined) updates.courseName = courseName.trim();
+      if (courseId !== undefined) updates.courseId = courseId;
+      if (format !== undefined) updates.format = format;
+      if (maxPlayers !== undefined) updates.maxPlayers = maxPlayers;
+      if (settings !== undefined) updates.settings = settings;
+
+      const updated = await storage.updateTournament(req.params.id, updates);
+      if (!updated) return res.status(500).json({ message: "Failed to update tournament" });
+
+      const players = await storage.getTournamentPlayers(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { ...updated, players },
+      });
+
+      res.json({ ...updated, players });
+    } catch (error) {
+      console.error("Update tournament error:", error);
+      res.status(500).json({ message: "Failed to update tournament" });
+    }
+  });
+
+  // Cancel tournament (creator only)
+  app.delete("/api/tournaments/:id", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can cancel this" });
+      }
+
+      const updated = await storage.updateTournamentStatus(req.params.id, "cancelled");
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { ...updated, status: "cancelled" },
+      });
+
+      res.json({ message: "Tournament cancelled", tournament: updated });
+    } catch (error) {
+      console.error("Cancel tournament error:", error);
+      res.status(500).json({ message: "Failed to cancel tournament" });
+    }
+  });
+
+  // Start tournament (creator only)
+  app.post("/api/tournaments/:id/start", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can start this" });
+      }
+      if (tournament.status !== "open") {
+        return res.status(400).json({ message: "Tournament must be in 'open' status to start" });
+      }
+
+      const updated = await storage.updateTournamentStatus(req.params.id, "in_progress");
+      const players = await storage.getTournamentPlayers(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { ...updated, players, status: "in_progress" },
+      });
+
+      res.json({ ...updated, players });
+    } catch (error) {
+      console.error("Start tournament error:", error);
+      res.status(500).json({ message: "Failed to start tournament" });
+    }
+  });
+
+  // Get tournament games
+  app.get("/api/tournaments/:id/games", async (req, res) => {
+    try {
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+
+      const games = await storage.getTournamentGames(req.params.id);
+      res.json(games);
+    } catch (error) {
+      console.error("Get tournament games error:", error);
+      res.status(500).json({ message: "Failed to fetch tournament games" });
+    }
+  });
+
+  // Start a game within a tournament (auth required)
+  app.post("/api/tournaments/:id/games", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+
+      if (tournament.status !== "in_progress") {
+        return res.status(400).json({ message: "Tournament must be in progress to start games" });
+      }
+
+      // Check if player is registered
+      const tPlayers = await storage.getTournamentPlayers(req.params.id);
+      const isRegistered = tPlayers.some(p => p.userId === user.id);
+      if (!isRegistered) {
+        return res.status(400).json({ message: "You must be registered for this tournament to start a game" });
+      }
+
+      // Sanitize player names
+      if (req.body.players) {
+        req.body.players = validatePlayers(req.body.players);
+      }
+      if (req.body.handicaps && typeof req.body.handicaps === "object") {
+        const clean: Record<string, number> = {};
+        for (const [key, val] of Object.entries(req.body.handicaps)) {
+          clean[sanitizePlayerName(key)] = val as number;
+        }
+        req.body.handicaps = clean;
+      }
+      if (typeof req.body.courseName === "string") {
+        req.body.courseName = req.body.courseName.trim().replace(/[\x00-\x1F\x7F<>]/g, "").slice(0, 200);
+      }
+
+      const gameData = insertGameSchema.parse(req.body);
+      (gameData as any).userId = user.id;
+      (gameData as any).sessionId = req.sessionID;
+      (gameData as any).tournamentId = req.params.id;
+
+      // Use tournament course if not specified
+      if (!gameData.courseName && tournament.courseName) {
+        gameData.courseName = tournament.courseName;
+      }
+
+      const game = await storage.createGame(gameData);
+
+      // Update tournament player status to "playing"
+      await storage.updateTournamentPlayerStatus(req.params.id, user.id, "playing");
+
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { ...tournament },
+      });
+
+      res.json(game);
+    } catch (error) {
+      console.error("Create tournament game error:", error);
+      res.status(400).json({ message: error instanceof Error ? error.message : "Failed to create game" });
+    }
+  });
+
+  // Get tournaments for current user
+  app.get("/api/auth/tournaments", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournaments = await storage.getTournamentsByUser(user.id);
+      res.json(tournaments);
+    } catch (error) {
+      console.error("Get user tournaments error:", error);
+      res.status(500).json({ message: "Failed to fetch tournaments" });
+    }
+  });
+
+  // Join via invite code — redirect handler
+  app.get("/join/:inviteCode", async (req, res) => {
+    try {
+      const tournament = await storage.getTournamentByInviteCode(req.params.inviteCode);
+      if (!tournament) {
+        // Redirect to home with error
+        return res.redirect("/?error=tournament_not_found");
+      }
+
+      // If tournament is cancelled
+      if (tournament.status === "cancelled") {
+        return res.redirect(`/?error=tournament_cancelled`);
+      }
+
+      // If not logged in, redirect to auth with return URL
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.redirect(`/auth?redirect=/join/${req.params.inviteCode}`);
+      }
+
+      const user = req.user as any;
+
+      // Auto-register
+      try {
+        await storage.joinTournament(tournament.id, user.id, user.name);
+      } catch (e) {
+        // Already registered, that's fine
+      }
+
+      // Redirect to tournament lobby
+      res.redirect(`/tournament/${tournament.id}`);
+    } catch (error) {
+      console.error("Join invite error:", error);
+      res.redirect("/?error=join_failed");
+    }
+  });
+
+  // ── HTTP Server + WebSocket ────────────────────────────────────────────────
 
   const httpServer = createServer(app);
 
@@ -361,6 +790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   wss.on("connection", (ws) => {
     let currentGameId: string | null = null;
+    let currentTournamentId: string | null = null;
 
     ws.on("message", async (data) => {
       try {
@@ -415,7 +845,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               updatedStrokes[player][holeIndex] = score as number;
             }
             const isGameComplete = game.currentHole >= 18;
-            await storage.updateGame(currentGameId, {
+            const updateData: any = {
               currentHole: isGameComplete ? 18 : game.currentHole + 1,
               currentWolfIndex: (game.currentWolfIndex + 1) % game.players.length,
               totalScores: newTotalScores,
@@ -423,9 +853,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
               holeHistory: newHoleHistory,
               strokes: updatedStrokes,
               active: !isGameComplete,
-            });
+            };
+
+            await storage.updateGame(currentGameId, updateData);
             const updatedGame = await storage.getGame(currentGameId);
-            if (updatedGame) broadcastToGame(currentGameId, { type: "game_updated", game: fixStrokes(updatedGame) });
+            if (updatedGame) {
+              broadcastToGame(currentGameId, { type: "game_updated", game: fixStrokes(updatedGame) });
+
+              // If this game is part of a tournament, broadcast score update
+              if (updatedGame.tournamentId) {
+                broadcastTournamentScoreUpdate(updatedGame.tournamentId, updatedGame);
+              }
+            }
             break;
           }
           case "edit_hole": {
@@ -435,10 +874,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             try {
               const edited = recalculateHole(game, message.holeNumber, message.newStrokes);
               const updated = await storage.updateGame(currentGameId, edited);
-              if (updated) broadcastToGame(currentGameId, { type: "game_updated", game: fixStrokes(updated) });
+              if (updated) {
+                broadcastToGame(currentGameId, { type: "game_updated", game: fixStrokes(updated) });
+                if (updated.tournamentId) {
+                  broadcastTournamentScoreUpdate(updated.tournamentId, updated);
+                }
+              }
             } catch (err) {
               console.error("edit_hole error:", err);
               ws.send(JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Edit failed" }));
+            }
+            break;
+          }
+          case "join_tournament": {
+            if (currentTournamentId) leaveTournamentRoom(currentTournamentId, ws);
+            currentTournamentId = message.tournamentId;
+            joinTournamentRoom(message.tournamentId, ws);
+            // Send current tournament state
+            const tournament = await storage.getTournament(message.tournamentId);
+            if (tournament) {
+              const players = await storage.getTournamentPlayers(message.tournamentId);
+              ws.send(JSON.stringify({
+                type: "tournament_updated",
+                tournament: { ...tournament, players },
+              }));
             }
             break;
           }
@@ -449,7 +908,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
 
-    ws.on("close", () => { if (currentGameId) leaveGame(currentGameId, ws); });
+    ws.on("close", () => {
+      if (currentGameId) leaveGame(currentGameId, ws);
+      if (currentTournamentId) leaveTournamentRoom(currentTournamentId, ws);
+    });
   });
 
   function joinGame(gameId: string, ws: WebSocket) {
@@ -465,6 +927,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (conns) {
       const str = JSON.stringify(message);
       conns.forEach(ws => { if (ws.readyState === WebSocket.OPEN) ws.send(str); });
+    }
+  }
+
+  /**
+   * Broadcast a score update to all viewers of a tournament.
+   * Sends the full updated leaderboard so the frontend can just swap it in.
+   */
+  async function broadcastTournamentScoreUpdate(tournamentId: string, game: Game) {
+    try {
+      const leaderboard = await storage.getTournamentLeaderboard(tournamentId);
+      broadcastToTournament(tournamentId, {
+        type: "tournament_score_update",
+        tournamentId,
+        leaderboard,
+      });
+    } catch (err) {
+      console.error("broadcastTournamentScoreUpdate error:", err);
     }
   }
 

@@ -10,6 +10,8 @@ import AuthPage from "@/pages/auth";
 import ProfilePage from "@/pages/profile";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
+import TournamentPage from "@/pages/tournament";
+import CreateTournamentPage from "@/pages/create-tournament";
 import { AuthProvider } from "@/hooks/use-auth";
 
 function Router() {
@@ -21,6 +23,9 @@ function Router() {
       <Route path="/profile" component={ProfilePage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/terms" component={TermsPage} />
+      <Route path="/tournament/create" component={CreateTournamentPage} />
+      <Route path="/tournament/:id" component={TournamentPage} />
+      <Route path="/join/:inviteCode" component={TournamentPage} />
       <Route component={NotFound} />
     </Switch>
   );

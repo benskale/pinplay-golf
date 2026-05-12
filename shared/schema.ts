@@ -72,6 +72,53 @@ export const insertFavoriteSchema = createInsertSchema(favorites).omit({
 export type InsertFavorite = z.infer<typeof insertFavoriteSchema>;
 export type Favorite = typeof favorites.$inferSelect;
 
+// ── Tournaments ──────────────────────────────────────────────────────────────
+
+export const tournaments = pgTable("tournaments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  creatorId: integer("creator_id").references(() => users.id),
+  name: text("name").notNull(),
+  date: timestamp("date").notNull(),
+  courseName: text("course_name").notNull().default(""),
+  courseId: text("course_id"),
+  format: text("format").notNull().default("stroke_play"),
+  maxPlayers: integer("max_players"),
+  inviteCode: varchar("invite_code", { length: 8 }).unique().notNull(),
+  status: text("status").notNull().default("open"),
+  settings: jsonb("settings").notNull().default({}),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export const insertTournamentSchema = createInsertSchema(tournaments).omit({
+  id: true,
+  inviteCode: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTournament = z.infer<typeof insertTournamentSchema>;
+export type Tournament = typeof tournaments.$inferSelect;
+
+// ── Tournament Players ───────────────────────────────────────────────────────
+
+export const tournamentPlayers = pgTable("tournament_players", {
+  id: serial("id").primaryKey(),
+  tournamentId: varchar("tournament_id").notNull().references(() => tournaments.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  playerName: text("player_name").notNull(),
+  status: text("status").notNull().default("registered"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const insertTournamentPlayerSchema = createInsertSchema(tournamentPlayers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTournamentPlayer = z.infer<typeof insertTournamentPlayerSchema>;
+export type TournamentPlayer = typeof tournamentPlayers.$inferSelect;
+
 // ── Games ────────────────────────────────────────────────────────────────────
 
 export const games = pgTable("games", {
@@ -100,6 +147,7 @@ export const games = pgTable("games", {
     metadata: Record<string, any>;
   }>>().notNull().default([]),
   active: boolean("active").notNull().default(true),
+  tournamentId: varchar("tournament_id").references(() => tournaments.id),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
 });
@@ -137,6 +185,18 @@ export function validatePlayers(players: unknown): string[] {
   return sanitized;
 }
 
+// ── Invite code generation ────────────────────────────────────────────────────
+
+const INVITE_CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+export function generateInviteCode(): string {
+  let code = "";
+  for (let i = 0; i < 8; i++) {
+    code += INVITE_CHARSET[Math.floor(Math.random() * INVITE_CHARSET.length)];
+  }
+  return code;
+}
+
 // ── WebSocket messages ────────────────────────────────────────────────────────
 
 export const wsMessageSchema = z.union([
@@ -166,6 +226,31 @@ export const wsMessageSchema = z.union([
     newStrokes: z.record(z.string(), z.number()),
   }),
   z.object({ type: z.literal("game_updated"), game: z.any() }),
+  // Tournament WebSocket messages
+  z.object({ type: z.literal("join_tournament"), tournamentId: z.string() }),
+  z.object({ type: z.literal("tournament_updated"), tournament: z.any() }),
+  z.object({
+    type: z.literal("tournament_score_update"),
+    tournamentId: z.string(),
+    playerId: z.string(),
+    playerName: z.string(),
+    hole: z.number(),
+    totalStrokes: z.number(),
+  }),
 ]);
 
 export type WSMessage = z.infer<typeof wsMessageSchema>;
+
+// ── Tournament leaderboard types ─────────────────────────────────────────────
+
+export interface LeaderboardEntry {
+  position: number;
+  playerName: string;
+  userId: number | null;
+  totalStrokes: number;
+  netStrokes: number;
+  handicap: number;
+  holesCompleted: number;
+  complete: boolean;
+  gameId: string | null;
+}
