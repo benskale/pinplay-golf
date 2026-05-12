@@ -196,6 +196,24 @@ export default function Home() {
           </div>
         )}
 
+        {/* ── Host a Tournament CTA ── */}
+        {user && (
+          <div className="mt-4">
+            <button
+              onClick={() => setLocation("/tournament/create")}
+              className="w-full py-3 rounded-xl border-2 border-dashed border-amber-500/40 hover:border-amber-400/60 text-amber-400 hover:text-amber-300 transition-all flex items-center justify-center gap-2 text-sm font-semibold"
+            >
+              <Trophy className="w-4 h-4" />
+              Host a Tournament
+            </button>
+          </div>
+        )}
+
+        {/* ── Your Tournaments ── */}
+        {user && (
+          <YourTournaments />
+        )}
+
         <GameSetup onGameCreated={(id) => setLocation(`/game/${id}`)} />
 
         {/* Footer */}
@@ -211,6 +229,54 @@ export default function Home() {
 
       {/* Onboarding overlay */}
       {showOnboarding && <Onboarding onDismiss={() => setShowOnboarding(false)} />}
+    </div>
+  );
+}
+
+// ── Your Tournaments widget ──
+function YourTournaments() {
+  const [, setLocation] = useLocation();
+  const { data: tournaments = [] } = useQuery<any[]>({
+    queryKey: ["/api/auth/tournaments"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/tournaments", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  if (tournaments.length === 0) return null;
+
+  const active = tournaments.filter((t: any) => t.status !== "complete" && t.status !== "cancelled");
+
+  if (active.length === 0) return null;
+
+  return (
+    <div className="mt-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Trophy className="w-3.5 h-3.5 text-amber-500" />
+        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Your Tournaments</span>
+      </div>
+      <div className="space-y-2">
+        {active.map((t: any) => (
+          <button
+            key={t.id}
+            onClick={() => setLocation(`/tournament/${t.id}`)}
+            className="w-full text-left p-3 rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 hover:border-amber-500/30 transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold text-gray-900 dark:text-white">{t.name}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {t.courseName || "TBD"} · {t.status === "open" ? "Registration open" : t.status === "in_progress" ? "In progress" : t.status}
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-amber-500 transition-colors" />
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
