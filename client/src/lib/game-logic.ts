@@ -257,6 +257,18 @@ export function calcHoleResult(
           wolfTeam.forEach(p => { deltas[p] = 1; });
         } else if (wolfBest > otherBest) {
           otherTeam.forEach(p => { deltas[p] = 1; });
+        } else {
+          // Best balls tied — use 2nd player from each team as tiebreaker
+          const wolfSecond = wolfTeam.find(p => strokes[p] !== wolfBest) ?? wolfTeam[0];
+          const otherSecond = otherTeam.find(p => strokes[p] !== otherBest) ?? otherTeam[0];
+          const wolfSecondStr = strokes[wolfSecond];
+          const otherSecondStr = strokes[otherSecond];
+          if (wolfSecondStr < otherSecondStr) {
+            wolfTeam.forEach(p => { deltas[p] = 1; });
+          } else if (otherSecondStr < wolfSecondStr) {
+            otherTeam.forEach(p => { deltas[p] = 1; });
+          }
+          // else: both players on each team tied — hole is halved, no points
         }
       }
 
