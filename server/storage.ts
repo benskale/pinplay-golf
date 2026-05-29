@@ -122,6 +122,7 @@ export class DatabaseStorage implements IStorage {
       wolfCounts,
       holeHistory: [],
       active: true,
+      miniGames: (insertGame as any).miniGames ?? {},
       tournamentId: (insertGame as any).tournamentId ?? null,
     }).returning();
 
