@@ -8,9 +8,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Loader2, ChevronDown, ChevronUp, CheckCircle, MapPin, Search, X,
-  Users, ChevronRight, ArrowLeft, Shuffle, UserCircle
+  Users, ChevronRight, ArrowLeft, Shuffle, UserCircle, Sparkles
 } from "lucide-react";
-import { getGamesForPlayerCount, type GameDef } from "@/lib/game-logic";
+import { getGamesForPlayerCount, getMiniGamesForSetup, type GameDef, type MiniGameDef } from "@/lib/game-logic";
 
 interface GameSetupProps {
   onGameCreated: (gameId: string) => void;
@@ -37,7 +37,7 @@ interface CourseDetail {
 
 const DEFAULT_PARS = Array(18).fill(4);
 
-type Step = "count" | "game" | "players";
+type Step = "count" | "game" | "players" | "minigames";
 
 const PLAYER_COUNT_OPTIONS = [
   { count: 2, label: "2 Players", icon: "🏌️‍♂️🏌️‍♂️", desc: "Match Play, Skins, Nassau & more" },
@@ -63,6 +63,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
   const [hcpRanksSource, setHcpRanksSource] = useState<"default" | "course" | "manual">("default");
   const [showSISetup, setShowSISetup] = useState(false);
   const [loadingCourse, setLoadingCourse] = useState(false);
+  const [selectedMiniGames, setSelectedMiniGames] = useState<Record<string, { enabled: boolean; value: number }>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -326,6 +327,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
       courseName: courseQuery.trim(),
       pars,
       strokeIndexes: selectedGame?.needsHandicap ? strokeIndexes : Array.from({ length: 18 }, (_, i) => i + 1),
+      miniGames: selectedMiniGames,
     });
   };
 
@@ -777,6 +779,128 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
 
           <Button
             className="w-full bg-secondary-500 hover:bg-secondary-600 text-white py-3 rounded-lg font-semibold text-[0.9375rem] shadow-sm"
+            onClick={() => setStep("minigames")}
+            disabled={loadingCourse}
+            data-testid="button-continue-minigames"
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            Mini-Games & Extras
+          </Button>
+        </div>
+    </div>
+  );
+
+  // ── STEP 4: Mini-Games Checklist ──────────────────────────────────────────────
+  if (step === "minigames") {
+    const eligibleMiniGames = getMiniGamesForSetup(playerCount, selectedGame?.id || "wolf");
+
+    return (
+      <div className="pt-6 pb-2 space-y-4">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-1">
+          <button
+            onClick={() => setStep("players")}
+            className="w-9 h-9 rounded-xl bg-card shadow-card flex items-center justify-center text-gray-500 hover:text-gray-800 transition-colors flex-shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <h2 className="text-[1.375rem] font-bold text-gray-900 dark:text-gray-50 tracking-tight leading-none">Mini-Games</h2>
+            <p className="text-[0.8125rem] text-muted-foreground mt-1">Optional side bets to track alongside {selectedGame?.name}</p>
+          </div>
+        </div>
+
+        <div className="bg-card rounded-xl shadow-card p-5 space-y-3">
+          {eligibleMiniGames.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-6">No mini-games available for this setup</p>
+          ) : (
+            eligibleMiniGames.map(mg => {
+              const active = selectedMiniGames[mg.id]?.enabled || false;
+              const value = selectedMiniGames[mg.id]?.value ?? mg.defaultValue;
+
+              return (
+                <div key={mg.id}
+                  className={`rounded-xl border-2 transition-all ${
+                    active
+                      ? "border-primary-500 bg-primary-50/50 dark:bg-primary-950/20"
+                      : "border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30"
+                  }`}
+                >
+                  {/* Toggle row */}
+                  <button
+                    className="w-full flex items-center justify-between p-4 text-left"
+                    onClick={() => {
+                      setSelectedMiniGames(prev => {
+                        const updated = { ...prev };
+                        if (updated[mg.id]?.enabled) {
+                          delete updated[mg.id];
+                        } else {
+                          updated[mg.id] = { enabled: true, value: mg.defaultValue };
+                        }
+                        return updated;
+                      });
+                    }}
+                  >
+                    <div className="flex-1 min-w-0 pr-3">
+                      <p className="font-semibold text-gray-900 dark:text-gray-50 text-[0.9375rem]">{mg.name}</p>
+                      <p className="text-[0.75rem] text-muted-foreground leading-snug mt-0.5">{mg.description}</p>
+                    </div>
+                    <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                      active
+                        ? "bg-primary-500 border-primary-500"
+                        : "border-gray-300 dark:border-gray-600"
+                    }`}>
+                      {active && <CheckCircle className="w-4 h-4 text-white" />}
+                    </div>
+                  </button>
+
+                  {/* Value adjuster (only shown when enabled and has a $ value) */}
+                  {active && mg.defaultValue > 0 && (
+                    <div className="px-4 pb-4 pt-0 flex items-center justify-between">
+                      <span className="text-[0.8125rem] text-muted-foreground">Amount ({mg.valueLabel})</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="w-8 h-8 rounded-lg bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-50 active:scale-95 shadow-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedMiniGames(prev => ({
+                              ...prev,
+                              [mg.id]: { ...prev[mg.id], value: Math.max(0, (prev[mg.id]?.value ?? mg.defaultValue) - 1) }
+                            }));
+                          }}
+                        >
+                          <span className="text-lg leading-none">−</span>
+                        </button>
+                        <span className="w-12 text-center text-[1.125rem] font-bold text-gray-900 dark:text-gray-100">${value}</span>
+                        <button
+                          className="w-8 h-8 rounded-lg bg-primary-700 flex items-center justify-center text-white hover:bg-primary-800 active:scale-95 shadow-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedMiniGames(prev => ({
+                              ...prev,
+                              [mg.id]: { ...prev[mg.id], value: (prev[mg.id]?.value ?? mg.defaultValue) + 1 }
+                            }));
+                          }}
+                        >
+                          <span className="text-lg leading-none">+</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {active && mg.defaultValue === 0 && (
+                    <div className="px-4 pb-4 pt-0">
+                      <span className="text-[0.75rem] text-primary-600 dark:text-primary-400 font-medium">Tracking only — bragging rights!</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Button
+            className="w-full bg-secondary-500 hover:bg-secondary-600 text-white py-3 rounded-lg font-semibold text-[0.9375rem] shadow-sm"
             onClick={handleStartGame}
             disabled={createGameMutation.isPending || loadingCourse}
             data-testid="button-start-game"
@@ -787,7 +911,21 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
               `Start ${selectedGame?.name || "Game"}`
             )}
           </Button>
+          <Button
+            variant="ghost"
+            className="w-full text-muted-foreground py-2 text-[0.8125rem]"
+            onClick={() => {
+              setSelectedMiniGames({});
+              handleStartGame();
+            }}
+            disabled={createGameMutation.isPending}
+          >
+            Skip — no mini-games
+          </Button>
         </div>
-    </div>
-  );
+      </div>
+    );
+  }
+
+  return null; // unreachable but satisfies TS
 }

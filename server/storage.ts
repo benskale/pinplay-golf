@@ -601,6 +601,7 @@ export class MemStorage implements IStorage {
       currentHole: 1, currentWolfIndex: 0,
       tieCarryover: insertGame.tieCarryover ?? false,
       scores, strokes, totalScores, wolfCounts, holeHistory: [], active: true,
+      miniGames: (insertGame as any).miniGames ?? {},
       tournamentId: (insertGame as any).tournamentId ?? null,
       createdAt: now, updatedAt: now,
     };

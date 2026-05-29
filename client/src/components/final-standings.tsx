@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trophy, Crown, Award, RotateCcw, TableProperties, ClipboardList, Save, UserPlus, CheckCircle2, HandMetal } from "lucide-react";
+import { Trophy, Crown, Award, RotateCcw, TableProperties, ClipboardList, Save, UserPlus, CheckCircle2, HandMetal, Sparkles } from "lucide-react";
 import { ShareModal } from "@/components/share-modal";
 import { GhinExportModal } from "@/components/ghin-export-modal";
 import RoundStats from "@/components/round-stats";
@@ -11,7 +11,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import type { Game } from "@shared/schema";
-import { GAME_DEFINITIONS, isLowerBetter } from "@/lib/game-logic";
+import { GAME_DEFINITIONS, MINI_GAME_DEFINITIONS, isLowerBetter } from "@/lib/game-logic";
 import { useToast } from "@/hooks/use-toast";
 
 interface FinalStandingsProps {
@@ -372,6 +372,179 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
 
         {/* Round Stats (birdies, pars, bogeys breakdown) */}
         <RoundStats game={displayGame} />
+
+        {/* Mini-Games Settlement */}
+        {(() => {
+          const activeMiniGames = displayGame.miniGames && typeof displayGame.miniGames === "object"
+            ? Object.entries(displayGame.miniGames).filter(([_, v]) => v.enabled).map(([id]) => id)
+            : [];
+          if (activeMiniGames.length === 0) return null;
+
+          const mgTotals: Record<string, Record<string, number>> = {};
+          const mgConfig = displayGame.miniGames || {};
+
+          activeMiniGames.forEach(id => { mgTotals[id] = {}; game.players.forEach(p => { mgTotals[id][p] = 0; }); });
+
+          displayGame.holeHistory.forEach(h => {
+            const mg = h.metadata?.miniGames || {};
+            activeMiniGames.forEach(id => {
+              if (id === "sandies" || id === "polies" || id === "chippies") {
+                (mg[id] || []).forEach((p: string) => { if (mgTotals[id][p] !== undefined) mgTotals[id][p]++; });
+              }
+              if (id === "longest_drive" && mg[id]) {
+                if (mgTotals[id][mg[id]] !== undefined) mgTotals[id][mg[id]]++;
+              }
+              if (id === "closest_to_pin" && mg[id] && mg[id] !== "none") {
+                if (mgTotals[id][mg[id]] !== undefined) mgTotals[id][mg[id]]++;
+              }
+              if (id === "snake") {
+                (mg[id] || []).forEach((p: string) => { if (mgTotals[id][p] !== undefined) mgTotals[id][p]++; });
+              }
+              if (id === "birdie_pool") {
+                const holePar = displayGame.pars?.[h.hole - 1] ?? 4;
+                game.players.forEach(p => {
+                  const str = h.strokes?.[p];
+                  if (str && str <= holePar - 1) mgTotals[id][p]++;
+                });
+              }
+              if (id === "trash") {
+                (mg[id] || []).forEach((entry: string) => {
+                  const [player] = entry.split(":");
+                  if (mgTotals[id][player] !== undefined) mgTotals[id][player]++;
+                });
+              }
+              if (id === "rabbit") {
+                const points = h.points || {};
+                const winners = game.players.filter(p => (points[p] || 0) > 0);
+                if (winners.length === 1) mgTotals[id][winners[0]]++;
+              }
+            });
+          });
+
+          return (
+            <Card className="border-primary-200 dark:border-primary-800">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Sparkles className="w-5 h-5 text-primary-500" />
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Side Games Settlement</h3>
+                </div>
+                <div className="space-y-4">
+                  {activeMiniGames.map(id => {
+                    const def = MINI_GAME_DEFINITIONS[id];
+                    if (!def) return null;
+                    const totals = mgTotals[id];
+                    const value = mgConfig[id]?.value || 0;
+                    const hasData = Object.values(totals).some(v => v > 0);
+
+                    return (
+                      <div key={id} className="pb-4 border-b border-gray-100 dark:border-gray-800 last:border-0 last:pb-0">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200">{def.name}</p>
+                          {value > 0 && (
+                            <span className="text-[0.75rem] text-muted-foreground bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
+                              ${value} {def.valueLabel}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Achievement-style: show counts */}
+                        {(id === "sandies" || id === "polies" || id === "chippies" || id === "snake" || id === "longest_drive" || id === "closest_to_pin" || id === "trash") && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {game.players.map(player => {
+                              const count = totals[player] || 0;
+                              const earnings = count * value;
+                              return (
+                                <div key={player} className={`flex items-center justify-between px-3 py-2.5 rounded-xl ${
+                                  count > 0
+                                    ? "bg-primary-50 dark:bg-primary-950/30 ring-1 ring-primary-200 dark:ring-primary-800"
+                                    : "bg-gray-50 dark:bg-gray-800/50"
+                                }`}>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-xl font-display font-extrabold leading-none ${
+                                      count > 0 ? "text-primary-600 dark:text-primary-400" : "text-gray-300 dark:text-gray-600"
+                                    }`}>{count}</span>
+                                    <span className={`text-[0.8125rem] font-medium ${
+                                      count > 0 ? "text-gray-800 dark:text-gray-200" : "text-gray-400"
+                                    }`}>{player.split(" ")[0]}</span>
+                                  </div>
+                                  {value > 0 && count > 0 && (
+                                    <span className="text-[0.75rem] font-bold text-green-600 dark:text-green-400">
+                                      {id === "snake" ? `−$${earnings}` : `+$${earnings}`}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Birdie Pool: winner takes pot */}
+                        {id === "birdie_pool" && (
+                          <div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {game.players.map(player => {
+                                const count = totals[player] || 0;
+                                const isLeader = count === Math.max(...Object.values(totals));
+                                return (
+                                  <div key={player} className={`flex items-center justify-between px-3 py-2.5 rounded-xl ${
+                                    isLeader && count > 0
+                                      ? "bg-green-50 dark:bg-green-950/30 ring-1 ring-green-200 dark:ring-green-800"
+                                      : "bg-gray-50 dark:bg-gray-800/50"
+                                  }`}>
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-xl font-display font-extrabold leading-none ${
+                                        isLeader && count > 0 ? "text-green-600 dark:text-green-400" : "text-gray-400"
+                                      }`}>{count}</span>
+                                      <span className="text-[0.8125rem] font-medium">{player.split(" ")[0]}</span>
+                                    </div>
+                                    {isLeader && count > 0 && (
+                                      <span className="text-[0.75rem] font-bold text-green-600">
+                                        wins ${value * game.players.length}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {hasData && <p className="text-[0.6875rem] text-muted-foreground mt-2 text-center">Pool: ${value} x {game.players.length} players = ${value * game.players.length}</p>}
+                          </div>
+                        )}
+
+                        {/* Rabbit: times caught */}
+                        {id === "rabbit" && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {game.players.map(player => {
+                              const count = totals[player] || 0;
+                              return (
+                                <div key={player} className={`flex items-center justify-between px-3 py-2.5 rounded-xl ${
+                                  count > 0
+                                    ? "bg-primary-50 dark:bg-primary-950/30 ring-1 ring-primary-200 dark:ring-primary-800"
+                                    : "bg-gray-50 dark:bg-gray-800/50"
+                                }`}>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xl font-display font-extrabold text-primary-600">{count}</span>
+                                    <span className="text-[0.8125rem] font-medium">{player.split(" ")[0]}</span>
+                                  </div>
+                                  {count > 0 && value > 0 && (
+                                    <span className="text-[0.75rem] font-bold text-green-600">+${count * value}</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {!hasData && def.inputType === "auto" && (
+                          <p className="text-[0.75rem] text-gray-400 text-center py-2">No data tracked</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Full Scorecard */}
         <Card>

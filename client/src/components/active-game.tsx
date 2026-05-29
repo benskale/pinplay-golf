@@ -7,13 +7,13 @@ import Scorecard from "@/components/scorecard";
 import EditHoleModal from "@/components/edit-hole-modal";
 import {
   Share2, Crown, Minus, Plus, TableProperties, ClipboardList,
-  Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target, MoreVertical, Trash2
+  Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target, MoreVertical, Trash2, Flag, Sparkles
 } from "lucide-react";
 import PinPlayLogo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import {
   calcHoleResult, getLeaderboard, getGameStatus, getCurrentRotatingPlayer,
-  getTeams, GAME_DEFINITIONS, isLowerBetter, getStrokesReceivedOnHole, getStrokeHoles
+  getTeams, GAME_DEFINITIONS, MINI_GAME_DEFINITIONS, isLowerBetter, getStrokesReceivedOnHole, getStrokeHoles
 } from "@/lib/game-logic";
 import type { Game } from "@shared/schema";
 
@@ -66,6 +66,19 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   // Closest to the Pin (par 3s)
   const [closestToPin, setClosestToPin] = useState<string | "none" | null>(null);
 
+  // Mini-games state
+  const activeMiniGames = game.miniGames && typeof game.miniGames === "object"
+    ? Object.entries(game.miniGames).filter(([_, v]) => v.enabled).map(([id]) => id)
+    : [];
+  const hasClosestToPinMiniGame = activeMiniGames.includes("closest_to_pin");
+  // Show CTP if it's a mini-game OR if game has legacy CTP data (backward compat)
+  const showCTP = hasClosestToPinMiniGame || (!activeMiniGames.length && true);
+
+  // Per-hole mini-game tracking
+  const [miniGameAchievements, setMiniGameAchievements] = useState<Record<string, string[]>>({});
+  const [miniGameWinner, setMiniGameWinner] = useState<Record<string, string>>({});
+  const [snake3Putt, setSnake3Putt] = useState<string[]>([]);
+
   // Edit hole modal
   const [editHoleNumber, setEditHoleNumber] = useState<number | null>(null);
 
@@ -111,8 +124,28 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     if (isDots) meta.dots = dotAchievements;
     if (isBanker) {} // banker uses currentWolfIndex automatically
     if (closestToPin) meta.closestToPin = closestToPin;
+    // Mini-games data
+    const mgData: Record<string, any> = {};
+    activeMiniGames.forEach(id => {
+      if (id === "sandies" || id === "polies" || id === "chippies") {
+        mgData[id] = miniGameAchievements[id] || [];
+      }
+      if (id === "longest_drive") {
+        mgData[id] = miniGameWinner[id] || null;
+      }
+      if (id === "closest_to_pin") {
+        mgData[id] = closestToPin || null;
+      }
+      if (id === "snake") {
+        mgData[id] = snake3Putt || [];
+      }
+      if (id === "trash") {
+        mgData[id] = miniGameAchievements[id] || [];
+      }
+    });
+    if (Object.keys(mgData).length > 0) meta.miniGames = mgData;
     return meta;
-  }, [isWolfGame, rotatingPlayer, wolfDecision, isBBB, bbbWinners, isHammer, hammerValue, isDots, dotAchievements, isBanker]);
+  }, [isWolfGame, rotatingPlayer, wolfDecision, isBBB, bbbWinners, isHammer, hammerValue, isDots, dotAchievements, isBanker, closestToPin, miniGameAchievements, miniGameWinner, snake3Putt, activeMiniGames]);
 
   // Auto-calculate result
   const calculatedResult = useMemo(() => {
@@ -159,6 +192,8 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     // Merge CTP into metadata since calcHoleResult doesn't pass it through
     const finalMeta = { ...calculatedResult.metadata };
     if (closestToPin) finalMeta.closestToPin = closestToPin;
+    // Ensure mini-games data is in metadata
+    if (extraMeta.miniGames) finalMeta.miniGames = extraMeta.miniGames;
     gameActions.completeHole(calculatedResult.pointDeltas, fullStrokes, calculatedResult.result, finalMeta);
     setWolfDecision(null);
     setHoleStrokes({});
@@ -166,6 +201,9 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     setHammerValue(1);
     setDotAchievements({});
     setClosestToPin(null);
+    setMiniGameAchievements({});
+    setMiniGameWinner({});
+    setSnake3Putt([]);
 
     toast({ title: `Hole ${game.currentHole} Complete!`, description: calculatedResult.result });
   };
@@ -570,7 +608,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
               )}
 
               {/* ── CLOSEST TO THE PIN SELECTOR (par 3s only) ── */}
-              {isPar3 && (
+              {isPar3 && showCTP && (
                 <Card className="border-emerald-200 dark:border-emerald-800">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-3">
@@ -646,6 +684,169 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                   </CardContent>
                 </Card>
               )}
+
+              {/* ── MINI-GAMES INPUTS ── */}
+              {activeMiniGames.length > 0 && (() => {
+                // Filter to mini-games that need input this hole
+                const holeMiniGames = activeMiniGames.filter(id => {
+                  const def = MINI_GAME_DEFINITIONS[id];
+                  if (!def) return false;
+                  if (def.inputType === "auto") return false; // auto-tracked, no input needed
+                  if (def.holeFilter === "par3" && !isPar3) return false;
+                  if (def.holeFilter === "par5" && currentPar !== 5) return false;
+                  return true;
+                });
+                if (holeMiniGames.length === 0) return null;
+
+                return (
+                  <Card className="border-primary-200 dark:border-primary-800">
+                    <CardContent className="p-5 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-primary-500" />
+                        <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">Side Games</h3>
+                      </div>
+
+                      {holeMiniGames.map(mgId => {
+                        const def = MINI_GAME_DEFINITIONS[mgId];
+                        if (!def) return null;
+
+                        // Winner-style (one player wins) — longest drive, closest to pin
+                        if (def.inputType === "winner") {
+                          const winner = miniGameWinner[mgId];
+                          return (
+                            <div key={mgId}>
+                              <p className="text-[0.8125rem] font-medium text-gray-700 dark:text-gray-300 mb-2">{def.name}</p>
+                              <div className="flex gap-2 flex-wrap">
+                                {game.players.map(player => (
+                                  <button key={player}
+                                    className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+                                      winner === player
+                                        ? "bg-primary-500 text-white border-primary-500 shadow-sm"
+                                        : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-primary-400"
+                                    }`}
+                                    onClick={() => setMiniGameWinner(prev => ({
+                                      ...prev,
+                                      [mgId]: prev[mgId] === player ? "" : player
+                                    }))}>
+                                    {player.split(" ")[0]}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // Achievement-style (multiple players can earn) — sandies, polies, chippies, snake, trash
+                        if (def.inputType === "achievement") {
+                          if (mgId === "snake") {
+                            // Snake: who 3-putted?
+                            return (
+                              <div key={mgId}>
+                                <p className="text-[0.8125rem] font-medium text-gray-700 dark:text-gray-300 mb-2">Snake — 3-putts</p>
+                                <div className="flex gap-2 flex-wrap">
+                                  {game.players.map(player => {
+                                    const active = snake3Putt.includes(player);
+                                    return (
+                                      <button key={player}
+                                        className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+                                          active
+                                            ? "bg-red-500 text-white border-red-500 shadow-sm"
+                                            : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-red-400"
+                                        }`}
+                                        onClick={() => setSnake3Putt(prev =>
+                                          prev.includes(player) ? prev.filter(p => p !== player) : [...prev, player]
+                                        )}>
+                                        {player.split(" ")[0]}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (mgId === "trash") {
+                            // Trash/Junk: multiple achievement types per player
+                            const trashTypes = [
+                              { id: "birdie", label: "Birdie" },
+                              { id: "sandy", label: "Sandy" },
+                              { id: "chip_in", label: "Chip-in" },
+                              { id: "greenie", label: "Greenie" },
+                            ];
+                            return (
+                              <div key={mgId}>
+                                <p className="text-[0.8125rem] font-medium text-gray-700 dark:text-gray-300 mb-2">Trash / Junk</p>
+                                {game.players.map(player => (
+                                  <div key={player} className="mb-2">
+                                    <p className="text-[0.6875rem] text-muted-foreground mb-1">{player.split(" ")[0]}</p>
+                                    <div className="flex gap-1.5 flex-wrap">
+                                      {trashTypes.map(tt => {
+                                        const key = `${mgId}_${player}_${tt.id}`;
+                                        const achievements = miniGameAchievements[mgId] || [];
+                                        const active = achievements.includes(`${player}:${tt.id}`);
+                                        return (
+                                          <button key={tt.id}
+                                            className={`px-2.5 py-1 rounded-full text-[0.6875rem] font-medium border transition-colors ${
+                                              active
+                                                ? "bg-green-500 text-white border-green-500"
+                                                : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300"
+                                            }`}
+                                            onClick={() => setMiniGameAchievements(prev => {
+                                              const current = prev[mgId] || [];
+                                              const tag = `${player}:${tt.id}`;
+                                              return {
+                                                ...prev,
+                                                [mgId]: active ? current.filter(a => a !== tag) : [...current, tag],
+                                              };
+                                            })}>
+                                            {tt.label}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          }
+
+                          // Generic achievement: tap player to toggle
+                          return (
+                            <div key={mgId}>
+                              <p className="text-[0.8125rem] font-medium text-gray-700 dark:text-gray-300 mb-2">{def.name}</p>
+                              <div className="flex gap-2 flex-wrap">
+                                {game.players.map(player => {
+                                  const achievements = miniGameAchievements[mgId] || [];
+                                  const active = achievements.includes(player);
+                                  return (
+                                    <button key={player}
+                                      className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
+                                        active
+                                          ? "bg-green-500 text-white border-green-500 shadow-sm"
+                                          : "bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-green-400"
+                                      }`}
+                                      onClick={() => setMiniGameAchievements(prev => {
+                                        const current = prev[mgId] || [];
+                                        return {
+                                          ...prev,
+                                          [mgId]: active ? current.filter(p => p !== player) : [...current, player],
+                                        };
+                                      })}>
+                                      {player.split(" ")[0]}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return null;
+                      })}
+                    </CardContent>
+                  </Card>
+                );
+              })()}
 
               {/* ── RESULT PREVIEW + COMPLETE ── */}
               <Card className={isWolfGame && !wolfDecision ? "opacity-60" : ""}>
@@ -800,6 +1001,114 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                           })}
                         </div>
                       )}
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+
+              {/* ── MINI-GAMES RUNNING TOTALS ── */}
+              {activeMiniGames.length > 0 && (() => {
+                // Compute running totals from hole history
+                const mgTotals: Record<string, Record<string, number>> = {};
+                const mgConfig = game.miniGames || {};
+
+                activeMiniGames.forEach(id => { mgTotals[id] = {}; game.players.forEach(p => { mgTotals[id][p] = 0; }); });
+
+                game.holeHistory.forEach(h => {
+                  const mg = h.metadata?.miniGames || {};
+                  activeMiniGames.forEach(id => {
+                    if (id === "sandies" || id === "polies" || id === "chippies") {
+                      (mg[id] || []).forEach((p: string) => { if (mgTotals[id][p] !== undefined) mgTotals[id][p]++; });
+                    }
+                    if (id === "longest_drive" && mg[id]) {
+                      if (mgTotals[id][mg[id]] !== undefined) mgTotals[id][mg[id]]++;
+                    }
+                    if (id === "closest_to_pin" && mg[id] && mg[id] !== "none") {
+                      if (mgTotals[id][mg[id]] !== undefined) mgTotals[id][mg[id]]++;
+                    }
+                    if (id === "snake") {
+                      (mg[id] || []).forEach((p: string) => { if (mgTotals[id][p] !== undefined) mgTotals[id][p]++; });
+                    }
+                    if (id === "birdie_pool") {
+                      // Auto-count birdies and eagles from strokes
+                      const holePar = game.pars?.[h.hole - 1] ?? 4;
+                      game.players.forEach(p => {
+                        const str = h.strokes?.[p];
+                        if (str && str <= holePar - 1) mgTotals[id][p]++;
+                      });
+                    }
+                    if (id === "trash") {
+                      (mg[id] || []).forEach((entry: string) => {
+                        const [player] = entry.split(":");
+                        if (mgTotals[id][player] !== undefined) mgTotals[id][player]++;
+                      });
+                    }
+                    if (id === "rabbit") {
+                      // Auto-determine: player who won hole outright
+                      const points = h.points || {};
+                      const winners = game.players.filter(p => (points[p] || 0) > 0);
+                      if (winners.length === 1) {
+                        mgTotals[id][winners[0]]++;
+                      }
+                    }
+                  });
+                });
+
+                const hasAnyData = activeMiniGames.some(id => Object.values(mgTotals[id]).some(v => v > 0));
+                if (!hasAnyData) return null;
+
+                return (
+                  <Card className="border-primary-200 dark:border-primary-800">
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Sparkles className="w-4 h-4 text-primary-500" />
+                        <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">Side Games</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {activeMiniGames.map(id => {
+                          const def = MINI_GAME_DEFINITIONS[id];
+                          if (!def) return null;
+                          const totals = mgTotals[id];
+                          const hasData = Object.values(totals).some(v => v > 0);
+                          if (!hasData && def.inputType === "auto") return null;
+
+                          const value = mgConfig[id]?.value || 0;
+
+                          return (
+                            <div key={id} className="pb-3 border-b border-gray-100 dark:border-gray-800 last:border-0 last:pb-0">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-[0.8125rem] font-semibold text-gray-700 dark:text-gray-300">{def.name}</p>
+                                {value > 0 && (
+                                  <span className="text-[0.6875rem] text-muted-foreground">${value} {def.valueLabel}</span>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {game.players.map(player => {
+                                  const count = totals[player] || 0;
+                                  return (
+                                    <div key={player} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg ${
+                                      count > 0
+                                        ? "bg-primary-50 dark:bg-primary-950/30 ring-1 ring-primary-200 dark:ring-primary-800"
+                                        : "bg-gray-50 dark:bg-gray-800/50"
+                                    }`}>
+                                      <span className={`text-lg font-display font-extrabold leading-none tabular-nums ${
+                                        count > 0 ? "text-primary-600 dark:text-primary-400" : "text-gray-300 dark:text-gray-600"
+                                      }`}>
+                                        {count}
+                                      </span>
+                                      <span className={`text-[0.8125rem] font-medium ${
+                                        count > 0 ? "text-gray-800 dark:text-gray-200" : "text-gray-400 dark:text-gray-500"
+                                      }`}>
+                                        {player.split(" ")[0]}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </CardContent>
                   </Card>
                 );

@@ -13,6 +13,88 @@ export interface GameDef {
   specialInputs?: string[]; // extra per-hole inputs needed beyond strokes
 }
 
+// ─── Mini-Game Definitions ────────────────────────────────────────────────────
+
+export interface MiniGameDef {
+  id: string;
+  name: string;
+  description: string;
+  playerCounts: number[];        // which player counts are eligible
+  gameTypes: string[] | null;    // null = all games, otherwise restrict
+  defaultValue: number;          // default dollar amount
+  valueLabel: string;            // "each", "buy-in", "per point", etc.
+  inputType: "achievement" | "winner" | "auto";  // how input works
+  holeFilter?: "par3" | "par5";  // only show on certain hole types (undefined = all)
+}
+
+export const MINI_GAME_DEFINITIONS: Record<string, MiniGameDef> = {
+  sandies: {
+    id: "sandies", name: "Sandies", playerCounts: [2, 3, 4], gameTypes: null,
+    description: "Make par or better after hitting into a bunker. Earn the amount for each sandy.",
+    defaultValue: 1, valueLabel: "each", inputType: "achievement",
+  },
+  polies: {
+    id: "polies", name: "Polies", playerCounts: [2, 3, 4], gameTypes: null,
+    description: "Sink a putt from farther than the length of the flagstick.",
+    defaultValue: 1, valueLabel: "each", inputType: "achievement",
+  },
+  chippies: {
+    id: "chippies", name: "Chippies", playerCounts: [2, 3, 4], gameTypes: null,
+    description: "Chip in from off the green. Any holed shot that wasn't a putt.",
+    defaultValue: 1, valueLabel: "each", inputType: "achievement",
+  },
+  birdie_pool: {
+    id: "birdie_pool", name: "Birdie Pool", playerCounts: [2, 3, 4], gameTypes: null,
+    description: "Everyone buys in. Most birdies (and eagles) at the end takes the pot.",
+    defaultValue: 5, valueLabel: "buy-in", inputType: "auto",
+  },
+  omaha: {
+    id: "omaha", name: "Omaha", playerCounts: [3], gameTypes: null,
+    description: "Low ball (1 pt) and low total (1 pt) each hole. Teams rotate every 6 holes. Settle by points.",
+    defaultValue: 1, valueLabel: "per point", inputType: "auto",
+  },
+  snake: {
+    id: "snake", name: "Snake", playerCounts: [2, 3, 4], gameTypes: null,
+    description: "Last player to 3-putt holds the snake. Whoever holds it at the end owes every other player the set amount.",
+    defaultValue: 1, valueLabel: "per player", inputType: "achievement",
+  },
+  rabbit: {
+    id: "rabbit", name: "Rabbit", playerCounts: [2, 3, 4], gameTypes: null,
+    description: "Win a hole outright to catch the rabbit. Hold it after 9 or 18 to earn the amount.",
+    defaultValue: 5, valueLabel: "per 9", inputType: "auto",
+  },
+  press: {
+    id: "press", name: "Press", playerCounts: [2], gameTypes: ["match_play", "nassau", "best_ball_2"],
+    description: "Double the bet on remaining holes. Can be pressed by either side at any time.",
+    defaultValue: 5, valueLabel: "base bet", inputType: "winner",
+  },
+  trash: {
+    id: "trash", name: "Trash / Junk", playerCounts: [2, 3, 4], gameTypes: null,
+    description: "Birdies, sandies, chippies, and greenies (par 3s) each pay the set amount.",
+    defaultValue: 1, valueLabel: "each", inputType: "achievement",
+  },
+  longest_drive: {
+    id: "longest_drive", name: "Longest Drive", playerCounts: [2, 3, 4], gameTypes: null,
+    description: "Longest drive in the fairway on par 5s. Must be in the short grass to count.",
+    defaultValue: 0, valueLabel: "bragging rights", inputType: "winner",
+    holeFilter: "par5",
+  },
+  closest_to_pin: {
+    id: "closest_to_pin", name: "Closest to the Pin", playerCounts: [2, 3, 4], gameTypes: null,
+    description: "Closest to the hole on par 3s. Must be on the green to count.",
+    defaultValue: 0, valueLabel: "bragging rights", inputType: "winner",
+    holeFilter: "par3",
+  },
+};
+
+export function getMiniGamesForSetup(playerCount: number, gameType: string): MiniGameDef[] {
+  return Object.values(MINI_GAME_DEFINITIONS).filter(mg => {
+    if (!mg.playerCounts.includes(playerCount)) return false;
+    if (mg.gameTypes && !mg.gameTypes.includes(gameType)) return false;
+    return true;
+  });
+}
+
 export const GAME_DEFINITIONS: Record<string, GameDef> = {
   // ── 2-player ──────────────────────────────────────────────────────
   match_play: {

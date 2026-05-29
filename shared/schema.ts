@@ -147,6 +147,7 @@ export const games = pgTable("games", {
     metadata: Record<string, any>;
   }>>().notNull().default([]),
   active: boolean("active").notNull().default(true),
+  miniGames: jsonb("mini_games").$type<Record<string, { enabled: boolean; value: number }>>().notNull().default({}),
   tournamentId: varchar("tournament_id").references(() => tournaments.id),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
