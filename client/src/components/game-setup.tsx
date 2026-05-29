@@ -413,6 +413,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
   }
 
   // ── STEP 3: Player Names, Handicaps, Teams, Course ────────────────────────
+  if (step === "players") {
   return (
     <div className="pt-6 pb-2 space-y-4">
       {/* Header */}
@@ -789,6 +790,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
         </div>
     </div>
   );
+  } // end players step
 
   // ── STEP 4: Mini-Games Checklist ──────────────────────────────────────────────
   if (step === "minigames") {
