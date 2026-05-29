@@ -71,6 +71,11 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
     description: "6-hole best-ball match play segments. Partners rotate each 6 holes.",
     isTeamGame: false, needsHandicap: false, carryover: false,
   },
+  nine_point: {
+    id: "nine_point", name: "9-Point", playerCounts: [3],
+    description: "9 points per hole split by finish: 1st=5pts, 2nd=3pts, 3rd=1pt. Ties split the combined points.",
+    isTeamGame: false, needsHandicap: false, carryover: false,
+  },
   bingo_bango_bongo: {
     id: "bingo_bango_bongo", name: "Bingo Bango Bongo", playerCounts: [3],
     description: "3 pts per hole: first on green (Bingo), closest to pin (Bango), first to hole out (Bongo).",
@@ -448,6 +453,46 @@ export function calcHoleResult(
       return { pointDeltas: deltas, result, metadata: { segment: seg + 1 } };
     }
 
+    // ── 9-POINT (3-player) ────────────────────────────────────────────
+    case "nine_point": {
+      // 9 points per hole: 1st=5, 2nd=3, 3rd=1. Ties split combined points.
+      const sorted = [...players].sort((a, b) => (strokes[a] || 99) - (strokes[b] || 99));
+      const scored: { name: string; strokes: number; basePoints: number }[] = [];
+      // Assign base point values by position
+      const basePoints = [5, 3, 1];
+      sorted.forEach((p, i) => {
+        scored.push({ name: p, strokes: strokes[p] || 99, basePoints: basePoints[i] });
+      });
+
+      // Handle ties: group players with same score, split their combined points
+      const groups: { players: string[]; totalPoints: number }[] = [];
+      let i = 0;
+      while (i < scored.length) {
+        const groupPlayers = [scored[i].name];
+        const groupPoints = scored[i].basePoints;
+        let j = i + 1;
+        while (j < scored.length && scored[j].strokes === scored[i].strokes) {
+          groupPlayers.push(scored[j].name);
+          j++;
+        }
+        const totalPts = scored.slice(i, j).reduce((s, x) => s + x.basePoints, 0);
+        groups.push({ players: groupPlayers, totalPoints: totalPts });
+        i = j;
+      }
+
+      groups.forEach(g => {
+        const share = g.totalPoints / g.players.length;
+        g.players.forEach(p => { deltas[p] = Math.round(share * 10) / 10; });
+      });
+
+      const parts = players.map(p => {
+        const pts = deltas[p];
+        return `${p.split(" ")[0]}: ${pts % 1 === 0 ? pts.toFixed(0) : pts}pt`;
+      });
+      const result = parts.join("  ·  ");
+      return { pointDeltas: deltas, result, metadata: {} };
+    }
+
     // ── BINGO BANGO BONGO (3-player) ─────────────────────────────────
     case "bingo_bango_bongo": {
       const bingo = extraMeta.bingo as string | undefined;
@@ -673,7 +718,7 @@ export function getLeaderboard(game: Game): LeaderboardEntry[] {
       displayScore = `${raw} holes`;
     } else if (["skins", "skins_3", "skins_4"].includes(gameType)) {
       displayScore = `${raw} skin${raw !== 1 ? "s" : ""}`;
-    } else if (["hammer", "banker", "dots_junk"].includes(gameType)) {
+    } else if (["hammer", "banker", "dots_junk", "nine_point"].includes(gameType)) {
       displayScore = raw >= 0 ? `+${raw}` : `${raw}`;
     } else {
       displayScore = `${raw}`;
