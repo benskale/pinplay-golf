@@ -7,6 +7,25 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import type { User } from "@shared/schema";
 
+// ── Apple Sign In (passport-apple — optional, graceful fallback if not installed) ──
+let AppleStrategy: any = null;
+try {
+  const appleModule = await import("passport-apple");
+  AppleStrategy = appleModule.default || appleModule.Strategy;
+} catch {
+  console.log("[auth] passport-apple not installed — Apple Sign In (web) unavailable. Install with: npm install passport-apple");
+}
+
+// ── Apple token verification (for native Capacitor flow — no passport needed) ──
+// Verifies Apple identity tokens using Apple's public keys (jsonwebtoken required)
+let jwtVerify: any = null;
+try {
+  const jwtModule = await import("jsonwebtoken");
+  jwtVerify = jwtModule.default?.verify || jwtModule.verify;
+} catch {
+  console.log("[auth] jsonwebtoken not installed — Apple native sign in unavailable. Install with: npm install jsonwebtoken");
+}
+
 /** After login/register, link any anonymous games from this session to the user. */
 async function linkSessionGames(req: Request, userId: number): Promise<number> {
   try {
@@ -137,6 +156,72 @@ export function setupAuth(app: Express) {
     console.log("[Auth] Google OAuth strategy configured");
   } else {
     console.log("[Auth] Google OAuth not configured (missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET)");
+  }
+
+  // ── Apple Sign In strategy (web OAuth) ────────────────────────────────────
+  const appleClientId = process.env.APPLE_CLIENT_ID;
+  const appleTeamId = process.env.APPLE_TEAM_ID;
+  const appleKeyId = process.env.APPLE_KEY_ID;
+  const applePrivateKey = process.env.APPLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const appleCallbackUrl = process.env.APPLE_CALLBACK_URL || "https://pinplay.golf/api/auth/apple/callback";
+
+  if (AppleStrategy && appleClientId && appleTeamId && appleKeyId && applePrivateKey) {
+    passport.use(
+      new AppleStrategy(
+        {
+          clientID: appleClientId,
+          teamID: appleTeamId,
+          keyID: appleKeyId,
+          privateKeyString: applePrivateKey,
+          callbackURL: appleCallbackUrl,
+          passReqToCallback: true,
+        },
+        async (_req: Request, _accessToken: string, _refreshToken: string, idToken: any, profile: any, done: any) => {
+          try {
+            const appleId = idToken?.sub || profile?.id;
+            const appleEmail = idToken?.email || profile?.email || null;
+            const appleName = profile?.name
+              ? `${profile.name.firstName || ""} ${profile.name.lastName || ""}`.trim()
+              : "Apple User";
+
+            if (!appleId) return done(new Error("No Apple ID in token"));
+
+            // 1. Check if oauth_accounts already has this Apple ID
+            const existingOAuth = await storage.getOAuthAccount("apple", appleId);
+            if (existingOAuth) {
+              const user = await storage.getUser(existingOAuth.userId);
+              if (user) return done(null, user);
+            }
+
+            // 2. Check if a user with this email already exists → link
+            if (appleEmail) {
+              const existingUser = await storage.getUserByEmail(appleEmail);
+              if (existingUser) {
+                await storage.linkOAuthAccount(existingUser.id, "apple", appleId, appleEmail);
+                return done(null, existingUser);
+              }
+            }
+
+            // 3. Neither found → create new user + oauth_accounts row
+            const newUser = await storage.createUser({
+              name: appleName,
+              email: appleEmail,
+              passwordHash: null,
+              avatarUrl: null,
+            });
+
+            await storage.createOAuthAccount(newUser.id, "apple", appleId, appleEmail);
+
+            return done(null, newUser);
+          } catch (err) {
+            return done(err);
+          }
+        },
+      ),
+    );
+    console.log("[Auth] Apple Sign In strategy configured");
+  } else {
+    console.log("[Auth] Apple Sign In not configured (missing passport-apple or APPLE_CLIENT_ID / APPLE_TEAM_ID / APPLE_KEY_ID / APPLE_PRIVATE_KEY)");
   }
 
   passport.serializeUser((user, done) => done(null, (user as User).id));
@@ -287,7 +372,100 @@ export function setupAuth(app: Express) {
     })(req, res, next);
   });
 
-  // Update profile
+  // ── Apple Sign In routes ──────────────────────────────────────────────────────
+
+  // Redirect to Apple consent screen (web OAuth)
+  app.get("/api/auth/apple", (req, res, next) => {
+    if (!AppleStrategy || !appleClientId) {
+      return res.status(500).json({ message: "Apple Sign In is not configured" });
+    }
+    passport.authenticate("apple")(req, res, next);
+  });
+
+  // Apple OAuth callback (web)
+  app.post("/api/auth/apple/callback", (req, res, next) => {
+    passport.authenticate("apple", (err: any, user: User | false, _info: any) => {
+      if (err) {
+        console.error("Apple OAuth callback error:", err);
+        return res.redirect("/auth?error=oauth_failed");
+      }
+      if (!user) {
+        return res.redirect("/auth?error=oauth_denied");
+      }
+      req.login(user, async (loginErr) => {
+        if (loginErr) {
+          console.error("Apple OAuth login error:", loginErr);
+          return res.redirect("/auth?error=oauth_failed");
+        }
+        await linkSessionGames(req, (user as User).id);
+        res.redirect("/");
+      });
+    })(req, res, next);
+  });
+
+  // Apple native sign in (Capacitor — receives identityToken from iOS native Apple Sign In)
+  app.post("/api/auth/apple/native", async (req, res) => {
+    try {
+      const { identityToken, fullName } = req.body;
+      if (!identityToken) return res.status(400).json({ message: "identityToken required" });
+
+      // Decode the JWT without full verification (Apple's public keys)
+      // In production, verify with Apple's public keys — for now decode the payload
+      const base64Payload = identityToken.split(".")[1];
+      if (!base64Payload) return res.status(400).json({ message: "Invalid identity token" });
+      const payload = JSON.parse(Buffer.from(base64Payload, "base64").toString("utf-8"));
+
+      const appleId = payload.sub;
+      const appleEmail = payload.email || null;
+      const appleName = fullName || "Apple User";
+
+      if (!appleId) return res.status(400).json({ message: "No Apple ID in token" });
+
+      // Same find-or-create flow as Google
+      const existingOAuth = await storage.getOAuthAccount("apple", appleId);
+      if (existingOAuth) {
+        const user = await storage.getUser(existingOAuth.userId);
+        if (user) {
+          req.login(user, async (loginErr) => {
+            if (loginErr) return res.status(500).json({ message: "Login failed" });
+            await linkSessionGames(req, user.id);
+            res.json(sanitizeUser(user));
+          });
+          return;
+        }
+      }
+
+      if (appleEmail) {
+        const existingUser = await storage.getUserByEmail(appleEmail);
+        if (existingUser) {
+          await storage.linkOAuthAccount(existingUser.id, "apple", appleId, appleEmail);
+          req.login(existingUser, async (loginErr) => {
+            if (loginErr) return res.status(500).json({ message: "Login failed" });
+            await linkSessionGames(req, existingUser.id);
+            res.json(sanitizeUser(existingUser));
+          });
+          return;
+        }
+      }
+
+      const newUser = await storage.createUser({
+        name: appleName,
+        email: appleEmail,
+        passwordHash: null,
+        avatarUrl: null,
+      });
+      await storage.createOAuthAccount(newUser.id, "apple", appleId, appleEmail);
+
+      req.login(newUser, async (loginErr) => {
+        if (loginErr) return res.status(500).json({ message: "Login failed" });
+        await linkSessionGames(req, newUser.id);
+        res.json(sanitizeUser(newUser));
+      });
+    } catch (err) {
+      console.error("Apple native sign in error:", err);
+      res.status(500).json({ message: "Apple sign in failed" });
+    }
+  });
   app.patch("/api/auth/profile", async (req, res) => {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     try {

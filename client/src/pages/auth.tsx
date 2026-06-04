@@ -1,12 +1,16 @@
 import { useState, useEffect } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Mail, Phone, Eye, EyeOff, ArrowLeft, ChevronRight } from "lucide-react";
+import { Loader2, Mail, Phone, Eye, EyesOff, ArrowLeft, ChevronRight } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
+
+// Detect Capacitor native environment
+const isNative = () => !!(window as any).Capacitor?.isNativePlatform?.();
 
 type Mode = "choose" | "email-login" | "email-register" | "phone-send" | "phone-verify" | "phone-name";
 
@@ -128,6 +132,62 @@ export default function AuthPage() {
               </div>
               <ChevronRight className="w-4 h-4 text-gray-400" />
             </a>
+
+            {/* Apple Sign In */}
+            <button
+              onClick={async () => {
+                if (isNative()) {
+                  // Native Capacitor flow — use Apple Sign In plugin
+                  try {
+                    const { SignInWithApple } = await import("@nicolo-ribaudo/capacitor-sign-in-with-apple");
+                    const result = await SignInWithApple.authorize({
+                      scopes: ["name", "email"],
+                    });
+                    // Send identity token to native endpoint
+                    const res = await fetch("/api/auth/apple/native", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      credentials: "include",
+                      body: JSON.stringify({
+                        identityToken: result.response.identityToken,
+                        fullName: result.response.givenName
+                          ? `${result.response.givenName} ${result.response.familyName || ""}`.trim()
+                          : undefined,
+                      }),
+                    });
+                    if (!res.ok) {
+                      const e = await res.json();
+                      toast({ title: "Apple sign in failed", description: e.message, variant: "destructive" });
+                      return;
+                    }
+                    const user = await res.json();
+                    queryClient.setQueryData(["/api/auth/user"], user);
+                    toast({ title: `Welcome, ${user.name}!` });
+                    setLocation("/");
+                  } catch {
+                    // Fallback to web flow if plugin not available
+                    window.location.href = "/api/auth/apple";
+                  }
+                } else {
+                  // Web flow
+                  window.location.href = "/api/auth/apple";
+                }
+              }}
+              className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                  </svg>
+                </div>
+                <div className="text-left">
+                  <p className="font-semibold text-gray-900 dark:text-white text-sm">Continue with Apple</p>
+                  <p className="text-xs text-gray-500">Sign in with your Apple ID</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            </button>
 
             <div className="relative py-1">
               <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200 dark:border-gray-700" /></div>
