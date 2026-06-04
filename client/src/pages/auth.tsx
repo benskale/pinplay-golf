@@ -139,7 +139,7 @@ export default function AuthPage() {
                 if (isNative()) {
                   // Native Capacitor flow — use Apple Sign In plugin
                   try {
-                    const { SignInWithApple } = await import("@capacitor-community/apple-sign-in");
+                    const { SignInWithApple } = await import("@/lib/capacitor-apple-sign-in");
                     const result = await SignInWithApple.authorize({
                       clientId: "com.silverspringsventures.pinplay",
                       redirectURI: "https://pinplay.golf",
