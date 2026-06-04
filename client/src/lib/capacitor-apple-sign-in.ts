@@ -1,28 +1,23 @@
 /**
  * Wrapper for @capacitor-community/apple-sign-in.
  * 
- * Works in both environments:
- * - Native (Capacitor iOS app): Calls the real plugin via Capacitor's bridge
- * - Web (browser): Throws a friendly error
- * 
- * On native, the plugin JS is registered by Capacitor at runtime even though
- * this stub is used at build time. We access it through Capacitor.Plugins.
+ * Uses Capacitor's registerPlugin to create a proper bridge to the native
+ * iOS plugin. This is exactly what the real npm package does internally.
+ * Works because @capacitor/core is available in the Capacitor runtime.
  */
 
-export const SignInWithApple = {
-  authorize: async (options?: {
-    clientId?: string;
-    redirectURI?: string;
-    scopes?: string;
-  }) => {
-    // Try Capacitor's native plugin registry first (works in iOS app)
-    const cap = (window as any).Capacitor;
-    if (cap?.isNativePlatform?.()) {
-      const plugin = cap.Plugins?.SignInWithApple;
-      if (plugin?.authorize) {
-        return plugin.authorize(options);
-      }
-    }
-    throw new Error("Apple Sign In is only available in the iOS app");
-  },
-};
+import { registerPlugin } from '@capacitor/core';
+
+export interface AppleSignInResponse {
+  response: {
+    identityToken: string;
+    givenName?: string;
+    familyName?: string;
+    email?: string;
+    user: string;
+  };
+}
+
+const SignInWithApple = registerPlugin<AppleSignInResponse>('SignInWithApple');
+
+export { SignInWithApple };
