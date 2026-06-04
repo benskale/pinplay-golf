@@ -168,11 +168,11 @@ export default function AuthPage() {
                     setLocation("/");
                   } catch {
                     // Fallback to web flow if plugin not available
-                    window.location.href = "/api/auth/apple";
+                    toast({ title: "Apple Sign In", description: "Available in the iOS app", variant: "default" });
                   }
                 } else {
                   // Web flow
-                  window.location.href = "/api/auth/apple";
+                  toast({ title: "Apple Sign In", description: "Available in the iOS app", variant: "default" });
                 }
               }}
               className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
