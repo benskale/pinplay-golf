@@ -24,6 +24,7 @@ function Router() {
       <Route path="/profile" component={ProfilePage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/support" component={SupportPage} />
+      <Route path="/support.html" component={SupportPage} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/tournament/create" component={CreateTournamentPage} />
       <Route path="/tournament/:id" component={TournamentPage} />

@@ -16,6 +16,9 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Game } from "@shared/schema";
 
+// Detect Capacitor native environment (iOS/Android)
+const isNative = () => !!(window as any).Capacitor?.isNativePlatform?.();
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface FavoriteUser {
@@ -197,8 +200,30 @@ export default function ProfilePage() {
     logoutMutation.mutate(undefined, { onSuccess: () => setLocation("/") });
   };
 
-  const handleAvatarClick = () => {
-    fileInputRef.current?.click();
+  const handleAvatarClick = async () => {
+    if (isNative()) {
+      // Use Capacitor Camera plugin for native iOS/Android image picker
+      try {
+        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+        const photo = await Camera.getPhoto({
+          quality: 85,
+          allowEditing: true,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Photos,
+          width: 256,
+          height: 256,
+        });
+        uploadAvatarMutation.mutate(photo.dataUrl!);
+      } catch (err: any) {
+        // User cancelled or camera unavailable — silently ignore
+        if (err?.message?.includes("cancelled") || err?.message?.includes("User cancelled")) return;
+        console.error("Camera error:", err);
+        toast({ title: "Couldn't pick photo", description: "Try again", variant: "destructive" });
+      }
+    } else {
+      // Web — use file input
+      fileInputRef.current?.click();
+    }
   };
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,7 +238,6 @@ export default function ProfilePage() {
       return;
     }
     // Resize to 256x256 avatar using canvas — keeps base64 to ~15-30KB
-    // Fallback to raw FileReader if canvas fails (WKWebView on iPadOS)
     const img = new Image();
     img.onload = () => {
       try {
@@ -223,7 +247,6 @@ export default function ProfilePage() {
         canvas.height = SIZE;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
-          // Canvas not supported — fallback to FileReader
           sendAvatarRaw(file);
           URL.revokeObjectURL(img.src);
           return;
@@ -239,7 +262,6 @@ export default function ProfilePage() {
         uploadAvatarMutation.mutate(dataUrl);
         URL.revokeObjectURL(img.src);
       } catch {
-        // Canvas failed — fallback to FileReader base64
         sendAvatarRaw(file);
         URL.revokeObjectURL(img.src);
       }
@@ -248,7 +270,6 @@ export default function ProfilePage() {
       toast({ title: "Couldn't read image", description: "Try a different photo", variant: "destructive" });
     };
     img.src = URL.createObjectURL(file);
-    // Reset input so same file can be re-selected
     e.target.value = "";
   };
 
