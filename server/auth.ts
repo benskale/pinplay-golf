@@ -536,19 +536,31 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Upload avatar image
-  app.post("/api/auth/avatar", async (req, res) => {
+  // Upload avatar image — accepts binary JPEG directly in body (avoids WAF blocking base64 in JSON)
+  app.post("/api/auth/avatar", express.raw({ type: "image/*", limit: "2mb" }), async (req, res) => {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     try {
-      const { image } = req.body; // raw base64 (prefix stripped by client to avoid WAF blocks)
+      const userId = (req.user as User).id;
+      const rawBody = req.body;
+
+      // If it's a Buffer from express.raw, convert to base64 data URL
+      if (Buffer.isBuffer(rawBody) && rawBody.length > 0) {
+        if (rawBody.length > 2_000_000) return res.status(400).json({ message: "Image too large (max ~2MB)" });
+        const base64 = rawBody.toString("base64");
+        const avatarUrl = `data:image/jpeg;base64,${base64}`;
+        const updated = await storage.updateUser(userId, { avatarUrl });
+        if (!updated) return res.status(404).json({ message: "User not found" });
+        return res.json(sanitizeUser(updated));
+      }
+
+      // Legacy JSON format fallback
+      const { image } = req.body;
       if (!image || typeof image !== "string") return res.status(400).json({ message: "Image data required" });
-      // Limit to ~2MB base64 (~1.5MB image)
       if (image.length > 2_700_000) return res.status(400).json({ message: "Image too large (max ~2MB)" });
-      // Reconstruct data URL for storage/display
       const avatarUrl = image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`;
-      const updated = await storage.updateUser((req.user as User).id, { avatarUrl });
+      const updated = await storage.updateUser(userId, { avatarUrl });
       if (!updated) return res.status(404).json({ message: "User not found" });
-      res.json(sanitizeUser(updated));
+      return res.json(sanitizeUser(updated));
     } catch (err) {
       console.error("Avatar upload error:", err);
       res.status(500).json({ message: "Failed to save avatar" });
