@@ -540,11 +540,13 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/avatar", async (req, res) => {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     try {
-      const { image } = req.body; // base64 data URL
+      const { image } = req.body; // raw base64 (prefix stripped by client to avoid WAF blocks)
       if (!image || typeof image !== "string") return res.status(400).json({ message: "Image data required" });
       // Limit to ~2MB base64 (~1.5MB image)
       if (image.length > 2_700_000) return res.status(400).json({ message: "Image too large (max ~2MB)" });
-      const updated = await storage.updateUser((req.user as User).id, { avatarUrl: image });
+      // Reconstruct data URL for storage/display
+      const avatarUrl = image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`;
+      const updated = await storage.updateUser((req.user as User).id, { avatarUrl });
       if (!updated) return res.status(404).json({ message: "User not found" });
       res.json(sanitizeUser(updated));
     } catch (err) {

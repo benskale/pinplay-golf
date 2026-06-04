@@ -115,7 +115,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const uploadAvatarMutation = useMutation<AuthUser, Error, string>({
     mutationFn: async (imageDataUrl: string) => {
-      const res = await apiRequest("POST", "/api/auth/avatar", { image: imageDataUrl });
+      // Strip data URL prefix to avoid WAF/Cloudflare blocking — send raw base64 only
+      const base64 = imageDataUrl.replace(/^data:image\/[^;]+;base64,/, "");
+      const res = await apiRequest("POST", "/api/auth/avatar", { image: base64 });
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
       return res.json();
     },
