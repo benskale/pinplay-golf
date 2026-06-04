@@ -200,20 +200,45 @@ export default function ProfilePage() {
     logoutMutation.mutate(undefined, { onSuccess: () => setLocation("/") });
   };
 
+  const resizeAvatarDataUrl = (dataUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const SIZE = 256;
+          const canvas = document.createElement("canvas");
+          canvas.width = SIZE;
+          canvas.height = SIZE;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(dataUrl); return; }
+          const scale = Math.max(SIZE / img.width, SIZE / img.height);
+          const sw = SIZE / scale;
+          const sh = SIZE / scale;
+          const sx = (img.width - sw) / 2;
+          const sy = (img.height - sh) / 2;
+          ctx.drawImage(img, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        } catch { resolve(dataUrl); }
+      };
+      img.onerror = () => reject(new Error("Couldn't process image"));
+      img.src = dataUrl;
+    });
+  };
+
   const handleAvatarClick = async () => {
     if (isNative()) {
       // Use Capacitor Camera plugin for native iOS/Android image picker
       try {
         const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
         const photo = await Camera.getPhoto({
-          quality: 85,
+          quality: 80,
           allowEditing: true,
           resultType: CameraResultType.DataUrl,
           source: CameraSource.Photos,
-          width: 256,
-          height: 256,
         });
-        uploadAvatarMutation.mutate(photo.dataUrl!);
+        // Resize to 256x256 to keep payload small (~15-30KB vs potentially several MB)
+        const resized = await resizeAvatarDataUrl(photo.dataUrl!);
+        uploadAvatarMutation.mutate(resized);
       } catch (err: any) {
         // User cancelled or camera unavailable — silently ignore
         if (err?.message?.includes("cancelled") || err?.message?.includes("User cancelled")) return;
@@ -237,39 +262,19 @@ export default function ProfilePage() {
       toast({ title: "Too large", description: "Max 10MB", variant: "destructive" });
       return;
     }
-    // Resize to 256x256 avatar using canvas — keeps base64 to ~15-30KB
-    const img = new Image();
-    img.onload = () => {
+    const reader = new FileReader();
+    reader.onload = async () => {
       try {
-        const SIZE = 256;
-        const canvas = document.createElement("canvas");
-        canvas.width = SIZE;
-        canvas.height = SIZE;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          sendAvatarRaw(file);
-          URL.revokeObjectURL(img.src);
-          return;
-        }
-        // Center-crop to square
-        const scale = Math.max(SIZE / img.width, SIZE / img.height);
-        const sw = SIZE / scale;
-        const sh = SIZE / scale;
-        const sx = (img.width - sw) / 2;
-        const sy = (img.height - sh) / 2;
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-        uploadAvatarMutation.mutate(dataUrl);
-        URL.revokeObjectURL(img.src);
+        const resized = await resizeAvatarDataUrl(reader.result as string);
+        uploadAvatarMutation.mutate(resized);
       } catch {
         sendAvatarRaw(file);
-        URL.revokeObjectURL(img.src);
       }
     };
-    img.onerror = () => {
+    reader.onerror = () => {
       toast({ title: "Couldn't read image", description: "Try a different photo", variant: "destructive" });
     };
-    img.src = URL.createObjectURL(file);
+    reader.readAsDataURL(file);
     e.target.value = "";
   };
 
