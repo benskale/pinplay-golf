@@ -139,9 +139,11 @@ export default function AuthPage() {
                 if (isNative()) {
                   // Native Capacitor flow — use Apple Sign In plugin
                   try {
-                    const { SignInWithApple } = await import("@nicolo-ribaudo/capacitor-sign-in-with-apple");
+                    const { SignInWithApple } = await import("@capacitor-community/apple-sign-in");
                     const result = await SignInWithApple.authorize({
-                      scopes: ["name", "email"],
+                      clientId: "com.silverspringsventures.pinplay",
+                      redirectURI: "https://pinplay.golf",
+                      scopes: "email name",
                     });
                     // Send identity token to native endpoint
                     const res = await fetch("/api/auth/apple/native", {
