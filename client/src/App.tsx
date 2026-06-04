@@ -9,6 +9,7 @@ import Game from "@/pages/game";
 import AuthPage from "@/pages/auth";
 import ProfilePage from "@/pages/profile";
 import PrivacyPage from "@/pages/privacy";
+import SupportPage from "@/pages/support";
 import TermsPage from "@/pages/terms";
 import TournamentPage from "@/pages/tournament";
 import CreateTournamentPage from "@/pages/create-tournament";
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/profile" component={ProfilePage} />
       <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/support" component={SupportPage} />
       <Route path="/terms" component={TermsPage} />
       <Route path="/tournament/create" component={CreateTournamentPage} />
       <Route path="/tournament/:id" component={TournamentPage} />

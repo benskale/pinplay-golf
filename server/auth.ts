@@ -341,6 +341,23 @@ export function setupAuth(app: Express) {
     });
   });
 
+  // Delete account (GDPR / App Store requirement)
+  app.delete("/api/auth/account", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
+    try {
+      const userId = (req.user as User).id;
+      const deleted = await storage.deleteUser(userId);
+      if (!deleted) return res.status(404).json({ message: "User not found" });
+      req.logout((err) => {
+        if (err) console.error("Logout after delete error:", err);
+        res.json({ message: "Account deleted" });
+      });
+    } catch (err) {
+      console.error("Delete account error:", err);
+      res.status(500).json({ message: "Failed to delete account" });
+    }
+  });
+
   // Upload avatar image
   app.post("/api/auth/avatar", async (req, res) => {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });

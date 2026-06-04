@@ -30,6 +30,7 @@ type AuthContextType = {
   updateProfileMutation: UseMutationResult<AuthUser, Error, ProfileData>;
   uploadAvatarMutation: UseMutationResult<AuthUser, Error, string>;
   logoutMutation: UseMutationResult<void, Error, void>;
+  deleteAccountMutation: UseMutationResult<void, Error, void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -137,12 +138,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onError: (err) => toast({ title: "Logout failed", description: err.message, variant: "destructive" }),
   });
 
+  const deleteAccountMutation = useMutation<void, Error, void>({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/auth/account");
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+    },
+    onSuccess: () => {
+      queryClient.setQueryData(["/api/auth/user"], null);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth"] });
+      toast({ title: "Account deleted", description: "Your account and data have been permanently removed." });
+    },
+    onError: (err) => toast({ title: "Couldn't delete account", description: err.message, variant: "destructive" }),
+  });
+
   return (
     <AuthContext.Provider value={{
       user, isLoading,
       registerMutation, loginMutation,
       sendOtpMutation, verifyOtpMutation,
-      updateProfileMutation, uploadAvatarMutation, logoutMutation,
+      updateProfileMutation, uploadAvatarMutation, logoutMutation, deleteAccountMutation,
     }}>
       {children}
     </AuthContext.Provider>

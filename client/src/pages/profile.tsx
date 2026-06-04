@@ -46,7 +46,7 @@ interface CourseResult {
 
 export default function ProfilePage() {
   const [, setLocation] = useLocation();
-  const { user, isLoading, updateProfileMutation, uploadAvatarMutation, logoutMutation } = useAuth();
+  const { user, isLoading, updateProfileMutation, uploadAvatarMutation, logoutMutation, deleteAccountMutation } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -213,23 +213,36 @@ export default function ProfilePage() {
       return;
     }
     // Resize to 256x256 avatar using canvas — keeps base64 to ~15-30KB
+    // Fallback to raw FileReader if canvas fails (WKWebView on iPadOS)
     const img = new Image();
     img.onload = () => {
-      const SIZE = 256;
-      const canvas = document.createElement("canvas");
-      canvas.width = SIZE;
-      canvas.height = SIZE;
-      const ctx = canvas.getContext("2d")!;
-      // Center-crop to square
-      const scale = Math.max(SIZE / img.width, SIZE / img.height);
-      const sw = SIZE / scale;
-      const sh = SIZE / scale;
-      const sx = (img.width - sw) / 2;
-      const sy = (img.height - sh) / 2;
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-      uploadAvatarMutation.mutate(dataUrl);
-      URL.revokeObjectURL(img.src);
+      try {
+        const SIZE = 256;
+        const canvas = document.createElement("canvas");
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          // Canvas not supported — fallback to FileReader
+          sendAvatarRaw(file);
+          URL.revokeObjectURL(img.src);
+          return;
+        }
+        // Center-crop to square
+        const scale = Math.max(SIZE / img.width, SIZE / img.height);
+        const sw = SIZE / scale;
+        const sh = SIZE / scale;
+        const sx = (img.width - sw) / 2;
+        const sy = (img.height - sh) / 2;
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        uploadAvatarMutation.mutate(dataUrl);
+        URL.revokeObjectURL(img.src);
+      } catch {
+        // Canvas failed — fallback to FileReader base64
+        sendAvatarRaw(file);
+        URL.revokeObjectURL(img.src);
+      }
     };
     img.onerror = () => {
       toast({ title: "Couldn't read image", description: "Try a different photo", variant: "destructive" });
@@ -237,6 +250,19 @@ export default function ProfilePage() {
     img.src = URL.createObjectURL(file);
     // Reset input so same file can be re-selected
     e.target.value = "";
+  };
+
+  // Fallback: send raw file as base64 when canvas is unavailable (iPad WKWebView)
+  const sendAvatarRaw = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      uploadAvatarMutation.mutate(dataUrl);
+    };
+    reader.onerror = () => {
+      toast({ title: "Couldn't read image", description: "Try a different photo", variant: "destructive" });
+    };
+    reader.readAsDataURL(file);
   };
 
   const getInitials = (n: string) => n.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2);
@@ -720,6 +746,29 @@ export default function ProfilePage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Delete Account */}
+        {user && (
+          <div className="mt-6 max-w-sm mx-auto pb-8">
+            <button
+              onClick={() => {
+                if (confirm("This will permanently delete your account and all personal data. This cannot be undone.\n\nAre you sure?")) {
+                  deleteAccountMutation.mutate(undefined, {
+                    onSuccess: () => setLocation("/"),
+                  });
+                }
+              }}
+              disabled={deleteAccountMutation.isPending}
+              className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors font-medium text-sm"
+            >
+              <Trash2 className="w-4 h-4" />
+              {deleteAccountMutation.isPending ? "Deleting account..." : "Delete Account"}
+            </button>
+            <p className="text-center text-xs text-gray-400 mt-2">
+              Permanently removes your profile, favorites, and personal data. Game scores are preserved for other players.
+            </p>
+          </div>
+        )}
       </main>
     </div>
   );

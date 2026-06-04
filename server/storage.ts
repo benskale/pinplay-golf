@@ -65,6 +65,9 @@ export interface IStorage {
 
   // Session store
   sessionStore: session.Store;
+
+  // Account deletion
+  deleteUser(id: number): Promise<boolean>;
 }
 
 // ── DatabaseStorage ───────────────────────────────────────────────────────────
@@ -543,6 +546,32 @@ export class DatabaseStorage implements IStorage {
       .set({ status })
       .where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
   }
+
+  // Account deletion ────────────────────────────────────────────────────────
+
+  async deleteUser(id: number): Promise<boolean> {
+    await db.transaction(async (tx) => {
+      // 1. Delete favorites where user is the favoriter OR the favorite target
+      await tx.delete(favorites).where(eq(favorites.userId, id));
+      await tx.delete(favorites).where(eq(favorites.favoriteUserId, id));
+
+      // 2. Delete oauth_accounts rows
+      await tx.delete(oauthAccounts).where(eq(oauthAccounts.userId, id));
+
+      // 3. Delete tournament_players rows (leave tournaments themselves)
+      await tx.delete(tournamentPlayers).where(eq(tournamentPlayers.userId, id));
+
+      // 4. Set games created by user to have userId = null (preserve other players' data)
+      await tx.update(games).set({ userId: null }).where(eq(games.userId, id));
+
+      // 5. Finally delete the user row
+      const result = await tx.delete(users).where(eq(users.id, id));
+      if ((result.rowCount ?? 0) === 0) {
+        throw new Error("User not found");
+      }
+    });
+    return true;
+  }
 }
 
 // ── Fallback in-memory (games only, no user persistence) ─────────────────────
@@ -725,6 +754,11 @@ export class MemStorage implements IStorage {
   async getTournamentsByUser(userId: number): Promise<(Tournament & { playerCount: number })[]> { return []; }
   async getTournamentsByCreator(userId: number): Promise<Tournament[]> { return []; }
   async updateTournamentPlayerStatus(tournamentId: string, userId: number, status: string): Promise<void> {}
+
+  async deleteUser(id: number): Promise<boolean> {
+    this.userMap.delete(id);
+    return true;
+  }
 }
 
 // ── Export singleton ──────────────────────────────────────────────────────────
