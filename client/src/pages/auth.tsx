@@ -191,21 +191,7 @@ export default function AuthPage() {
               <div className="relative flex justify-center"><span className="bg-background px-3 text-xs text-gray-400 uppercase tracking-wider">or</span></div>
             </div>
 
-            <button
-              onClick={() => setMode("phone-send")}
-              className="w-full flex items-center justify-between p-4 rounded-2xl border-2 border-gray-200 dark:border-gray-700 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-950/30 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center">
-                  <Phone className="w-5 h-5 text-primary-700 dark:text-primary-400" />
-                </div>
-                <div className="text-left">
-                  <p className="font-semibold text-gray-900 dark:text-white text-sm">Continue with Phone</p>
-                  <p className="text-xs text-gray-500">Get a code via SMS</p>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            </button>
+            {/* Phone auth hidden — requires Twilio SMS integration */}
 
             <button
               onClick={() => setMode("email-login")}
