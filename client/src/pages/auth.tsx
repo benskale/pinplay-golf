@@ -8,9 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Mail, Phone, Eye, EyesOff, ArrowLeft, ChevronRight } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
+import { registerPlugin } from "@capacitor/core";
 
 // Detect Capacitor native environment
 const isNative = () => !!(window as any).Capacitor?.isNativePlatform?.();
+
+// Lazy-init the Apple Sign In plugin (only works in native Capacitor WebView)
+let _applePlugin: any = null;
+const getApplePlugin = () => {
+  if (!_applePlugin && isNative()) {
+    _applePlugin = registerPlugin("SignInWithApple");
+  }
+  return _applePlugin;
+};
 
 type Mode = "choose" | "email-login" | "email-register" | "phone-send" | "phone-verify" | "phone-name";
 
@@ -138,10 +148,11 @@ export default function AuthPage() {
               onClick={async () => {
                 if (isNative()) {
                   try {
-                    // Use Capacitor's injected runtime to call the native Apple Sign In plugin
-                    // registerPlugin is always available in the WebView — no npm package needed
-                    const cap = (window as any).Capacitor;
-                    const applePlugin = cap.registerPlugin("SignInWithApple");
+                    const applePlugin = getApplePlugin();
+                    if (!applePlugin) {
+                      toast({ title: "Apple Sign In unavailable", description: "Could not initialize plugin", variant: "destructive" });
+                      return;
+                    }
                     const result = await applePlugin.authorize({
                       clientId: "com.silverspringsventures.pinplay",
                       redirectURI: "https://pinplay.golf",
