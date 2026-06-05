@@ -11,17 +11,6 @@ import { FcGoogle } from "react-icons/fc";
 // Detect Capacitor native environment
 const isNative = () => !!(window as any).Capacitor?.isNativePlatform?.();
 
-// Lazy-init the Apple Sign In plugin (only works in native Capacitor WebView)
-// Uses Capacitor.Plugins directly — registerPlugin is unavailable when loading a remote URL via server.url
-let _applePlugin: any = null;
-const getApplePlugin = () => {
-  if (!_applePlugin && isNative()) {
-    const Cap = (window as any).Capacitor;
-    _applePlugin = Cap?.Plugins?.SignInWithApple;
-  }
-  return _applePlugin;
-};
-
 type Mode = "choose" | "email-login" | "email-register" | "phone-send" | "phone-verify" | "phone-name";
 
 export default function AuthPage() {
@@ -148,12 +137,8 @@ export default function AuthPage() {
               onClick={async () => {
                 if (isNative()) {
                   try {
-                    const applePlugin = getApplePlugin();
-                    if (!applePlugin) {
-                      toast({ title: "Apple Sign In unavailable", description: "Could not initialize plugin", variant: "destructive" });
-                      return;
-                    }
-                    const result = await applePlugin.authorize({
+                    const { SignInWithApple } = await import("@capacitor-community/apple-sign-in");
+                    const result = await SignInWithApple.authorize({
                       clientId: "com.silverspringsventures.pinplay",
                       redirectURI: "https://pinplay.golf",
                       scopes: "email name",
