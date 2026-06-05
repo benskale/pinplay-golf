@@ -227,9 +227,12 @@ export default function ProfilePage() {
 
   const handleAvatarClick = async () => {
     if (isNative()) {
-      // Use Capacitor Camera plugin for native iOS/Android image picker
+      // Try Capacitor Camera plugin for native image picker
       try {
-        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+        const cameraModule = await import("@capacitor/camera");
+        const Camera = cameraModule.Camera;
+        const CameraResultType = cameraModule.CameraResultType;
+        const CameraSource = cameraModule.CameraSource;
         const photo = await Camera.getPhoto({
           quality: 80,
           allowEditing: true,
@@ -240,10 +243,11 @@ export default function ProfilePage() {
         const resized = await resizeAvatarDataUrl(photo.dataUrl!);
         uploadAvatarMutation.mutate(resized);
       } catch (err: any) {
-        // User cancelled or camera unavailable — silently ignore
+        // User cancelled — silently ignore
         if (err?.message?.includes("cancelled") || err?.message?.includes("User cancelled")) return;
-        console.error("Camera error:", err);
-        toast({ title: "Couldn't pick photo", description: "Try again", variant: "destructive" });
+        // Camera plugin not available — fall back to file input (works in WKWebView on iPad)
+        console.warn("Camera plugin unavailable, falling back to file input:", err);
+        fileInputRef.current?.click();
       }
     } else {
       // Web — use file input
