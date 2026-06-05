@@ -8,16 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Mail, Phone, Eye, EyesOff, ArrowLeft, ChevronRight } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
-import { registerPlugin } from "@capacitor/core";
-
 // Detect Capacitor native environment
 const isNative = () => !!(window as any).Capacitor?.isNativePlatform?.();
 
 // Lazy-init the Apple Sign In plugin (only works in native Capacitor WebView)
+// Uses Capacitor.Plugins directly — registerPlugin is unavailable when loading a remote URL via server.url
 let _applePlugin: any = null;
 const getApplePlugin = () => {
   if (!_applePlugin && isNative()) {
-    _applePlugin = registerPlugin("SignInWithApple");
+    const Cap = (window as any).Capacitor;
+    _applePlugin = Cap?.Plugins?.SignInWithApple;
   }
   return _applePlugin;
 };
