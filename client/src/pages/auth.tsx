@@ -137,15 +137,16 @@ export default function AuthPage() {
             <button
               onClick={async () => {
                 if (isNative()) {
-                  // Native Capacitor flow — use Apple Sign In plugin
                   try {
-                    const { SignInWithApple } = await import("@/lib/capacitor-apple-sign-in");
-                    const result = await SignInWithApple.authorize({
+                    // Use Capacitor's injected runtime to call the native Apple Sign In plugin
+                    // registerPlugin is always available in the WebView — no npm package needed
+                    const cap = (window as any).Capacitor;
+                    const applePlugin = cap.registerPlugin("SignInWithApple");
+                    const result = await applePlugin.authorize({
                       clientId: "com.silverspringsventures.pinplay",
                       redirectURI: "https://pinplay.golf",
                       scopes: "email name",
                     });
-                    // Send identity token to native endpoint
                     const res = await fetch("/api/auth/apple/native", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
@@ -166,12 +167,10 @@ export default function AuthPage() {
                     queryClient.setQueryData(["/api/auth/user"], user);
                     toast({ title: `Welcome, ${user.name}!` });
                     setLocation("/");
-                  } catch {
-                    // Fallback to web flow if plugin not available
-                    toast({ title: "Apple Sign In", description: "Available in the iOS app", variant: "default" });
+                  } catch (e: any) {
+                    toast({ title: "Apple sign in failed", description: e?.message || "Unknown error", variant: "destructive" });
                   }
                 } else {
-                  // Web flow
                   toast({ title: "Apple Sign In", description: "Available in the iOS app", variant: "default" });
                 }
               }}
