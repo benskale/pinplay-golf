@@ -12,6 +12,7 @@ import PinPlayLogo from "@/components/logo";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
 import type { Game } from "@shared/schema";
+import { trackGame, untrackGame } from "@/lib/game-recovery";
 
 interface GameParams {
   gameId: string;
@@ -57,6 +58,21 @@ export default function Game() {
       setShowPlayerPicker(true);
     }
   }, [!!currentGame, myPlayer]);
+
+  // Track game in localStorage for guest recovery
+  useEffect(() => {
+    if (currentGame && currentGame.active && gameId) {
+      trackGame({
+        id: gameId,
+        gameType: currentGame.gameType,
+        courseName: currentGame.courseName || "",
+        playerCount: currentGame.players.length,
+      });
+    }
+    if (currentGame && !currentGame.active && gameId) {
+      untrackGame(gameId);
+    }
+  }, [!!currentGame, currentGame?.active, gameId]);
 
   const handleSelectPlayer = (name: string) => {
     setMyPlayer(name);

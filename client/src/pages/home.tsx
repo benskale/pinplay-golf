@@ -7,6 +7,7 @@ import { User, Play, ChevronRight, Trophy, ArrowRight, Clock } from "lucide-reac
 import { useState, useEffect } from "react";
 import type { Game } from "@shared/schema";
 import { GAME_DEFINITIONS } from "@/lib/game-logic";
+import { resolveTrackedGames } from "@/lib/game-recovery";
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -49,6 +50,17 @@ export default function Home() {
   const activeGames = myGames.filter(g => g.active);
   const completedGames = myGames.filter(g => !g.active);
   const mostRecentActive = activeGames.length > 0 ? activeGames[0] : null;
+
+  // Guest game recovery - check localStorage for active games
+  const { data: guestGames = [] } = useQuery<Game[]>({
+    queryKey: ["guest-games"],
+    queryFn: resolveTrackedGames,
+    staleTime: 10_000,
+  });
+
+  // For guests (not logged in), use recovered games
+  const guestActiveGames = user ? [] : guestGames.filter(g => g.active);
+  const guestMostRecent = guestActiveGames.length > 0 ? guestActiveGames[0] : null;
 
   return (
     <div className="min-h-screen bg-background font-sans">
@@ -93,10 +105,12 @@ export default function Home() {
       <main className="max-w-md mx-auto px-4 pb-24 -mt-1">
 
         {/* ── Continue Round Banner (prominent CTA) ── */}
-        {mostRecentActive && (
+        {(mostRecentActive || guestMostRecent) && (() => {
+          const game = mostRecentActive || guestMostRecent!;
+          return (
           <div className="mb-5 -mt-1">
             <button
-              onClick={() => setLocation(`/game/${mostRecentActive.id}`)}
+              onClick={() => setLocation(`/game/${game.id}`)}
               className="w-full p-4 rounded-2xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg border-2 border-green-400/50 dark:border-green-600/40"
               style={{ background: "linear-gradient(135deg, #065f46 0%, #064e3b 100%)" }}
             >
@@ -111,9 +125,9 @@ export default function Home() {
                       <span className="text-sm font-bold text-white">Continue Your Round</span>
                     </div>
                     <p className="text-xs text-green-200/80 mt-0.5">
-                      {GAME_DEFINITIONS[mostRecentActive.gameType]?.name ?? mostRecentActive.gameType}
-                      {mostRecentActive.courseName ? ` · ${mostRecentActive.courseName}` : ""}
-                      {" · Hole "}{mostRecentActive.currentHole}
+                      {GAME_DEFINITIONS[game.gameType]?.name ?? game.gameType}
+                      {game.courseName ? ` · ${game.courseName}` : ""}
+                      {" · Hole "}{game.currentHole}
                     </p>
                   </div>
                 </div>
@@ -121,19 +135,20 @@ export default function Home() {
               </div>
             </button>
           </div>
-        )}
+          );
+        })()}
 
         {/* Active Games (show remaining ones if multiple) */}
-        {activeGames.length > 1 && (
+        {(activeGames.length > 1 || guestActiveGames.length > 1) && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
               <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                {mostRecentActive ? "Other Active Games" : "Active Games"}
+                {(mostRecentActive || guestMostRecent) ? "Other Active Games" : "Active Games"}
               </h2>
             </div>
             <div className="space-y-2">
-              {activeGames.filter(g => g !== mostRecentActive).map(game => {
+              {[...activeGames.filter(g => g !== mostRecentActive), ...guestActiveGames.filter(g => g !== guestMostRecent)].map(game => {
                 const gameDef = GAME_DEFINITIONS[game.gameType];
                 const holesPlayed = game.holeHistory?.length ?? 0;
                 return (

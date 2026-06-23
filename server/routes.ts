@@ -308,6 +308,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Resolve multiple game IDs (for guest game recovery)
+  // Returns only active (non-completed) games the caller has access to.
+  app.post("/api/games/resolve", async (req, res) => {
+    try {
+      const ids: string[] = Array.isArray(req.body.ids) ? req.body.ids : [];
+      if (ids.length === 0) return res.json({ games: [] });
+      // Cap to prevent abuse
+      const capped = ids.slice(0, 20);
+      const found = await storage.getGamesByIds(capped);
+      // Only return active games
+      const activeGames = found
+        .filter(g => g.active !== false)
+        .map(g => fixStrokes(g));
+      res.json({ games: activeGames });
+    } catch (error) {
+      console.error("games/resolve error:", error);
+      res.status(500).json({ message: "Failed to resolve games" });
+    }
+  });
+
   // Delete game (only the creator can delete)
   app.delete("/api/games/:id", async (req, res) => {
     try {
@@ -791,10 +811,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   wss.on("connection", (ws) => {
     let currentGameId: string | null = null;
     let currentTournamentId: string | null = null;
+    (ws as any)._isAlive = true;
 
+    // ── Heartbeat / keepalive ──────────────────────────────────────────────
+    // On each pong, mark alive. The interval below pings and terminates dead sockets.
+    ws.on("pong", () => { (ws as any)._isAlive = true; });
+
+    // Application-level ping/pong (works through proxies that strip WS control frames)
     ws.on("message", async (data) => {
       try {
         const message = wsMessageSchema.parse(JSON.parse(data.toString()));
+
+        if (message.type === "ping") {
+          ws.send(JSON.stringify({ type: "pong" }));
+          return;
+        }
+        if (message.type === "pong") {
+          (ws as any)._isAlive = true;
+          return;
+        }
 
         switch (message.type) {
           case "join_game": {
@@ -913,6 +948,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (currentTournamentId) leaveTournamentRoom(currentTournamentId, ws);
     });
   });
+
+  // ── Server-side keepalive interval ─────────────────────────────────────
+  // Ping every 30s. If no pong comes back by next interval, terminate.
+  const keepalive = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      const ext = ws as WebSocket & { _isAlive?: boolean };
+      if (ext._isAlive === false) {
+        ws.terminate();
+        return;
+      }
+      ext._isAlive = false;
+      ws.ping();
+      // Also send app-level ping (redundant but survives proxies)
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ping" }));
+      }
+    });
+  }, 30_000);
+
+  wss.on("close", () => clearInterval(keepalive));
 
   function joinGame(gameId: string, ws: WebSocket) {
     if (!gameConnections.has(gameId)) gameConnections.set(gameId, new Set());

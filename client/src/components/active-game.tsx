@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import {
   getTeams, GAME_DEFINITIONS, MINI_GAME_DEFINITIONS, isLowerBetter, getStrokesReceivedOnHole, getStrokeHoles
 } from "@/lib/game-logic";
 import type { Game } from "@shared/schema";
+import { trackGame, completeGame as untrackGame } from "@/lib/game-recovery";
 
 interface ActiveGameProps {
   game: Game;
@@ -83,6 +84,24 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   const [editHoleNumber, setEditHoleNumber] = useState<number | null>(null);
 
   const { toast } = useToast();
+
+  // Track game in localStorage for guest recovery
+  useEffect(() => {
+    if (!game?.id) return;
+    if (game.active === false) {
+      // Game completed — remove from tracking
+      untrackGame(game.id);
+    } else {
+      trackGame({
+        id: game.id,
+        gameType: game.gameType,
+        players: game.players,
+        courseName: game.courseName ?? "",
+        currentHole: game.currentHole ?? 1,
+        active: true,
+      });
+    }
+  }, [game?.id, game?.currentHole, game?.active]);
 
   if (!game?.players?.length) {
     return <div className="flex items-center justify-center h-screen"><p className="text-gray-500">Loading...</p></div>;

@@ -148,6 +148,7 @@ export const games = pgTable("games", {
   }>>().notNull().default([]),
   active: boolean("active").notNull().default(true),
   miniGames: jsonb("mini_games").$type<Record<string, { enabled: boolean; value: number }>>().notNull().default({}),
+  gameSettings: jsonb("game_settings").$type<Record<string, any>>().notNull().default({}),
   tournamentId: varchar("tournament_id").references(() => tournaments.id),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
@@ -226,6 +227,8 @@ export const wsMessageSchema = z.union([
     holeNumber: z.number().int().min(1).max(18),
     newStrokes: z.record(z.string(), z.number()),
   }),
+  z.object({ type: z.literal("ping") }),
+  z.object({ type: z.literal("pong") }),
   z.object({ type: z.literal("game_updated"), game: z.any() }),
   // Tournament WebSocket messages
   z.object({ type: z.literal("join_tournament"), tournamentId: z.string() }),

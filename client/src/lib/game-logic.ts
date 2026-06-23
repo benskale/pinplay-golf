@@ -6,11 +6,13 @@ export interface GameDef {
   id: string;
   name: string;
   description: string;
+  detailedDescription?: string;  // expanded "How to Play" text shown in UI
   playerCounts: number[];
   isTeamGame: boolean; // requires team assignment in setup
   needsHandicap: boolean;
   carryover: boolean; // skins-style carryover option
   specialInputs?: string[]; // extra per-hole inputs needed beyond strokes
+  customizable?: boolean;  // game supports custom settings (point values, etc.)
 }
 
 // ─── Mini-Game Definitions ────────────────────────────────────────────────────
@@ -100,21 +102,25 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   match_play: {
     id: "match_play", name: "Match Play", playerCounts: [2],
     description: "Hole-by-hole win/loss. Each hole is worth 1 point. Lower net score wins.",
+    detailedDescription: "Each hole is a separate contest worth 1 point. The player with the lower net score (after handicap strokes) wins the hole. If scores are tied, the hole is halved (no points). The match is won when one player is ahead by more holes than remain. Handicap strokes are applied on the hardest holes based on your course's stroke index.",
     isTeamGame: false, needsHandicap: true, carryover: false,
   },
   stroke_play: {
     id: "stroke_play", name: "Stroke Play", playerCounts: [2, 3, 4],
     description: "Total strokes for the round. Lowest score wins.",
+    detailedDescription: "The classic format: count every stroke for the entire round. Lowest total gross score wins. No handicaps applied in this format - it's pure golf. Simple and straightforward.",
     isTeamGame: false, needsHandicap: false, carryover: false,
   },
   nassau: {
     id: "nassau", name: "Nassau", playerCounts: [2],
     description: "Three separate match-play bets: front 9, back 9, and total 18.",
+    detailedDescription: "Three bets in one round: (1) Front 9 match play, (2) Back 9 match play, (3) Overall 18 match play. Each is a separate contest worth 1 unit. The 'press' is a common Nassau side bet that starts a new bet when one player is dormie or loses. Track all three bets simultaneously.",
     isTeamGame: false, needsHandicap: true, carryover: false,
   },
   skins: {
     id: "skins", name: "Skins", playerCounts: [2, 3, 4],
     description: "Lowest score wins the hole outright. Ties carry the skin to the next hole.",
+    detailedDescription: "Every hole is worth a 'skin' (1 point). To win a skin, you must have the lowest score outright - ties don't count. If two or more players tie for the low score, the skin carries over to the next hole, making it worth 2 skins. Carries can accumulate across multiple holes, creating big payouts. The pressure builds with each carryover hole.",
     isTeamGame: false, needsHandicap: false, carryover: true,
   },
   alternate_shot: {
@@ -136,7 +142,8 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   wolf_3: {
     id: "wolf_3", name: "Wolf (3-player)", playerCounts: [3],
     description: "Wolf rotates each hole. Wolf goes alone (+2) or picks partner (+1 each).",
-    isTeamGame: false, needsHandicap: false, carryover: false,
+    detailedDescription: "The Wolf rotates each hole. After everyone tees off, the Wolf decides: go solo against both other players (win 2 pts, lose 2 pts) or pick one player as partner (win 1 pt each, lose 1 pt each). Going solo doubles the stakes. The Wolf can also choose 'Blind Wolf' - declaring solo before anyone tees off, which is worth 3 pts.",
+    isTeamGame: false, needsHandicap: false, carryover: false, customizable: true,
   },
   sixes: {
     id: "sixes", name: "Sixes / Round Robin", playerCounts: [3],
@@ -156,6 +163,7 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   nine_point: {
     id: "nine_point", name: "9-Point", playerCounts: [3],
     description: "9 points per hole split by finish: 1st=5pts, 2nd=3pts, 3rd=1pt. Ties split the combined points.",
+    detailedDescription: "Every hole is worth exactly 9 points. The player with the lowest score gets 5 points, 2nd gets 3 points, 3rd gets 1 point. If two players tie, they split the combined points (e.g. tie for 1st = 4pts each). If all three tie, everyone gets 3 points. The points always add up to 9. Great equalizer - every hole matters.",
     isTeamGame: false, needsHandicap: false, carryover: false,
   },
   bingo_bango_bongo: {
@@ -168,11 +176,13 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   best_ball_4: {
     id: "best_ball_4", name: "Best Ball (2v2)", playerCounts: [4],
     description: "Two teams of two. Best score from each team counts per hole. Match play format.",
+    detailedDescription: "Two teams of two players. Everyone plays their own ball the entire hole. The best (lowest) net score from each team counts. Those two scores are compared match-play style - lower net score wins the hole for that team. Handicap strokes apply based on each player's handicap.",
     isTeamGame: true, needsHandicap: true, carryover: false,
   },
   scramble: {
     id: "scramble", name: "Scramble", playerCounts: [4],
     description: "All hit, choose best shot, everyone plays from there. Two teams, enter one score each.",
+    detailedDescription: "The classic scramble format! Two teams of two. Everyone tees off, then the team picks the best shot and both players play their next shot from that spot. Repeat until the ball is holed. Enter one team score per hole. Strategy: mix safe and aggressive shots so you always have a good option.",
     isTeamGame: true, needsHandicap: false, carryover: false,
   },
   alternate_shot_4: {
@@ -198,7 +208,8 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   wolf: {
     id: "wolf", name: "Wolf", playerCounts: [4],
     description: "Rotating Wolf picks a partner or goes alone. Best ball vs best ball.",
-    isTeamGame: false, needsHandicap: false, carryover: false,
+    detailedDescription: "The most strategic 4-player game. Wolf rotates each hole. After each player tees off in turn order, the Wolf must decide before the next player hits: take the player as partner (2v2 best ball) or pass and go alone (1v3). Going solo pays 3x if you win, but costs 3x if you lose. 'Blind Wolf' lets the Wolf declare solo before anyone tees off for even bigger stakes. Best ball of each side is compared.",
+    isTeamGame: false, needsHandicap: false, carryover: false, customizable: true,
   },
   vegas: {
     id: "vegas", name: "Vegas", playerCounts: [4],
@@ -214,6 +225,7 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   stableford: {
     id: "stableford", name: "Quota / Stableford", playerCounts: [4],
     description: "Points per hole: Eagle=5, Birdie=4, Par=3, Bogey=2, Dbl Bogey=1, Worse=0. Quota = 36 minus handicap.",
+    detailedDescription: "Point-based scoring where higher is better. Each hole earns points based on your net score relative to par: Eagle (2-under) = 5pts, Birdie (1-under) = 4pts, Par = 3pts, Bogey (1-over) = 2pts, Double Bogey (2-over) = 1pt, Worse = 0. Your quota target = 36 minus your handicap. Beat your quota and you're in the money.",
     isTeamGame: false, needsHandicap: true, carryover: false,
   },
   dots_junk: {
@@ -312,6 +324,7 @@ export function calcHoleResult(
   extraMeta: Record<string, any> = {},
 ): HoleResult {
   const { players, handicaps, teams, gameType, holeHistory, tieCarryover } = game;
+  const settings = (game as any).gameSettings || {};
   const si = getStrokeIndexes(game);
   const deltas: Record<string, number> = {};
   players.forEach(p => { deltas[p] = 0; });
@@ -329,10 +342,12 @@ export function calcHoleResult(
 
       if (wolfDecision === "alone") {
         const bestOther = Math.min(...nonWolves.map(p => strokes[p]));
+        const winPts = settings.wolfWinAlone ?? 3;
+        const losePts = settings.wolfWinTeam ?? 1;
         if (wolfStr < bestOther) {
-          deltas[wolfPlayer] = 3;
+          deltas[wolfPlayer] = winPts;
         } else if (wolfStr > bestOther) {
-          nonWolves.forEach(p => { deltas[p] = 1; });
+          nonWolves.forEach(p => { deltas[p] = losePts; });
         }
       } else {
         const partner = wolfDecision;
@@ -340,10 +355,11 @@ export function calcHoleResult(
         const otherTeam = players.filter(p => !wolfTeam.includes(p));
         const wolfBest = Math.min(...wolfTeam.map(p => strokes[p]));
         const otherBest = Math.min(...otherTeam.map(p => strokes[p]));
+        const teamWinPts = settings.wolfWinTeam ?? 1;
         if (wolfBest < otherBest) {
-          wolfTeam.forEach(p => { deltas[p] = 1; });
+          wolfTeam.forEach(p => { deltas[p] = teamWinPts; });
         } else if (wolfBest > otherBest) {
-          otherTeam.forEach(p => { deltas[p] = 1; });
+          otherTeam.forEach(p => { deltas[p] = teamWinPts; });
         } else {
           // Best balls tied — use 2nd player from each team as tiebreaker
           const wolfSecond = wolfTeam.find(p => strokes[p] !== wolfBest) ?? wolfTeam[0];
@@ -380,21 +396,25 @@ export function calcHoleResult(
 
       if (wolfDecision === "alone") {
         const bestOther = Math.min(...nonWolves.map(p => strokes[p]));
+        const winPts = settings.wolfWinAlone ?? 2;
+        const losePts = settings.wolfWinTeam ?? 1;
         if (wolfStr < bestOther) {
-          deltas[wolfPlayer] = 2; // Wolf alone beats both
+          deltas[wolfPlayer] = winPts;
         } else {
-          nonWolves.forEach(p => { deltas[p] = 1; }); // Wolf alone loses
+          nonWolves.forEach(p => { deltas[p] = losePts; });
         }
       } else {
         const partner = wolfDecision;
         const lonePlayer = nonWolves.find(p => p !== partner)!;
         const wolfTeamBest = Math.min(strokes[wolfPlayer], strokes[partner]);
         const loneStr = strokes[lonePlayer];
+        const teamWinPts = settings.wolfWinTeam ?? 1;
+        const loneWinPts = settings.wolfWinAlone ?? 2;
         if (wolfTeamBest < loneStr) {
-          deltas[wolfPlayer] = 1;
-          deltas[partner] = 1;
+          deltas[wolfPlayer] = teamWinPts;
+          deltas[partner] = teamWinPts;
         } else if (wolfTeamBest > loneStr) {
-          deltas[lonePlayer] = 2;
+          deltas[lonePlayer] = loneWinPts;
         }
       }
 

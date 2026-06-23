@@ -11,6 +11,7 @@ import {
   Users, ChevronRight, ArrowLeft, Shuffle, UserCircle, Sparkles
 } from "lucide-react";
 import { getGamesForPlayerCount, getMiniGamesForSetup, type GameDef, type MiniGameDef } from "@/lib/game-logic";
+import { trackGame } from "@/lib/game-recovery";
 
 interface GameSetupProps {
   onGameCreated: (gameId: string) => void;
@@ -64,6 +65,8 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
   const [showSISetup, setShowSISetup] = useState(false);
   const [loadingCourse, setLoadingCourse] = useState(false);
   const [selectedMiniGames, setSelectedMiniGames] = useState<Record<string, { enabled: boolean; value: number }>>({});
+  const [expandedGameInfo, setExpandedGameInfo] = useState<string | null>(null);
+  const [gameSettings, setGameSettings] = useState<Record<string, any>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -256,7 +259,18 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
       const response = await apiRequest("POST", "/api/games", gameData);
       return response.json();
     },
-    onSuccess: (game) => { onGameCreated(game.id); },
+    onSuccess: (game) => {
+      // Track in localStorage for guest recovery
+      trackGame({
+        id: game.id,
+        gameType: game.gameType,
+        players: game.players,
+        courseName: game.courseName,
+        currentHole: 1,
+        active: true,
+      });
+      onGameCreated(game.id);
+    },
     onError: (error) => {
       toast({ title: "Error", description: (error as Error).message || "Failed to create game", variant: "destructive" });
     },
@@ -271,6 +285,8 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
 
   const handleSelectGame = (game: GameDef) => {
     setSelectedGame(game);
+    setGameSettings({});
+    setExpandedGameInfo(null);
     setStep("players");
     // Default team assignment for team games
     if (game.isTeamGame) {
@@ -328,6 +344,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
       pars,
       strokeIndexes: selectedGame?.needsHandicap ? strokeIndexes : Array.from({ length: 18 }, (_, i) => i + 1),
       miniGames: selectedMiniGames,
+      gameSettings: Object.keys(gameSettings).length > 0 ? gameSettings : {},
     });
   };
 
@@ -388,25 +405,50 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
         </div>
 
         {games.map(game => (
-          <button
-            key={game.id}
-            className="w-full flex items-center justify-between p-4 bg-card rounded-xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-card hover:shadow-card-hover"
-            onClick={() => handleSelectGame(game)}
-          >
-            <div className="flex-1 min-w-0 pr-3">
-              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <p className="font-semibold text-gray-900 dark:text-gray-50 text-[0.9375rem]">{game.name}</p>
-                {game.isTeamGame && (
-                  <span className="text-[0.6875rem] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-100 dark:border-blue-800">Team</span>
-                )}
-                {game.needsHandicap && (
-                  <span className="text-[0.6875rem] font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-full border border-primary-100 dark:border-primary-800">Handicap</span>
-                )}
+          <div key={game.id} className="bg-card rounded-xl shadow-card overflow-hidden transition-all duration-200 hover:shadow-card-hover">
+            <button
+              className="w-full flex items-center justify-between p-4 text-left group active:scale-[0.98] transition-transform"
+              onClick={() => handleSelectGame(game)}
+            >
+              <div className="flex-1 min-w-0 pr-3">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <p className="font-semibold text-gray-900 dark:text-gray-50 text-[0.9375rem]">{game.name}</p>
+                  {game.isTeamGame && (
+                    <span className="text-[0.6875rem] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-100 dark:border-blue-800">Team</span>
+                  )}
+                  {game.needsHandicap && (
+                    <span className="text-[0.6875rem] font-medium bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-full border border-primary-100 dark:border-primary-800">Handicap</span>
+                  )}
+                  {game.customizable && (
+                    <span className="text-[0.6875rem] font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 px-2 py-0.5 rounded-full border border-amber-100 dark:border-amber-800">Customizable</span>
+                  )}
+                </div>
+                <p className="text-[0.8125rem] text-muted-foreground leading-snug">{game.description}</p>
               </div>
-              <p className="text-[0.8125rem] text-muted-foreground leading-snug">{game.description}</p>
-            </div>
-            <ChevronRight className="w-4.5 h-4.5 text-primary-300 dark:text-primary-500 group-hover:text-primary-600 flex-shrink-0 transition-colors" />
-          </button>
+              <ChevronRight className="w-4.5 h-4.5 text-primary-300 dark:text-primary-500 group-hover:text-primary-600 flex-shrink-0 transition-colors" />
+            </button>
+            {game.detailedDescription && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedGameInfo(expandedGameInfo === game.id ? null : game.id);
+                }}
+                className="w-full px-4 py-2 border-t border-gray-100 dark:border-gray-800 text-left flex items-center justify-between"
+              >
+                <span className="text-[0.75rem] font-medium text-primary-600 dark:text-primary-400">How to Play</span>
+                {expandedGameInfo === game.id ? (
+                  <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                )}
+              </button>
+            )}
+            {expandedGameInfo === game.id && game.detailedDescription && (
+              <div className="px-4 pb-4 pt-1">
+                <p className="text-[0.8125rem] text-gray-600 dark:text-gray-400 leading-relaxed">{game.detailedDescription}</p>
+              </div>
+            )}
+          </div>
         ))}
       </div>
     );
@@ -434,6 +476,64 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
       <div className="p-3.5 bg-primary-50 dark:bg-primary-950/40 rounded-xl border border-primary-100 dark:border-primary-800/60">
         <p className="text-[0.8125rem] text-primary-800 dark:text-primary-200 leading-relaxed">{selectedGame?.description}</p>
       </div>
+
+      {/* Wolf customization settings */}
+      {selectedGame?.customizable && (selectedGame.id === "wolf" || selectedGame.id === "wolf_3") && (
+        <div className="bg-card rounded-xl shadow-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Wolf Settings</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Win alone (pts)</label>
+              <Input
+                type="number"
+                defaultValue={3}
+                min={1}
+                max={10}
+                className="h-9 text-sm"
+                onChange={(e) => setGameSettings(prev => ({ ...prev, wolfWinAlone: parseInt(e.target.value) || 3 }))}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Win with partner (pts)</label>
+              <Input
+                type="number"
+                defaultValue={1}
+                min={1}
+                max={10}
+                className="h-9 text-sm"
+                onChange={(e) => setGameSettings(prev => ({ ...prev, wolfWinTeam: parseInt(e.target.value) || 1 }))}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between pt-1">
+            <div>
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Blind Wolf allowed</p>
+              <p className="text-[0.6875rem] text-gray-400">Declare solo before anyone tees off</p>
+            </div>
+            <button
+              onClick={() => setGameSettings(prev => ({ ...prev, blindWolf: !prev.blindWolf }))}
+              className={`relative w-10 h-6 rounded-full transition-colors ${gameSettings.blindWolf ? "bg-primary-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${gameSettings.blindWolf ? "translate-x-4" : ""}`} />
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Carryover points</p>
+              <p className="text-[0.6875rem] text-gray-400">Tied holes carry points forward</p>
+            </div>
+            <button
+              onClick={() => setGameSettings(prev => ({ ...prev, carryover: !prev.carryover }))}
+              className={`relative w-10 h-6 rounded-full transition-colors ${gameSettings.carryover ? "bg-primary-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${gameSettings.carryover ? "translate-x-4" : ""}`} />
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="bg-card rounded-xl shadow-card p-5 space-y-5">
 

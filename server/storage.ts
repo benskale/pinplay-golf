@@ -22,6 +22,7 @@ export interface IStorage {
   getGamesByUser(userId: number): Promise<Game[]>;
   getGamesByPlayerName(name: string): Promise<Game[]>;
   getGamesBySession(sessionId: string): Promise<Game[]>;
+  getGamesByIds(ids: string[]): Promise<Game[]>;
   linkGamesToUser(sessionId: string, userId: number): Promise<number>;
   getGamesByTournament(tournamentId: string): Promise<Game[]>;
 
@@ -168,6 +169,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(games)
       .where(sqlOp`${games.sessionId} = ${sessionId}`);
+  }
+
+  async getGamesByIds(ids: string[]): Promise<Game[]> {
+    if (ids.length === 0) return [];
+    return db
+      .select()
+      .from(games)
+      .where(sqlOp`${games.id} = ANY(${sqlOp.raw(`ARRAY[${ids.map(i => `'${i.replace(/'/g, "''")}'`).join(',')}]::varchar[]`)})`);
   }
 
   async linkGamesToUser(sessionId: string, userId: number): Promise<number> {
@@ -598,6 +607,9 @@ export class MemStorage implements IStorage {
   }
   async getGamesBySession(sessionId: string) {
     return [...this.gameMap.values()].filter(g => g.sessionId === sessionId);
+  }
+  async getGamesByIds(ids: string[]) {
+    return [...this.gameMap.values()].filter(g => ids.includes(g.id));
   }
   async linkGamesToUser(sessionId: string, userId: number) {
     const sessionGames = [...this.gameMap.values()].filter(g => g.sessionId === sessionId && g.userId === null);
