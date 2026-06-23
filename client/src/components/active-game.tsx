@@ -7,13 +7,13 @@ import Scorecard from "@/components/scorecard";
 import EditHoleModal from "@/components/edit-hole-modal";
 import {
   Share2, Crown, Minus, Plus, TableProperties, ClipboardList,
-  Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target, MoreVertical, Trash2, Flag, Sparkles
+  Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target, MoreVertical, Trash2, Flag, Sparkles, Flame
 } from "lucide-react";
 import PinPlayLogo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
 import {
   calcHoleResult, getLeaderboard, getGameStatus, getCurrentRotatingPlayer,
-  getTeams, GAME_DEFINITIONS, MINI_GAME_DEFINITIONS, isLowerBetter, getStrokesReceivedOnHole, getStrokeHoles
+  getTeams, getPressSides, GAME_DEFINITIONS, MINI_GAME_DEFINITIONS, isLowerBetter, getStrokesReceivedOnHole, getStrokeHoles
 } from "@/lib/game-logic";
 import type { Game } from "@shared/schema";
 import { trackGame, completeGame as untrackGame } from "@/lib/game-recovery";
@@ -60,6 +60,11 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
 
   // Hammer multiplier
   const [hammerValue, setHammerValue] = useState(1);
+
+  // Press system — universal multiplier with accept/decline
+  const [pressMultiplier, setPressMultiplier] = useState(1);
+  const [pendingPress, setPendingPress] = useState<{ from: string; fromSide: 'A' | 'B' } | null>(null);
+  const [pressLog, setPressLog] = useState<Array<{ from: string; side: 'A' | 'B'; result: 'accepted' | 'dropped'; multiplier: number }>>([]);
 
   // Dots/Junk achievements per player
   const [dotAchievements, setDotAchievements] = useState<Record<string, string[]>>({});
@@ -126,6 +131,11 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   const isPar3 = currentPar === 3;
   const isTeamStrokes = ["scramble", "alternate_shot", "alternate_shot_4", "shamble"].includes(game.gameType);
 
+  // Press sides — determines who can press against whom
+  const pressSides = useMemo(() => getPressSides(game), [game.players, game.teams]);
+  const sideALabel = pressSides.sideA.length > 1 ? 'Team A' : (pressSides.sideA[0]?.split(' ')[0] || 'Side A');
+  const sideBLabel = pressSides.sideB.length > 1 ? 'Team B' : (pressSides.sideB[0]?.split(' ')[0] || 'Side B');
+
   // For team-score games, only enter one score per team
   const scoreEntryPlayers = isTeamStrokes
     ? [teams[0][0], teams[1][0]] // first player from each team
@@ -166,8 +176,10 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
       }
     });
     if (Object.keys(mgData).length > 0) meta.miniGames = mgData;
+    if (pressMultiplier > 1) meta.pressMultiplier = pressMultiplier;
+    if (pressLog.length > 0) meta.pressLog = pressLog;
     return meta;
-  }, [isWolfGame, rotatingPlayer, wolfDecision, isBBB, bbbWinners, isHammer, hammerValue, isDots, dotAchievements, isBanker, closestToPin, miniGameAchievements, miniGameWinner, snake3Putt, activeMiniGames]);
+  }, [isWolfGame, rotatingPlayer, wolfDecision, isBBB, bbbWinners, isHammer, hammerValue, isDots, dotAchievements, isBanker, closestToPin, miniGameAchievements, miniGameWinner, snake3Putt, activeMiniGames, pressMultiplier, pressLog]);
 
   // Auto-calculate result
   const calculatedResult = useMemo(() => {
@@ -175,8 +187,16 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     if (!allPlayersHaveStrokes) return null;
     if (isWolfGame && !wolfDecision) return null;
     // For BBB, calculation can proceed with partial info
-    return calcHoleResult(game, game.currentHole, currentPar, holeStrokes, extraMeta);
-  }, [game, game.currentHole, currentPar, holeStrokes, extraMeta, scoreEntryPlayers, isWolfGame, wolfDecision]);
+    const base = calcHoleResult(game, game.currentHole, currentPar, holeStrokes, extraMeta);
+    // Apply universal press multiplier
+    if (pressMultiplier > 1) {
+      base.pointDeltas = Object.fromEntries(
+        Object.entries(base.pointDeltas).map(([k, v]) => [k, Math.round(v * pressMultiplier)])
+      );
+      base.result += ` ×${pressMultiplier}`;
+    }
+    return base;
+  }, [game, game.currentHole, currentPar, holeStrokes, extraMeta, scoreEntryPlayers, isWolfGame, wolfDecision, pressMultiplier]);
 
   const handleStrokeChange = (playerName: string, value: number) => {
     if (value < 1) return;
@@ -216,6 +236,8 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     if (closestToPin) finalMeta.closestToPin = closestToPin;
     // Ensure mini-games data is in metadata
     if (extraMeta.miniGames) finalMeta.miniGames = extraMeta.miniGames;
+    if (pressMultiplier > 1) finalMeta.pressMultiplier = pressMultiplier;
+    if (pressLog.length > 0) finalMeta.pressLog = pressLog;
     gameActions.completeHole(calculatedResult.pointDeltas, fullStrokes, calculatedResult.result, finalMeta);
     setWolfDecision(null);
     setHoleStrokes({});
@@ -226,8 +248,60 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     setMiniGameAchievements({});
     setMiniGameWinner({});
     setSnake3Putt([]);
+    setPressMultiplier(1);
+    setPendingPress(null);
+    setPressLog([]);
 
     toast({ title: `Hole ${game.currentHole} Complete!`, description: calculatedResult.result });
+  };
+
+  // ── Press system handlers ──
+  const handleAcceptPress = () => {
+    if (!pendingPress) return;
+    const newMult = pressMultiplier * 2;
+    setPressMultiplier(newMult);
+    setPressLog(log => [...log, { from: pendingPress.from, side: pendingPress.fromSide, result: 'accepted', multiplier: newMult }]);
+    setPendingPress(null);
+  };
+
+  const handleDropPress = () => {
+    if (!pendingPress) return;
+    const winners = pendingPress.fromSide === 'A' ? pressSides.sideA : pressSides.sideB;
+    const losers  = pendingPress.fromSide === 'A' ? pressSides.sideB : pressSides.sideA;
+    const mult = pressMultiplier; // winners get current value (before the declined press)
+
+    const deltas: Record<string, number> = {};
+    winners.forEach(w => { deltas[w] = losers.length * mult; });
+    losers.forEach(l => { deltas[l] = -winners.length * mult; });
+
+    const winnerLabel = pendingPress.fromSide === 'A' ? sideALabel : sideBLabel;
+    const result = `PRESS DROPPED — ${winnerLabel} wins ×${mult > 1 ? mult : 1}`;
+    const metadata: Record<string, any> = {
+      pressDropped: true,
+      pressWinners: winners,
+      pressMultiplier: mult,
+      pressLog: [...pressLog, { from: pendingPress.from, side: pendingPress.fromSide, result: 'dropped', multiplier: mult }],
+    };
+
+    // No strokes recorded for a conceded hole
+    const emptyStrokes: Record<string, number> = {};
+    gameActions.completeHole(deltas, emptyStrokes, result, metadata);
+
+    // Reset all per-hole state
+    setPressMultiplier(1);
+    setPendingPress(null);
+    setPressLog([]);
+    setWolfDecision(null);
+    setHoleStrokes({});
+    setBbbWinners({});
+    setHammerValue(1);
+    setDotAchievements({});
+    setClosestToPin(null);
+    setMiniGameAchievements({});
+    setMiniGameWinner({});
+    setSnake3Putt([]);
+
+    toast({ title: `Hole ${game.currentHole} — Press Dropped!`, description: result });
   };
 
   const leaderboard = getLeaderboard(game);
@@ -509,6 +583,96 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                         </Button>
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ── PRESS SYSTEM ── (universal, all game types except Hammer which has its own) */}
+              {!isHammer && (
+                <Card className="border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/40">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <Flame className="w-5 h-5 text-purple-500" />
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200">Press</h3>
+                          <p className="text-xs text-gray-500">
+                            Hole value: <span className="font-bold text-purple-600">×{pressMultiplier}</span>
+                            {pressLog.length > 0 && ` • ${pressLog.length} press${pressLog.length > 1 ? 'es' : ''}`}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Press log */}
+                    {pressLog.length > 0 && (
+                      <div className="space-y-1 mb-2">
+                        {pressLog.map((p, i) => (
+                          <div key={i} className="text-xs flex items-center gap-2">
+                            <span className="text-purple-600 font-medium">{p.from.split(' ')[0]}</span>
+                            <span className="text-gray-500">
+                              pressed → {p.result === 'accepted' ? `×${p.multiplier}` : <span className="text-red-500 font-medium">DROPPED</span>}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Pending press — accept/drop */}
+                    {pendingPress ? (
+                      <div className="space-y-2">
+                        <div className="bg-white dark:bg-gray-800 rounded-lg p-2 text-sm font-medium text-center text-gray-700 dark:text-gray-300">
+                          <Flame className="w-4 h-4 inline text-purple-500 mr-1" />
+                          {pendingPress.from.split(' ')[0]} pressed!
+                          <span className="block text-xs text-gray-500 mt-0.5">
+                            {(pendingPress.fromSide === 'A' ? sideBLabel : sideALabel)}: accept ×{pressMultiplier * 2} or drop?
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                            onClick={handleAcceptPress}
+                          >
+                            Accept ×{pressMultiplier * 2}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 border-red-400 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+                            onClick={handleDropPress}
+                          >
+                            Drop (concede)
+                          </Button>
+                        </div>
+                        <button
+                          className="w-full text-xs text-gray-400 hover:text-gray-600"
+                          onClick={() => setPendingPress(null)}
+                        >
+                          Cancel press
+                        </button>
+                      </div>
+                    ) : (
+                      /* Press buttons — one per side */
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 border-purple-300 text-purple-600 hover:bg-purple-100 dark:hover:bg-purple-900/40"
+                          onClick={() => setPendingPress({ from: pressSides.sideA[0] || sideALabel, fromSide: 'A' })}
+                        >
+                          {sideALabel} Press
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 border-purple-300 text-purple-600 hover:bg-purple-100 dark:hover:bg-purple-900/40"
+                          onClick={() => setPendingPress({ from: pressSides.sideB[0] || sideBLabel, fromSide: 'B' })}
+                        >
+                          {sideBLabel} Press
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}

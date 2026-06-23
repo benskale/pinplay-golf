@@ -901,3 +901,18 @@ export function getTeams(game: Game): string[][] {
   if (game.teams && game.teams.length === 2) return game.teams;
   return [[game.players[0], game.players[1]], [game.players[2], game.players[3]]];
 }
+
+/**
+ * Determines the two "sides" for the Press system.
+ * Team games use defined teams; individual games split players in half.
+ */
+export function getPressSides(game: Game): { sideA: string[]; sideB: string[] } {
+  if (game.teams && game.teams.length === 2 && game.teams[0].length > 0 && game.teams[1].length > 0) {
+    return { sideA: game.teams[0], sideB: game.teams[1] };
+  }
+  if (game.players.length === 2) {
+    return { sideA: [game.players[0]], sideB: [game.players[1]] };
+  }
+  const mid = Math.ceil(game.players.length / 2);
+  return { sideA: game.players.slice(0, mid), sideB: game.players.slice(mid) };
+}
