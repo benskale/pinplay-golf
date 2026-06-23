@@ -320,7 +320,7 @@ export function calcHoleResult(
   game: Game,
   hole: number,
   par: number,
-  strokes: Record<string, number>,
+  inputStrokes: Record<string, number>,
   extraMeta: Record<string, any> = {},
 ): HoleResult {
   const { players, handicaps, teams, gameType, holeHistory, tieCarryover } = game;
@@ -328,6 +328,17 @@ export function calcHoleResult(
   const si = getStrokeIndexes(game);
   const deltas: Record<string, number> = {};
   players.forEach(p => { deltas[p] = 0; });
+
+  // When handicap play is enabled, compute net strokes for ALL comparisons.
+  // Shadow `strokes` so every game type below uses net automatically.
+  const useHandicap = settings.useHandicap === true;
+  const strokes: Record<string, number> = {};
+  players.forEach(p => {
+    const gross = inputStrokes[p] || 0;
+    strokes[p] = useHandicap
+      ? netStrokes(gross, p, hole, handicaps, players, si)
+      : gross;
+  });
 
   switch (gameType) {
 
@@ -448,22 +459,21 @@ export function calcHoleResult(
     case "match_play":
     case "best_ball_2": {
       const [p1, p2] = players;
-      const net1 = netStrokes(strokes[p1], p1, hole, handicaps, players, si);
-      const net2 = netStrokes(strokes[p2], p2, hole, handicaps, players, si);
-      // Show gross(net) format when strokes were given
-      const fmt = (p: string, net: number) => {
-        const g = strokes[p];
-        return g !== net ? `${g}(${net})` : `${g}`;
+      // strokes[] already contains net when useHandicap is on
+      const fmt = (p: string) => {
+        const g = inputStrokes[p];
+        const n = strokes[p];
+        return g !== undefined && g !== n ? `${g}(${n})` : `${n}`;
       };
       let result = "";
-      if (net1 < net2) {
+      if (strokes[p1] < strokes[p2]) {
         deltas[p1] = 1;
-        result = `${p1.split(" ")[0]} wins hole · ${fmt(p1, net1)} vs ${fmt(p2, net2)} net`;
-      } else if (net2 < net1) {
+        result = `${p1.split(" ")[0]} wins hole · ${fmt(p1)} vs ${fmt(p2)}`;
+      } else if (strokes[p2] < strokes[p1]) {
         deltas[p2] = 1;
-        result = `${p2.split(" ")[0]} wins hole · ${fmt(p2, net2)} vs ${fmt(p1, net1)} net`;
+        result = `${p2.split(" ")[0]} wins hole · ${fmt(p2)} vs ${fmt(p1)}`;
       } else {
-        result = `Halved · ${fmt(p1, net1)} net each`;
+        result = `Halved · ${fmt(p1)} each`;
       }
       return { pointDeltas: deltas, result, metadata: {} };
     }
@@ -481,15 +491,12 @@ export function calcHoleResult(
     // ── NASSAU (2-player) ────────────────────────────────────────────
     case "nassau": {
       const [p1, p2] = players;
-      const net1 = netStrokes(strokes[p1], p1, hole, handicaps, players, si);
-      const net2 = netStrokes(strokes[p2], p2, hole, handicaps, players, si);
-      // Score per hole (we'll sum to determine front/back winner at hole 9 and 18)
-      // For running total, use match-play style (holes won)
+      // strokes[] already contains net when useHandicap is on
       let result = "";
-      if (net1 < net2) {
+      if (strokes[p1] < strokes[p2]) {
         deltas[p1] = 1;
         result = `${p1.split(" ")[0]} wins hole`;
-      } else if (net2 < net1) {
+      } else if (strokes[p2] < strokes[p1]) {
         deltas[p2] = 1;
         result = `${p2.split(" ")[0]} wins hole`;
       } else {
@@ -630,9 +637,9 @@ export function calcHoleResult(
     case "best_ball_4":
     case "nassau_4": {
       const [teamA, teamB] = teams.length === 2 ? teams : [[players[0], players[1]], [players[2], players[3]]];
-      const netA = (p: string) => netStrokes(strokes[p] || 99, p, hole, handicaps, players, si);
-      const bestA = Math.min(...teamA.map(netA));
-      const bestB = Math.min(...teamB.map(p => netStrokes(strokes[p] || 99, p, hole, handicaps, players, si)));
+      // strokes[] already contains net when useHandicap is on
+      const bestA = Math.min(...teamA.map(p => strokes[p] || 99));
+      const bestB = Math.min(...teamB.map(p => strokes[p] || 99));
       let result = "";
       if (bestA < bestB) {
         teamA.forEach(p => { deltas[p] = 1; });
@@ -704,20 +711,18 @@ export function calcHoleResult(
 
     // ── STABLEFORD / QUOTA ───────────────────────────────────────────
     case "stableford": {
-      // Uses correct per-hole handicap strokes (same as match play).
-      // Each player's net score = gross − strokes received on this hole.
+      // strokes[] already contains net when useHandicap is on.
       // Points: net eagle(−2)=5, birdie(−1)=4, par=3, bogey=2, dbl bogey=1, worse=0.
       players.forEach(p => {
-        const strk = strokesOnHole(p, hole, handicaps, players, si);
-        const net = (strokes[p] || par) - strk;
+        const net = strokes[p] || par;
         const diff = net - par;
         const pts = diff <= -3 ? 6 : diff === -2 ? 5 : diff === -1 ? 4 : diff === 0 ? 3 : diff === 1 ? 2 : diff === 2 ? 1 : 0;
         deltas[p] = pts;
       });
       const parts = players.map(p => {
-        const strk = strokesOnHole(p, hole, handicaps, players, si);
-        const net = (strokes[p] || par) - strk;
-        return `${p.split(" ")[0]}: ${deltas[p]}pt${strk > 0 ? ` (${strokes[p]}→${net})` : ""}`;
+        const g = inputStrokes[p];
+        const n = strokes[p];
+        return `${p.split(" ")[0]}: ${deltas[p]}pt${g !== undefined && g !== n ? ` (${g}→${n})` : ""}`;
       });
       return { pointDeltas: deltas, result: parts.join("  ·  "), metadata: {} };
     }

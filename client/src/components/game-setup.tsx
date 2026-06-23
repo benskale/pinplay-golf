@@ -68,6 +68,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
   const [selectedMiniGames, setSelectedMiniGames] = useState<Record<string, { enabled: boolean; value: number }>>({});
   const [expandedGameInfo, setExpandedGameInfo] = useState<string | null>(null);
   const [gameSettings, setGameSettings] = useState<Record<string, any>>({});
+  const [useHandicap, setUseHandicap] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -288,6 +289,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
     setSelectedGame(game);
     setGameSettings({});
     setExpandedGameInfo(null);
+    setUseHandicap(!!game.needsHandicap);
     setStep("players");
     // Default team assignment for team games
     if (game.isTeamGame) {
@@ -313,6 +315,19 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
     if (validPlayers.length !== playerCount) {
       toast({ title: "Missing names", description: `Enter names for all ${playerCount} players`, variant: "destructive" });
       return;
+    }
+
+    // Handicap validation — ALL players must have handicap entered if toggle is on
+    if (useHandicap) {
+      const missingHdcp = validPlayers.filter(p => handicaps[p] == null || handicaps[p] === 0);
+      if (missingHdcp.length > 0) {
+        toast({
+          title: "Handicaps required",
+          description: `${missingHdcp.length} player${missingHdcp.length > 1 ? "s" : ""} missing handicap index (${missingHdcp.map(n => n.split(" ")[0]).join(", ")}). Enter all handicaps or turn off Handicap Play.`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     // For wolf-style games, randomize order
@@ -343,9 +358,9 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
       tieCarryover: selectedGame?.carryover || false,
       courseName: courseQuery.trim(),
       pars,
-      strokeIndexes: selectedGame?.needsHandicap ? strokeIndexes : Array.from({ length: 18 }, (_, i) => i + 1),
+      strokeIndexes: useHandicap ? strokeIndexes : Array.from({ length: 18 }, (_, i) => i + 1),
       miniGames: selectedMiniGames,
-      gameSettings: Object.keys(gameSettings).length > 0 ? gameSettings : {},
+      gameSettings: { ...gameSettings, useHandicap },
     });
   };
 
@@ -719,21 +734,23 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
                         {(teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A" ? "Team A" : "Team B"}
                       </button>
                     )}
-                    {/* Handicap input — always shown */}
-                    <div className="flex-shrink-0 relative">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="54"
-                        placeholder="Hdcp"
-                        value={handicaps[player] ?? ""}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          setHandicaps(prev => ({ ...prev, [player]: isNaN(val) ? 0 : val }));
-                        }}
-                        className={`w-16 text-center text-sm ${hasAutoHcp ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20" : ""}`}
-                      />
-                    </div>
+                    {/* Handicap input — shown when handicap play is on */}
+                    {useHandicap && (
+                      <div className="flex-shrink-0 relative">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="54"
+                          placeholder="Hdcp"
+                          value={handicaps[player] ?? ""}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setHandicaps(prev => ({ ...prev, [player]: isNaN(val) ? 0 : val }));
+                          }}
+                          className={`w-16 text-center text-sm ${hasAutoHcp ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20" : ""} ${(handicaps[player] == null || handicaps[player] === 0) ? "border-red-300 dark:border-red-700" : ""}`}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* User autocomplete dropdown */}
@@ -778,10 +795,11 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
               );
             })}
             <p className="text-xs text-gray-400 ml-12">
-              Handicap index (0 = scratch).{" "}
+              {useHandicap
+                ? "Handicap index for each player. Strokes are awarded on the hardest holes. "
+                : "Handicap index (0 = scratch). "}
               {user?.handicapIndex != null && <span className="text-emerald-500">Green = auto-filled from profile. </span>}
               {user && <span className="text-primary-500">Start typing a name to search PinPlay users. </span>}
-              Optional — only used for handicap games.
             </p>
             {selectedGame?.isTeamGame && (
               <p className="text-xs text-gray-400 ml-12">Tap Team A/B to reassign players to teams.</p>
@@ -790,12 +808,57 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
 
           {/* Wolf note */}
           {(selectedGame?.id === "wolf" || selectedGame?.id === "wolf_3") && (
-            <div className="mb-5 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
+            <div className="mb-3 p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
               <p className="text-sm text-green-700 dark:text-green-300">
                 🎲 Player order will be randomized for Wolf rotation
               </p>
             </div>
           )}
+
+          {/* Handicap Play toggle */}
+          <button
+            type="button"
+            onClick={() => setUseHandicap(v => !v)}
+            className={`w-full flex items-center justify-between p-4 rounded-lg mb-4 text-left transition-colors ${
+              useHandicap
+                ? "bg-blue-50 dark:bg-blue-950/30 border-2 border-blue-300 dark:border-blue-700"
+                : "bg-gray-50 dark:bg-gray-800 border-2 border-transparent"
+            }`}
+          >
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Handicap Play</span>
+                {useHandicap && (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 font-medium">ON</span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {useHandicap
+                  ? "Strokes awarded based on handicap index. All players must have a handicap."
+                  : "Award strokes to higher-handicap players on the hardest holes."}
+              </p>
+            </div>
+            <div className={`w-12 h-7 rounded-full transition-colors flex items-center ${useHandicap ? "bg-blue-500 justify-end pr-1" : "bg-gray-300 dark:bg-gray-600 justify-start pl-1"}`}>
+              <div className="w-5 h-5 rounded-full bg-white shadow-sm" />
+            </div>
+          </button>
+
+          {/* Missing handicap warning when handicap play is on */}
+          {useHandicap && (() => {
+            const validPlayers = players.slice(0, playerCount).filter(n => n.trim() !== "");
+            const missing = validPlayers.filter(p => handicaps[p] == null || handicaps[p] === 0);
+            if (missing.length > 0) {
+              return (
+                <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+                  <p className="text-xs text-red-700 dark:text-red-300 font-medium">
+                    ⚠ {missing.length} player{missing.length > 1 ? "s" : ""} need{missing.length === 1 ? "s" : ""} a handicap index: {missing.map(n => n.split(" ")[0]).join(", ")}
+                  </p>
+                  <p className="text-xs text-red-500 mt-0.5">Game won't start until all handicaps are entered.</p>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {/* Par Setup */}
           <button
@@ -843,8 +906,8 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
             </div>
           )}
 
-          {/* Stroke Index — only shown for handicap games */}
-          {selectedGame?.needsHandicap && (
+          {/* Stroke Index — shown when handicap play is enabled */}
+          {useHandicap && (
             <>
               {/* Warning when using default (uncustomised) HCP ranks */}
               {hcpRanksSource === "default" && (
@@ -1043,11 +1106,13 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
           <Button
             className="w-full bg-secondary-500 hover:bg-secondary-600 text-white py-3 rounded-lg font-semibold text-[0.9375rem] shadow-sm"
             onClick={handleStartGame}
-            disabled={createGameMutation.isPending || loadingCourse}
+            disabled={createGameMutation.isPending || loadingCourse || (useHandicap && players.slice(0, playerCount).filter(n => n.trim() !== "").some(p => handicaps[p] == null || handicaps[p] === 0))}
             data-testid="button-start-game"
           >
             {createGameMutation.isPending ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating Game...</>
+            ) : useHandicap && players.slice(0, playerCount).filter(n => n.trim() !== "").some(p => handicaps[p] == null || handicaps[p] === 0) ? (
+              <>Enter all handicaps to start</>
             ) : (
               `Start ${selectedGame?.name || "Game"}`
             )}

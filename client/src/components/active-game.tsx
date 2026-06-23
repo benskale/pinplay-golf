@@ -108,7 +108,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   }
 
   const gameDef = GAME_DEFINITIONS[game.gameType] || GAME_DEFINITIONS.wolf;
-  const strokesThisHole = gameDef.needsHandicap ? getStrokesReceivedOnHole(game, game.currentHole) : {};
+  const strokesThisHole = (gameDef.needsHandicap || (game as any).gameSettings?.useHandicap) ? getStrokesReceivedOnHole(game, game.currentHole) : {};
   const currentPar = game.pars?.[game.currentHole - 1] ?? 4;
   const rotatingPlayer = getCurrentRotatingPlayer(game);
   const teams = getTeams(game);
@@ -432,6 +432,30 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                             }
                           </p>
                         </div>
+
+                        {/* Handicap strokes on this hole — shown before Wolf decides */}
+                        {(game as any).gameSettings?.useHandicap && (() => {
+                          const strokesThisHole = getStrokesReceivedOnHole(game, game.currentHole);
+                          const anyone = Object.values(strokesThisHole).some(v => v > 0);
+                          if (!anyone) return null;
+                          return (
+                            <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-2.5 mb-2">
+                              <p className="text-xs text-blue-700 dark:text-blue-300 font-medium mb-1">Strokes on this hole:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {game.players.map(p => {
+                                  const s = strokesThisHole[p] || 0;
+                                  if (s === 0) return null;
+                                  return (
+                                    <span key={p} className="text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded-full font-medium">
+                                      {p.split(" ")[0]} +{s}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         <p className="text-xs text-gray-500 mb-3">
                           <span className="font-medium text-wolf-500">{rotatingPlayer}</span> — go alone or pick a partner:
                         </p>
@@ -490,7 +514,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
               )}
 
               {/* ── HANDICAP STROKE ALLOCATION SUMMARY ── */}
-              {gameDef.needsHandicap && (() => {
+              {(gameDef.needsHandicap || (game as any).gameSettings?.useHandicap) && (() => {
                 const playersWithStrokes = game.players.filter(p => getStrokeHoles(game, p).length > 0);
                 if (playersWithStrokes.length === 0) return null;
                 return (
@@ -502,18 +526,19 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                           const lowestHdcp = Math.min(...game.players.map(q => game.handicaps[q] || 0));
                           const diff = Math.max(0, (game.handicaps[p] || 0) - lowestHdcp);
                           const strokeHoles = getStrokeHoles(game, p);
+                          const getsStrokeOnThisHole = strokeHoles.includes(game.currentHole);
                           return (
-                            <div key={p} className="flex items-start gap-2 text-xs">
+                            <div key={p} className={`flex items-start gap-2 text-xs ${getsStrokeOnThisHole ? "font-semibold" : ""}`}>
                               <span className="font-medium text-gray-700 dark:text-gray-300 w-20 truncate flex-shrink-0">{p.split(" ")[0]}</span>
                               {diff === 0 ? (
                                 <span className="text-gray-400 dark:text-gray-500">plays scratch (no strokes)</span>
                               ) : (
-                                <span className="text-emerald-700 dark:text-emerald-400">
+                                <span className={getsStrokeOnThisHole ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-700 dark:text-emerald-400"}>
                                   {diff} stroke{diff !== 1 ? "s" : ""} on hole{strokeHoles.length !== 1 ? "s" : ""}{" "}
                                   {strokeHoles.length <= 9
                                     ? strokeHoles.join(", ")
                                     : `${strokeHoles.slice(0, 6).join(", ")} …+${strokeHoles.length - 6}`}
-                                  {" "}(HCP {diff <= 18 ? `1–${diff}` : `all +${diff - 18} more`})
+                                  {getsStrokeOnThisHole && <span className="ml-1 text-emerald-600 dark:text-emerald-400">← gets 1 stroke on this hole</span>}
                                 </span>
                               )}
                             </div>
