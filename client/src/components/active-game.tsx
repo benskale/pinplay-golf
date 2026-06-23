@@ -1236,9 +1236,16 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
               </Card>
 
               {/* ── LIVE SETTLEMENT (who owes whom) ── */}
-              {pointValue > 0 && !lower && (
-                <LiveSettlement game={game} />
-              )}
+              {(() => {
+                const hasPointValue = pointValue > 0;
+                const hasMiniGameValue = game.miniGames && typeof game.miniGames === "object"
+                  ? Object.entries(game.miniGames).some(([, v]) => v.enabled && v.value > 0)
+                  : false;
+                if ((hasPointValue || hasMiniGameValue) && !lower) {
+                  return <LiveSettlement game={game} />;
+                }
+                return null;
+              })()}
 
 
               {/* ── CLOSEST TO THE PIN TRACKER (always visible) ── */}

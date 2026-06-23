@@ -13,6 +13,8 @@ import { apiRequest } from "@/lib/queryClient";
 import type { Game } from "@shared/schema";
 import { GAME_DEFINITIONS, MINI_GAME_DEFINITIONS, isLowerBetter } from "@/lib/game-logic";
 import { useToast } from "@/hooks/use-toast";
+import { getLiveSettlement } from "@/lib/settlement";
+import { ArrowRight } from "lucide-react";
 
 interface FinalStandingsProps {
   game: Game;
@@ -605,6 +607,82 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
                     );
                   })}
                 </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
+
+        {/* ── COMBINED TOTAL SETTLEMENT (main game + side games) ── */}
+        {(() => {
+          const settlement = getLiveSettlement(displayGame);
+          if (!settlement.hasMainGame && !settlement.hasMiniGames) return null;
+          if (settlement.transactions.length === 0) return null;
+
+          return (
+            <Card className="border-emerald-300 dark:border-emerald-700 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-950/20">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <DollarSign className="w-5 h-5 text-emerald-500" />
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Total Settlement</h3>
+                  <span className="text-[0.6875rem] text-muted-foreground ml-auto font-medium">Combined</span>
+                </div>
+
+                {/* Net balances */}
+                <div className="space-y-1.5 mb-4">
+                  {[...game.players].sort((a, b) => (settlement.netBalances[b] ?? 0) - (settlement.netBalances[a] ?? 0)).map(player => {
+                    const amt = settlement.netBalances[player] ?? 0;
+                    const main = settlement.mainGameBalances[player] ?? 0;
+                    const side = settlement.miniGameBalances[player] ?? 0;
+                    const hasSplit = settlement.hasMainGame && settlement.hasMiniGames && (Math.abs(main) > 0.01 || Math.abs(side) > 0.01);
+                    return (
+                      <div key={player} className={`flex items-center justify-between px-4 py-2.5 rounded-xl ${
+                        amt > 0 ? "bg-green-50 dark:bg-green-950/30 ring-1 ring-green-200 dark:ring-green-800"
+                          : amt < 0 ? "bg-red-50 dark:bg-red-950/20"
+                          : "bg-gray-50 dark:bg-gray-800/50"
+                      }`}>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[0.9375rem] font-medium text-gray-800 dark:text-gray-200">{player}</span>
+                          {hasSplit && (
+                            <span className="text-[0.625rem] text-muted-foreground tabular-nums">
+                              {main !== 0 && `${main > 0 ? "+" : ""}$${Math.round(main)} game`}
+                              {main !== 0 && side !== 0 && " · "}
+                              {side !== 0 && `${side > 0 ? "+" : ""}$${Math.round(side)} sides`}
+                            </span>
+                          )}
+                        </div>
+                        <span className={`text-[1.0625rem] font-bold tabular-nums ${
+                          amt > 0 ? "text-green-600 dark:text-green-400" : amt < 0 ? "text-red-500" : "text-gray-400"
+                        }`}>
+                          {amt > 0 ? "+" : amt < 0 ? "-" : ""}${Math.abs(Math.round(amt)).toLocaleString()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Who owes whom */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <p className="text-[0.6875rem] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Who Owes Whom</p>
+                  <div className="space-y-1.5">
+                    {settlement.transactions.map((t, idx) => (
+                      <div key={idx} className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                        <div className="flex items-center gap-2 text-[0.875rem]">
+                          <span className="font-medium text-red-500 dark:text-red-400">{t.from}</span>
+                          <ArrowRight className="w-3.5 h-3.5 text-gray-400" />
+                          <span className="font-medium text-green-600 dark:text-green-400">{t.to}</span>
+                        </div>
+                        <span className="text-[1rem] font-bold tabular-nums text-gray-700 dark:text-gray-300">${t.amount}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[0.6875rem] text-muted-foreground mt-3 text-center">
+                  {settlement.hasMainGame && settlement.hasMiniGames
+                    ? `Includes main game + all side games`
+                    : settlement.hasMainGame
+                      ? `Main game: ${settlement.pointValue > 0 ? `$${settlement.pointValue}/point` : ""}`
+                      : "Side games only"}
+                </p>
               </CardContent>
             </Card>
           );
