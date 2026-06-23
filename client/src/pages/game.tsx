@@ -12,7 +12,7 @@ import PinPlayLogo from "@/components/logo";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
 import type { Game } from "@shared/schema";
-import { trackGame, untrackGame } from "@/lib/game-recovery";
+import { trackGame, completeGame as untrackGame } from "@/lib/game-recovery";
 
 interface GameParams {
   gameId: string;
