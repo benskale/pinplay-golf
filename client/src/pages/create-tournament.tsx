@@ -38,7 +38,10 @@ export default function CreateTournamentPage() {
   const [name, setName] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [format, setFormat] = useState("stroke_play");
+  const [teamSize, setTeamSize] = useState("2");
   const [maxPlayers, setMaxPlayers] = useState("");
+
+  const isTeamFormat = format === "best_ball" || format === "scramble";
 
   // Course search
   const [courseQuery, setCourseQuery] = useState("");
@@ -121,6 +124,11 @@ export default function CreateTournamentPage() {
       return;
     }
 
+    const settings: Record<string, any> = {};
+    if (isTeamFormat) {
+      settings.teamSize = parseInt(teamSize);
+    }
+
     createMutation.mutate({
       name: name.trim(),
       date,
@@ -128,6 +136,7 @@ export default function CreateTournamentPage() {
       courseId: selectedCourse?.id || null,
       format,
       maxPlayers: maxPlayers ? parseInt(maxPlayers) : null,
+      settings,
     });
   };
 
@@ -354,10 +363,38 @@ export default function CreateTournamentPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="stroke_play">Stroke Play</SelectItem>
+                  <SelectItem value="skins">Skins</SelectItem>
+                  <SelectItem value="best_ball">Best Ball (Teams)</SelectItem>
+                  <SelectItem value="scramble">Scramble (Teams)</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-400 mt-1">More formats coming soon</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {format === "stroke_play" && "Lowest net strokes wins"}
+                {format === "skins" && "Lowest net score per hole wins a skin. Ties carry over."}
+                {format === "best_ball" && "Teams: best score per hole counts toward team total"}
+                {format === "scramble" && "Teams: everyone plays one ball, team posts one score per hole"}
+              </p>
             </div>
+
+            {/* Team Size (only for team formats) */}
+            {isTeamFormat && (
+              <div>
+                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Team Size <span className="text-gray-400 font-normal">(players per team)</span>
+                </Label>
+                <Select value={teamSize} onValueChange={setTeamSize}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2">2 players</SelectItem>
+                    <SelectItem value="3">3 players</SelectItem>
+                    <SelectItem value="4">4 players</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-400 mt-1">Each team starts their own game together</p>
+              </div>
+            )}
 
             {/* Max Players */}
             <div>

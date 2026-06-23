@@ -425,18 +425,54 @@ export class DatabaseStorage implements IStorage {
     return this.getGamesByTournament(tournamentId);
   }
 
+  // ── Position assignment helper (shared across all formats) ──
+  private assignPositions(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+    entries.sort((a, b) => {
+      if (a.complete !== b.complete) return a.complete ? -1 : 1;
+      if (a.netStrokes !== b.netStrokes) return a.netStrokes - b.netStrokes;
+      if (a.totalStrokes !== b.totalStrokes) return a.totalStrokes - b.totalStrokes;
+      return b.holesCompleted - a.holesCompleted;
+    });
+    for (let i = 0; i < entries.length; i++) {
+      if (i > 0) {
+        const prev = entries[i - 1];
+        const curr = entries[i];
+        if (prev.complete === curr.complete &&
+            prev.netStrokes === curr.netStrokes &&
+            prev.totalStrokes === curr.totalStrokes) {
+          entries[i].position = prev.position;
+        } else {
+          entries[i].position = i + 1;
+        }
+      } else {
+        entries[i].position = 1;
+      }
+    }
+    return entries;
+  }
+
+  // ── Handicap strokes for a specific hole ──
+  private handicapStrokesForHole(handicap: number, strokeIndex: number): number {
+    const base = Math.floor(handicap / 18);
+    const extra = strokeIndex <= (handicap % 18) ? 1 : 0;
+    return base + extra;
+  }
+
   async getTournamentLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
+    const tournament = await this.getTournament(tournamentId);
+    const format = tournament?.format ?? "stroke_play";
+
+    if (format === "skins") return this.getSkinsLeaderboard(tournamentId);
+    if (format === "best_ball") return this.getBestBallLeaderboard(tournamentId);
+    if (format === "scramble") return this.getScrambleLeaderboard(tournamentId);
+    return this.getStrokePlayLeaderboard(tournamentId);
+  }
+
+  // ── Stroke Play (original logic) ──
+  private async getStrokePlayLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
     const tournamentGames = await this.getGamesByTournament(tournamentId);
     const tPlayers = await this.getTournamentPlayers(tournamentId);
 
-    // Build a map of user_id → player_name for registered tournament players
-    const playerMap = new Map<number, string>();
-    for (const tp of tPlayers) {
-      playerMap.set(tp.userId, tp.playerName);
-    }
-
-    // For each game, find which players are registered tournament players
-    // and extract their scores
     const entries: LeaderboardEntry[] = [];
 
     for (const game of tournamentGames) {
@@ -447,8 +483,6 @@ export class DatabaseStorage implements IStorage {
       const holesCompleted = holeHistory.length;
 
       for (const playerName of gamePlayers) {
-        // Look up userId for this player name
-        // First check if they're a registered tournament player
         let matchedUserId: number | null = null;
         for (const tp of tPlayers) {
           if (tp.playerName === playerName) {
@@ -456,8 +490,6 @@ export class DatabaseStorage implements IStorage {
             break;
           }
         }
-
-        // Only include registered tournament players on leaderboard
         if (matchedUserId === null) continue;
 
         const totalStrokes = totalScores[playerName] ?? 0;
@@ -474,38 +506,246 @@ export class DatabaseStorage implements IStorage {
           holesCompleted,
           complete: !game.active && holesCompleted > 0,
           gameId: game.id,
+          format: "stroke_play",
         });
       }
     }
 
-    // Sort: completed rounds first, then by net ascending, then gross ascending
+    return this.assignPositions(entries);
+  }
+
+  // ── Skins ──
+  // Individual play. Each hole's lowest NET score wins a skin.
+  // Ties carry over to the next hole.
+  private async getSkinsLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
+    const tournamentGames = await this.getGamesByTournament(tournamentId);
+    const tPlayers = await this.getTournamentPlayers(tournamentId);
+
+    // Gather all registered players' hole-by-hole data
+    const allPlayers: Array<{
+      playerName: string;
+      userId: number;
+      gameId: string;
+      handicap: number;
+      holeScores: number[];
+      strokeIndexes: number[];
+      totalGross: number;
+      holesCompleted: number;
+      complete: boolean;
+    }> = [];
+
+    for (const game of tournamentGames) {
+      const scores = game.scores as Record<string, number[]>;
+      const handicaps = game.handicaps as Record<string, number>;
+      const strokeIndexes = (game.strokeIndexes as number[]) || [];
+      const holeHistory = game.holeHistory as Array<any>;
+      const totalScores = game.totalScores as Record<string, number>;
+
+      for (const playerName of game.players as string[]) {
+        const tp = tPlayers.find(p => p.playerName === playerName);
+        if (!tp) continue;
+        const holeScores = scores[playerName] || [];
+        if (holeScores.length === 0) continue;
+
+        allPlayers.push({
+          playerName,
+          userId: tp.userId,
+          gameId: game.id,
+          handicap: handicaps[playerName] ?? 0,
+          holeScores,
+          strokeIndexes,
+          totalGross: totalScores[playerName] ?? 0,
+          holesCompleted: holeHistory.length,
+          complete: !game.active && holeHistory.length > 0,
+        });
+      }
+    }
+
+    // Compute skins hole-by-hole
+    const skinsWon = new Map<string, number>();
+    let carryover = 0;
+    const maxHoles = Math.max(...allPlayers.map(p => p.holeScores.length), 0);
+
+    for (let holeIdx = 0; holeIdx < maxHoles; holeIdx++) {
+      const holeResults: Array<{ playerName: string; netScore: number }> = [];
+
+      for (const player of allPlayers) {
+        if (holeIdx >= player.holeScores.length) continue;
+        const gross = player.holeScores[holeIdx];
+        if (!gross || gross === 0) continue;
+
+        const strokeIdx = player.strokeIndexes[holeIdx] ?? (holeIdx + 1);
+        const hs = this.handicapStrokesForHole(player.handicap, strokeIdx);
+        holeResults.push({ playerName: player.playerName, netScore: gross - hs });
+      }
+
+      if (holeResults.length === 0) continue;
+
+      const minNet = Math.min(...holeResults.map(r => r.netScore));
+      const winners = holeResults.filter(r => r.netScore === minNet);
+
+      if (winners.length === 1) {
+        const total = 1 + carryover;
+        const name = winners[0].playerName;
+        skinsWon.set(name, (skinsWon.get(name) ?? 0) + total);
+        carryover = 0;
+      } else {
+        carryover += 1;
+      }
+    }
+
+    // Build leaderboard entries ranked by skins won (desc)
+    const entries: LeaderboardEntry[] = allPlayers.map(p => ({
+      position: 0,
+      playerName: p.playerName,
+      userId: p.userId,
+      totalStrokes: p.totalGross,
+      netStrokes: p.totalGross - Math.round(p.handicap),
+      handicap: p.handicap,
+      holesCompleted: p.holesCompleted,
+      complete: p.complete,
+      gameId: p.gameId,
+      skinsWon: skinsWon.get(p.playerName) ?? 0,
+      format: "skins",
+    }));
+
+    // Sort by skins won (desc), then net strokes (asc) as tiebreaker
     entries.sort((a, b) => {
       if (a.complete !== b.complete) return a.complete ? -1 : 1;
+      const sk = (b.skinsWon ?? 0) - (a.skinsWon ?? 0);
+      if (sk !== 0) return sk;
       if (a.netStrokes !== b.netStrokes) return a.netStrokes - b.netStrokes;
-      if (a.totalStrokes !== b.totalStrokes) return a.totalStrokes - b.totalStrokes;
       return b.holesCompleted - a.holesCompleted;
     });
-
-    // Assign positions (handle ties)
-    let pos = 1;
     for (let i = 0; i < entries.length; i++) {
-      if (i > 0) {
-        const prev = entries[i - 1];
-        const curr = entries[i];
-        if (prev.complete === curr.complete &&
-            prev.netStrokes === curr.netStrokes &&
-            prev.totalStrokes === curr.totalStrokes) {
-          // Same position as previous (tie)
-          entries[i].position = prev.position;
-        } else {
-          entries[i].position = i + 1;
-        }
-      } else {
-        entries[i].position = 1;
+      entries[i].position = i + 1;
+      if (i > 0 && (entries[i - 1].skinsWon ?? 0) === (entries[i].skinsWon ?? 0) &&
+          entries[i - 1].complete === entries[i].complete) {
+        entries[i].position = entries[i - 1].position;
       }
     }
 
     return entries;
+  }
+
+  // ── Best Ball ──
+  // Team format. Each game is a team's round. All players in a game
+  // are on the same team. Best (lowest net) score per hole counts.
+  private async getBestBallLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
+    const tournamentGames = await this.getGamesByTournament(tournamentId);
+    const entries: LeaderboardEntry[] = [];
+    let teamNum = 0;
+
+    for (const game of tournamentGames) {
+      const players = game.players as string[];
+      const scores = game.scores as Record<string, number[]>;
+      const handicaps = game.handicaps as Record<string, number>;
+      const strokeIndexes = (game.strokeIndexes as number[]) || [];
+      const holeHistory = game.holeHistory as Array<any>;
+      const holesCompleted = holeHistory.length;
+
+      teamNum++;
+      const teamName = `Team ${teamNum}`;
+
+      // Compute best-ball score per hole
+      let bestBallGross = 0;
+      let bestBallNet = 0;
+      const maxHoles = Math.max(...players.map(p => (scores[p] || []).length), 0);
+
+      for (let holeIdx = 0; holeIdx < maxHoles; holeIdx++) {
+        let bestNet = Infinity;
+        let bestGrossForHole = Infinity;
+
+        for (const playerName of players) {
+          const holeScores = scores[playerName] || [];
+          if (holeIdx >= holeScores.length) continue;
+          const gross = holeScores[holeIdx];
+          if (!gross || gross === 0) continue;
+
+          const handicap = handicaps[playerName] ?? 0;
+          const strokeIdx = strokeIndexes[holeIdx] ?? (holeIdx + 1);
+          const hs = this.handicapStrokesForHole(handicap, strokeIdx);
+          const net = gross - hs;
+
+          if (net < bestNet) {
+            bestNet = net;
+            bestGrossForHole = gross;
+          }
+        }
+
+        if (bestNet !== Infinity) {
+          bestBallNet += bestNet;
+          bestBallGross += bestGrossForHole;
+        }
+      }
+
+      entries.push({
+        position: 0,
+        playerName: teamName,
+        userId: null,
+        totalStrokes: bestBallGross,
+        netStrokes: bestBallNet,
+        handicap: 0,
+        holesCompleted,
+        complete: !game.active && holesCompleted > 0,
+        gameId: game.id,
+        teamName,
+        teamPlayers: players,
+        format: "best_ball",
+      });
+    }
+
+    return this.assignPositions(entries);
+  }
+
+  // ── Scramble ──
+  // Team format. Each game is a team's round. Team plays one ball -
+  // first player's scores represent the team score.
+  // Team handicap = 25% of average player handicap.
+  private async getScrambleLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
+    const tournamentGames = await this.getGamesByTournament(tournamentId);
+    const entries: LeaderboardEntry[] = [];
+    let teamNum = 0;
+
+    for (const game of tournamentGames) {
+      const players = game.players as string[];
+      const totalScores = game.totalScores as Record<string, number>;
+      const handicaps = game.handicaps as Record<string, number>;
+      const holeHistory = game.holeHistory as Array<any>;
+      const holesCompleted = holeHistory.length;
+
+      teamNum++;
+      const teamName = `Team ${teamNum}`;
+
+      // In scramble, all team members share the same score per hole.
+      // Use the first player's total as the team total.
+      const firstPlayer = players[0];
+      const teamGross = totalScores[firstPlayer] ?? 0;
+
+      // Team handicap: 25% of average individual handicap
+      const avgHandicap = players.length > 0
+        ? players.reduce((sum, p) => sum + (handicaps[p] ?? 0), 0) / players.length
+        : 0;
+      const teamHandicap = Math.round(avgHandicap * 0.25);
+      const teamNet = teamGross - teamHandicap;
+
+      entries.push({
+        position: 0,
+        playerName: teamName,
+        userId: null,
+        totalStrokes: teamGross,
+        netStrokes: teamNet,
+        handicap: teamHandicap,
+        holesCompleted,
+        complete: !game.active && holesCompleted > 0,
+        gameId: game.id,
+        teamName,
+        teamPlayers: players,
+        format: "scramble",
+      });
+    }
+
+    return this.assignPositions(entries);
   }
 
   async updateTournamentStatus(tournamentId: string, status: string): Promise<Tournament | undefined> {

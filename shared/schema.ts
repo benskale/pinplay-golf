@@ -257,4 +257,9 @@ export interface LeaderboardEntry {
   holesCompleted: number;
   complete: boolean;
   gameId: string | null;
+  // ── Format-specific optional fields ──
+  skinsWon?: number;       // Skins format: number of skins won
+  teamName?: string;        // Team formats: display name (e.g. "Team 1")
+  teamPlayers?: string[];   // Team formats: member names
+  format?: string;          // Which tournament format produced this entry
 }
