@@ -53,7 +53,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   const [holeStrokes, setHoleStrokes] = useState<Record<string, number>>({});
 
   // Wolf / rotating player decision
-  const [wolfDecision, setWolfDecision] = useState<string | null>(null); // "alone" | partner name
+  const [wolfDecision, setWolfDecision] = useState<string | null>(null); // "alone" | "blind" | partner name
 
   // BBB selectors
   const [bbbWinners, setBbbWinners] = useState<{ bingo?: string; bango?: string; bongo?: string }>({});
@@ -113,6 +113,9 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   const rotatingPlayer = getCurrentRotatingPlayer(game);
   const teams = getTeams(game);
   const isWolfGame = game.gameType === "wolf" || game.gameType === "wolf_3";
+  const wolfSettings = (game as any).gameSettings || {};
+  const wolfOrder = wolfSettings.wolfOrder ?? "last";
+  const blindWolfEnabled = wolfSettings.blindWolf ?? false;
   const isTeamGame = gameDef.isTeamGame;
   const isBBB = game.gameType === "bingo_bango_bongo";
   const isHammer = game.gameType === "hammer";
@@ -389,16 +392,19 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                     </div>
 
                     {wolfDecision ? (
-                      <div className={`rounded-lg p-3 ${wolfDecision === "alone"
-                        ? "bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800"
+                      <div className={`rounded-lg p-3 ${wolfDecision === "alone" || wolfDecision === "blind"
+                        ? wolfDecision === "blind" ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
+                        : "bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800"
                         : "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800"}`}>
-                        {wolfDecision === "alone" ? (
+                        {wolfDecision === "alone" || wolfDecision === "blind" ? (
                           <div className="flex items-center space-x-3">
-                            <Swords className="w-5 h-5 text-orange-500" />
+                            <Swords className={`w-5 h-5 ${wolfDecision === "blind" ? "text-red-500" : "text-orange-500"}`} />
                             <div>
-                              <p className="font-semibold text-orange-700 dark:text-orange-300">{rotatingPlayer.split(" ")[0]} goes alone!</p>
-                              <p className="text-xs text-orange-600 dark:text-orange-400">
-                                vs {nonWolvesForDecision.map(p => p.split(" ")[0]).join(", ")}
+                              <p className={`font-semibold ${wolfDecision === "blind" ? "text-red-700 dark:text-red-300" : "text-orange-700 dark:text-orange-300"}`}>
+                                {rotatingPlayer.split(" ")[0]} goes {wolfDecision === "blind" ? "BLIND WOLF!" : "alone!"}
+                              </p>
+                              <p className={`text-xs ${wolfDecision === "blind" ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`}>
+                                {wolfDecision === "blind" ? "Declared before anyone teed off - max stakes! " : ""}vs {nonWolvesForDecision.map(p => p.split(" ")[0]).join(", ")}
                               </p>
                             </div>
                           </div>
@@ -418,12 +424,26 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                       </div>
                     ) : (
                       <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <p className="text-[0.6875rem] text-gray-400">
+                            {wolfOrder === "first"
+                              ? `Wolf hits first — decide partner or solo before watching others tee off`
+                              : `Wolf hits last — watch all drives, then pick partner or go solo`
+                            }
+                          </p>
+                        </div>
                         <p className="text-xs text-gray-500 mb-3">
                           <span className="font-medium text-wolf-500">{rotatingPlayer}</span> — go alone or pick a partner:
                         </p>
+                        {blindWolfEnabled && (
+                          <Button className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 mb-2"
+                            onClick={() => setWolfDecision("blind")}>
+                            <span className="mr-1">🐺</span> Blind Wolf (Solo, Pre-Drive)
+                          </Button>
+                        )}
                         <Button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3"
                           onClick={() => setWolfDecision("alone")}>
-                          <Swords className="w-4 h-4 mr-2" /> Go Alone 🐺
+                          <Swords className="w-4 h-4 mr-2" /> Go Alone
                         </Button>
                         <div className={`grid grid-cols-${nonWolvesForDecision.length} gap-2 mt-2`}>
                           {nonWolvesForDecision.map(player => (
@@ -1157,8 +1177,9 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                                   {wolfPlayer && (
                                     <p className="text-xs font-medium text-gray-800 dark:text-gray-200">
                                       🐺 {wolfPlayer.split(" ")[0]}
-                                      {wolfDecisionH && wolfDecisionH !== "alone" && <span className="text-gray-500"> + {wolfDecisionH.split(" ")[0]}</span>}
+                                      {wolfDecisionH && wolfDecisionH !== "alone" && wolfDecisionH !== "blind" && <span className="text-gray-500"> + {wolfDecisionH.split(" ")[0]}</span>}
                                       {wolfDecisionH === "alone" && <span className="text-orange-500"> alone</span>}
+                                      {wolfDecisionH === "blind" && <span className="text-red-500"> BLIND WOLF</span>}
                                     </p>
                                   )}
                                   {banker && <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Banker: {banker.split(" ")[0]}</p>}

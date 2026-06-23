@@ -162,6 +162,44 @@ async function fetchGolfApi(path: string) {
   return res.json();
 }
 
+/**
+ * Search OpenStreetMap (Nominatim) for golf courses worldwide.
+ * Used as a fallback when OpenGolfAPI (US-only) returns no results.
+ * Returns name + location only — no scorecard/pars data.
+ */
+async function searchOsmCourses(query: string): Promise<any[]> {
+  const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + " golf course")}&format=json&limit=20&addressdetails=1&accept-language=en`;
+  const res = await fetch(nominatimUrl, {
+    headers: { "User-Agent": "PinPlayGolf/1.0" },
+  });
+  if (!res.ok) throw new Error(`Nominatim error: ${res.status}`);
+  const data: any[] = await res.json();
+  const seen = new Set<string>();
+  const courses = data
+    .filter((d: any) =>
+      (d.class === "leisure" && d.type === "golf_course") ||
+      (d.display_name || "").toLowerCase().includes("golf") ||
+      (d.display_name || "").toLowerCase().includes("course")
+    )
+    .map((d: any) => {
+      const addr = d.address || {};
+      const name = d.name || (d.display_name || "").split(",")[0].trim();
+      const city = addr.city || addr.town || addr.village || addr.hamlet || "";
+      const state = addr.state || addr.county || "";
+      const country = addr.country || "";
+      const locKey = `${name}::${city}::${country}`.toLowerCase();
+      const id = `osm-${d.osm_type}-${d.osm_id}`;
+      return { id, name, city, state, country, locKey, par: 0, holes: 0 };
+    })
+    .filter((c: any) => {
+      if (seen.has(c.locKey)) return false;
+      seen.add(c.locKey);
+      return true;
+    })
+    .slice(0, 8);
+  return courses;
+}
+
 // ── Tournament WebSocket broadcasting ────────────────────────────────────────
 
 function joinTournamentRoom(tournamentId: string, ws: WebSocket) {
@@ -220,28 +258,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Golf course search
+  // Golf course search (OpenGolfAPI for US courses, OSM fallback for international)
   app.get("/api/courses/search", async (req, res) => {
+    const q = (req.query.q as string || "").trim();
+    if (!q || q.length < 2) return res.json({ courses: [] });
     try {
-      const q = (req.query.q as string || "").trim();
-      if (!q || q.length < 2) return res.json({ courses: [] });
       const data = await fetchGolfApi(`/courses/search?q=${encodeURIComponent(q)}&limit=8`);
       const courses = (data.courses || []).map((c: any) => ({
         id: c.id,
         name: c.course_name || c.club_name,
         city: c.city,
         state: c.state,
+        country: "US",
         par: c.par_total,
         holes: c.holes_count,
       }));
-      res.json({ courses });
+      // If OpenGolfAPI returned results, return them
+      if (courses.length > 0) return res.json({ courses });
+      // Fallback: search OpenStreetMap for international courses
+      try {
+        const osmCourses = await searchOsmCourses(q);
+        return res.json({ courses: osmCourses });
+      } catch {
+        return res.json({ courses: [] });
+      }
     } catch {
-      res.json({ courses: [] });
+      // OpenGolfAPI failed entirely — try OSM before giving up
+      try {
+        const osmCourses = await searchOsmCourses(q);
+        return res.json({ courses: osmCourses });
+      } catch {
+        res.json({ courses: [] });
+      }
     }
   });
 
   // Golf course detail
   app.get("/api/courses/:id", async (req, res) => {
+    // OSM courses (international) don't have scorecard data
+    if (req.params.id.startsWith("osm-")) {
+      return res.status(404).json({ message: "International course — no scorecard data available" });
+    }
     try {
       const data = await fetchGolfApi(`/courses/${req.params.id}`);
       const pars: number[] = [];

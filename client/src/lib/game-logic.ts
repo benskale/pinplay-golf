@@ -142,7 +142,7 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   wolf_3: {
     id: "wolf_3", name: "Wolf (3-player)", playerCounts: [3],
     description: "Wolf rotates each hole. Wolf goes alone (+2) or picks partner (+1 each).",
-    detailedDescription: "The Wolf rotates each hole. After everyone tees off, the Wolf decides: go solo against both other players (win 2 pts, lose 2 pts) or pick one player as partner (win 1 pt each, lose 1 pt each). Going solo doubles the stakes. The Wolf can also choose 'Blind Wolf' - declaring solo before anyone tees off, which is worth 3 pts.",
+    detailedDescription: "The Wolf rotates each hole. Choose Wolf's hitting order: Wolf goes Last (watches both drives, then picks partner or goes solo) or Wolf goes First (tees off first, decides without seeing other drives). Going solo pays 2x. 'Blind Wolf' can be declared before anyone tees off for 3x stakes.",
     isTeamGame: false, needsHandicap: false, carryover: false, customizable: true,
   },
   sixes: {
@@ -208,7 +208,7 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   wolf: {
     id: "wolf", name: "Wolf", playerCounts: [4],
     description: "Rotating Wolf picks a partner or goes alone. Best ball vs best ball.",
-    detailedDescription: "The most strategic 4-player game. Wolf rotates each hole. After each player tees off in turn order, the Wolf must decide before the next player hits: take the player as partner (2v2 best ball) or pass and go alone (1v3). Going solo pays 3x if you win, but costs 3x if you lose. 'Blind Wolf' lets the Wolf declare solo before anyone tees off for even bigger stakes. Best ball of each side is compared.",
+    detailedDescription: "The most strategic 4-player game. Wolf rotates each hole. Choose Wolf's hitting order: Wolf goes Last (watches all drives, then picks partner or goes solo) or Wolf goes First (tees off first, decides partner or solo without seeing other drives). Going solo pays 3x if you win, but costs 3x if you lose. 'Blind Wolf' can be declared before anyone tees off for maximum stakes. Best ball of each side is compared.",
     isTeamGame: false, needsHandicap: false, carryover: false, customizable: true,
   },
   vegas: {
@@ -334,16 +334,20 @@ export function calcHoleResult(
     // ── WOLF (4-player) ──────────────────────────────────────────────
     case "wolf": {
       const wolfPlayer = extraMeta.wolfPlayer as string;
-      const wolfDecision = extraMeta.wolfDecision as string; // "alone" | partner name
+      const wolfDecision = extraMeta.wolfDecision as string; // "alone" | "blind" | partner name
       if (!wolfPlayer || !wolfDecision) break;
 
       const wolfStr = strokes[wolfPlayer];
       const nonWolves = players.filter(p => p !== wolfPlayer);
+      const isSolo = wolfDecision === "alone" || wolfDecision === "blind";
 
-      if (wolfDecision === "alone") {
+      if (isSolo) {
         const bestOther = Math.min(...nonWolves.map(p => strokes[p]));
-        const winPts = settings.wolfWinAlone ?? 3;
-        const losePts = settings.wolfWinTeam ?? 1;
+        const baseWinPts = settings.wolfWinAlone ?? 3;
+        const baseLosePts = settings.wolfWinTeam ?? 1;
+        // Blind Wolf = 2x stakes
+        const winPts = wolfDecision === "blind" ? baseWinPts * 2 : baseWinPts;
+        const losePts = wolfDecision === "blind" ? baseLosePts * 2 : baseLosePts;
         if (wolfStr < bestOther) {
           deltas[wolfPlayer] = winPts;
         } else if (wolfStr > bestOther) {
@@ -378,9 +382,14 @@ export function calcHoleResult(
       const wolfPts = deltas[wolfPlayer];
       const totalPts = Object.values(deltas).reduce((s, p) => s + p, 0);
       let result = "";
-      if (totalPts === 0) result = wolfDecision === "alone" ? "Wolf alone · Tie" : `Wolf + ${wolfDecision} · Tie`;
-      else if (wolfDecision === "alone") result = wolfPts === 3 ? "Wolf alone · Wolf wins (+3)" : "Wolf alone · Team wins (+1 each)";
-      else result = wolfPts > 0 ? `Wolf + ${wolfDecision} · Wolf's team wins (+1)` : `Wolf + ${wolfDecision} · Opponents win (+1)`;
+      if (totalPts === 0) result = isSolo ? `Wolf ${wolfDecision === "blind" ? "BLIND " : ""}alone · Tie` : `Wolf + ${wolfDecision} · Tie`;
+      else if (isSolo) {
+        const multiplier = wolfDecision === "blind" ? 2 : 1;
+        const basePts = (settings.wolfWinAlone ?? 3) * multiplier;
+        result = wolfPts === basePts
+          ? `Wolf ${wolfDecision === "blind" ? "BLIND " : ""}alone · Wolf wins (+${basePts})`
+          : `Wolf ${wolfDecision === "blind" ? "BLIND " : ""}alone · Team wins (+${(settings.wolfWinTeam ?? 1) * multiplier} each)`;
+      } else result = wolfPts > 0 ? `Wolf + ${wolfDecision} · Wolf's team wins (+1)` : `Wolf + ${wolfDecision} · Opponents win (+1)`;
 
       return { pointDeltas: deltas, result, metadata: { wolfPlayer, wolfDecision } };
     }
@@ -393,11 +402,15 @@ export function calcHoleResult(
 
       const wolfStr = strokes[wolfPlayer];
       const nonWolves = players.filter(p => p !== wolfPlayer);
+      const isSolo3 = wolfDecision === "alone" || wolfDecision === "blind";
 
-      if (wolfDecision === "alone") {
+      if (isSolo3) {
         const bestOther = Math.min(...nonWolves.map(p => strokes[p]));
-        const winPts = settings.wolfWinAlone ?? 2;
-        const losePts = settings.wolfWinTeam ?? 1;
+        const baseWinPts = settings.wolfWinAlone ?? 2;
+        const baseLosePts = settings.wolfWinTeam ?? 1;
+        // Blind Wolf = 2x stakes
+        const winPts = wolfDecision === "blind" ? baseWinPts * 2 : baseWinPts;
+        const losePts = wolfDecision === "blind" ? baseLosePts * 2 : baseLosePts;
         if (wolfStr < bestOther) {
           deltas[wolfPlayer] = winPts;
         } else {
@@ -422,8 +435,11 @@ export function calcHoleResult(
       const totalPts = Object.values(deltas).reduce((s, p) => s + p, 0);
       let result3 = "";
       if (totalPts === 0) result3 = "Tie — no points";
-      else if (wolfDecision === "alone") result3 = wolfPts > 0 ? "Wolf alone wins (+2)" : "Team wins (+1 each)";
-      else result3 = wolfPts > 0 ? `Wolf + ${wolfDecision} win (+1 each)` : `${nonWolves.find(p => p !== wolfDecision)} wins (+2)`;
+      else if (isSolo3) {
+        const multiplier3 = wolfDecision === "blind" ? 2 : 1;
+        const basePts3 = (settings.wolfWinAlone ?? 2) * multiplier3;
+        result3 = wolfPts > 0 ? `Wolf ${wolfDecision === "blind" ? "BLIND " : ""}alone wins (+${basePts3})` : `Team wins (+${(settings.wolfWinTeam ?? 1) * multiplier3} each)`;
+      } else result3 = wolfPts > 0 ? `Wolf + ${wolfDecision} win (+1 each)` : `${nonWolves.find(p => p !== wolfDecision)} wins (+2)`;
 
       return { pointDeltas: deltas, result: result3, metadata: { wolfPlayer, wolfDecision } };
     }

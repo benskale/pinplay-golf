@@ -22,6 +22,7 @@ interface CourseResult {
   name: string;
   city: string;
   state: string;
+  country?: string;
   par: number;
   holes: number;
 }
@@ -484,6 +485,42 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
             <Sparkles className="w-4 h-4 text-amber-500" />
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Wolf Settings</p>
           </div>
+
+          {/* Wolf order: first or last */}
+          <div>
+            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Wolf hits</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setGameSettings(prev => ({ ...prev, wolfOrder: "first" }))}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  (gameSettings.wolfOrder ?? "last") === "first"
+                    ? "bg-primary-500 text-white"
+                    : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                }`}
+              >
+                First
+              </button>
+              <button
+                type="button"
+                onClick={() => setGameSettings(prev => ({ ...prev, wolfOrder: "last" }))}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  (gameSettings.wolfOrder ?? "last") === "last"
+                    ? "bg-primary-500 text-white"
+                    : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                }`}
+              >
+                Last
+              </button>
+            </div>
+            <p className="text-[0.6875rem] text-gray-400 mt-1.5">
+              {(gameSettings.wolfOrder ?? "last") === "first"
+                ? "Wolf tees off first, then decides partner or solo before watching others."
+                : "Wolf tees off last, watches all drives, then picks partner or goes solo."
+              }
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Win alone (pts)</label>
@@ -511,7 +548,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
           <div className="flex items-center justify-between pt-1">
             <div>
               <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Blind Wolf allowed</p>
-              <p className="text-[0.6875rem] text-gray-400">Declare solo before anyone tees off</p>
+              <p className="text-[0.6875rem] text-gray-400">Declare solo before anyone tees off — higher stakes</p>
             </div>
             <button
               onClick={() => setGameSettings(prev => ({ ...prev, blindWolf: !prev.blindWolf }))}
@@ -577,7 +614,9 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
                     <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{course.name}</p>
-                      <p className="text-xs text-gray-500">{course.city}, {course.state}{course.par ? ` · Par ${course.par}` : ""}</p>
+                      <p className="text-xs text-gray-500">
+                        {[course.city, course.state, course.country].filter(Boolean).join(", ")}{course.par ? ` · Par ${course.par}` : " · Scorecard unavailable"}
+                      </p>
                     </div>
                   </button>
                 )) : debouncedQuery.length >= 2 ? (
@@ -588,7 +627,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
             {selectedCourse && !loadingCourse && (
               <div className="mt-2 flex items-center space-x-2 text-sm text-green-600 dark:text-green-400">
                 <CheckCircle className="w-4 h-4" />
-                <span>{selectedCourse.city}, {selectedCourse.state} · scorecard loaded</span>
+                <span>{[selectedCourse.city, selectedCourse.state].filter(Boolean).join(", ") || "Course"} · scorecard loaded</span>
               </div>
             )}
           </div>
