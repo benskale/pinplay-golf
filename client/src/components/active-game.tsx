@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ShareModal } from "@/components/share-modal";
 import Scorecard from "@/components/scorecard";
 import EditHoleModal from "@/components/edit-hole-modal";
+import LiveSettlement from "@/components/live-settlement";
 import {
   Share2, Crown, Minus, Plus, TableProperties, ClipboardList,
   Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target, MoreVertical, Trash2, Flag, Sparkles, Flame
@@ -87,6 +88,9 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
 
   // Edit hole modal
   const [editHoleNumber, setEditHoleNumber] = useState<number | null>(null);
+
+  // Leaderboard view toggle (points vs dollars)
+  const [leaderboardView, setLeaderboardView] = useState<"points" | "dollars">("points");
 
   const { toast } = useToast();
 
@@ -1150,8 +1154,42 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                     <Trophy className="w-4 h-4 text-amber-400 flex-shrink-0" />
                     <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">Leaderboard</h3>
                   </div>
+
+                  {/* Points / Dollars toggle */}
+                  {pointValue > 0 && !lower && (
+                    <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg mb-3">
+                      <button
+                        className={`flex-1 py-1.5 rounded-md text-[0.8125rem] font-medium transition-colors ${
+                          leaderboardView === "points"
+                            ? "bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-gray-200"
+                            : "text-muted-foreground"
+                        }`}
+                        onClick={() => setLeaderboardView("points")}
+                      >
+                        Points
+                      </button>
+                      <button
+                        className={`flex-1 py-1.5 rounded-md text-[0.8125rem] font-medium transition-colors ${
+                          leaderboardView === "dollars"
+                            ? "bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-gray-200"
+                            : "text-muted-foreground"
+                        }`}
+                        onClick={() => setLeaderboardView("dollars")}
+                      >
+                        Dollars
+                      </button>
+                    </div>
+                  )}
+
                   <div className="space-y-1.5">
-                    {leaderboard.map((entry, i) => (
+                    {leaderboard.map((entry, i) => {
+                      const total = game.totalScores?.[entry.player] ?? 0;
+                      const showDollars = leaderboardView === "dollars" && pointValue > 0 && !lower;
+                      const displayValue = showDollars
+                        ? `${total > 0 ? "+" : total < 0 ? "-" : ""}$${Math.abs(Math.round(total * pointValue))}`
+                        : entry.displayScore;
+
+                      return (
                       <div key={entry.player} className={`flex items-center justify-between px-3 py-2.5 rounded-xl ${
                         i === 0
                           ? "bg-amber-50 dark:bg-amber-950/25 ring-1 ring-amber-200 dark:ring-amber-800"
@@ -1171,23 +1209,37 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                             {(game.gameType === "wolf" || game.gameType === "wolf_3") && (
                               <p className="text-[0.6875rem] text-muted-foreground leading-none">Wolf {game.wolfCounts[entry.player] || 0}×</p>
                             )}
-                            {pointValue > 0 && !lower && (
-                              <p className="text-[0.6875rem] leading-none mt-0.5 font-medium" style={{ color: (game.totalScores?.[entry.player] ?? 0) > 0 ? "#16a34a" : (game.totalScores?.[entry.player] ?? 0) < 0 ? "#dc2626" : undefined }}>
-                                {(game.totalScores?.[entry.player] ?? 0) > 0 ? "+" : ""}${Math.round((game.totalScores?.[entry.player] ?? 0) * pointValue)}
+                            {showDollars && (
+                              <p className="text-[0.6875rem] leading-none mt-0.5 font-medium text-muted-foreground tabular-nums">
+                                {total > 0 ? "+" : ""}{total} pts
+                              </p>
+                            )}
+                            {pointValue > 0 && !lower && leaderboardView === "points" && (
+                              <p className="text-[0.6875rem] leading-none mt-0.5 font-medium" style={{ color: total > 0 ? "#16a34a" : total < 0 ? "#dc2626" : undefined }}>
+                                {total > 0 ? "+" : ""}${Math.round(total * pointValue)}
                               </p>
                             )}
                           </div>
                         </div>
-                        <span className={`text-[1.375rem] font-bold leading-none ${
-                          i === 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"
+                        <span className={`text-[1.375rem] font-bold leading-none tabular-nums ${
+                          showDollars && total !== 0
+                            ? total > 0 ? "text-green-600 dark:text-green-400" : "text-red-500"
+                            : i === 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"
                         }`}>
-                          {entry.displayScore}
+                          {displayValue}
                         </span>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
+
+              {/* ── LIVE SETTLEMENT (who owes whom) ── */}
+              {pointValue > 0 && !lower && (
+                <LiveSettlement game={game} />
+              )}
+
 
               {/* ── CLOSEST TO THE PIN TRACKER (always visible) ── */}
               {(() => {
