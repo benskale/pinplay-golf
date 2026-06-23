@@ -127,6 +127,7 @@ export class DatabaseStorage implements IStorage {
       holeHistory: [],
       active: true,
       miniGames: (insertGame as any).miniGames ?? {},
+      gameSettings: (insertGame as any).gameSettings ?? {},
       tournamentId: (insertGame as any).tournamentId ?? null,
     }).returning();
 
@@ -884,6 +885,7 @@ export class MemStorage implements IStorage {
       tieCarryover: insertGame.tieCarryover ?? false,
       scores, strokes, totalScores, wolfCounts, holeHistory: [], active: true,
       miniGames: (insertGame as any).miniGames ?? {},
+      gameSettings: (insertGame as any).gameSettings ?? {},
       tournamentId: (insertGame as any).tournamentId ?? null,
       createdAt: now, updatedAt: now,
     };
