@@ -8,9 +8,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Loader2, ChevronDown, ChevronUp, CheckCircle, MapPin, Search, X,
-  Users, ChevronRight, ArrowLeft, Shuffle, UserCircle, Sparkles
+  Users, ChevronRight, ArrowLeft, Shuffle, UserCircle, Sparkles, DollarSign
 } from "lucide-react";
-import { getGamesForPlayerCount, getMiniGamesForSetup, type GameDef, type MiniGameDef } from "@/lib/game-logic";
+import { getGamesForPlayerCount, getMiniGamesForSetup, isLowerBetter, type GameDef, type MiniGameDef } from "@/lib/game-logic";
 import { trackGame } from "@/lib/game-recovery";
 
 interface GameSetupProps {
@@ -492,6 +492,50 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
       <div className="p-3.5 bg-primary-50 dark:bg-primary-950/40 rounded-xl border border-primary-100 dark:border-primary-800/60">
         <p className="text-[0.8125rem] text-primary-800 dark:text-primary-200 leading-relaxed">{selectedGame?.description}</p>
       </div>
+
+      {/* ── STAKES — Dollar value per point ── */}
+      {!isLowerBetter(selectedGame?.id || "stroke_play") && (
+        <Card className="border-emerald-200 dark:border-emerald-800">
+          <CardContent className="p-3.5">
+            <div className="flex items-center gap-2 mb-2.5">
+              <DollarSign className="w-4 h-4 text-emerald-500" />
+              <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">
+                Stakes
+              </h3>
+              <span className="text-[0.6875rem] text-muted-foreground ml-auto">per point</span>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {[1, 2, 5, 10, 20].map(v => (
+                <button
+                  key={v}
+                  className={`px-3 py-1.5 rounded-lg text-[0.8125rem] font-medium transition-all ${
+                    gameSettings.pointValue === v
+                      ? "bg-emerald-500 text-white shadow-sm"
+                      : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900"
+                  }`}
+                  onClick={() => setGameSettings(prev => ({ ...prev, pointValue: v }))}
+                >
+                  ${v}
+                </button>
+              ))}
+              <div className="flex items-center gap-1 ml-1">
+                <span className="text-[0.75rem] text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  min={0}
+                  className="w-16 h-8 text-[0.8125rem]"
+                  placeholder="0"
+                  value={gameSettings.pointValue || ""}
+                  onChange={e => setGameSettings(prev => ({ ...prev, pointValue: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+            </div>
+            {(!gameSettings.pointValue || gameSettings.pointValue === 0) && (
+              <p className="text-[0.6875rem] text-muted-foreground mt-2">Points only, no money. Set a value to track winnings.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Wolf customization settings */}
       {selectedGame?.customizable && (selectedGame.id === "wolf" || selectedGame.id === "wolf_3") && (

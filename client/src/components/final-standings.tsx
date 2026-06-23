@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trophy, Crown, Award, RotateCcw, TableProperties, ClipboardList, Save, UserPlus, CheckCircle2, HandMetal, Sparkles } from "lucide-react";
+import { Trophy, Crown, Award, RotateCcw, TableProperties, ClipboardList, Save, UserPlus, CheckCircle2, HandMetal, Sparkles, DollarSign } from "lucide-react";
 import { ShareModal } from "@/components/share-modal";
 import { GhinExportModal } from "@/components/ghin-export-modal";
 import RoundStats from "@/components/round-stats";
@@ -51,6 +51,9 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
   };
   const lower = isLowerBetter(game.gameType);
   const isWolfGame = game.gameType === "wolf" || game.gameType === "wolf_3";
+
+  // Dollar value per point for the main game
+  const pointValue = (game.gameSettings as any)?.pointValue || 0;
 
   // Determine if this is the game creator (has userId match) or a visitor
   const isCreator = user && game.userId === user.id;
@@ -312,6 +315,11 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
             <p className="text-lg text-yellow-700 dark:text-yellow-300 font-semibold">
               {lower ? `${winnerScore} strokes` : `${winnerScore} points`}
             </p>
+            {pointValue > 0 && !lower && (
+              <p className="text-[0.8125rem] text-green-600 dark:text-green-400 font-bold">
+                ${(Math.round(winnerScore * pointValue)).toLocaleString()} in winnings
+              </p>
+            )}
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
               Congratulations on a great round!
             </p>
@@ -342,6 +350,17 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {lower ? "strokes" : "points"}
                     </p>
+                    {pointValue > 0 && !lower && (
+                      <p className={`text-[0.75rem] font-bold ${
+                        (displayGame.totalScores[player] ?? 0) > 0
+                          ? "text-green-600 dark:text-green-400"
+                          : (displayGame.totalScores[player] ?? 0) < 0
+                            ? "text-red-500"
+                            : "text-gray-400"
+                      }`}>
+                        {(displayGame.totalScores[player] ?? 0) > 0 ? "+" : ""}${Math.round((displayGame.totalScores[player] ?? 0) * pointValue)}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -372,6 +391,51 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
 
         {/* Round Stats (birdies, pars, bogeys breakdown) */}
         <RoundStats game={displayGame} />
+
+        {/* ── MAIN GAME SETTLEMENT (point value × points = $) ── */}
+        {pointValue > 0 && !lower && (() => {
+          const pps: Record<string, number> = {};
+          game.players.forEach(p => { pps[p] = (displayGame.totalScores[p] ?? 0) * pointValue; });
+          const maxPP = Math.max(...Object.values(pps));
+          const minPP = Math.min(...Object.values(pps));
+          return (
+            <Card className="border-emerald-200 dark:border-emerald-800">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <DollarSign className="w-5 h-5 text-emerald-500" />
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Game Payout</h3>
+                  <span className="text-[0.75rem] text-muted-foreground ml-auto">{pointValue > 0 ? `$${pointValue}/point` : ""}</span>
+                </div>
+                <div className="space-y-2">
+                  {sortedPlayers.map(player => {
+                    const amt = pps[player];
+                    return (
+                      <div key={player} className={`flex items-center justify-between px-4 py-3 rounded-xl ${
+                        amt > 0
+                          ? "bg-green-50 dark:bg-green-950/30 ring-1 ring-green-200 dark:ring-green-800"
+                          : amt < 0
+                            ? "bg-red-50 dark:bg-red-950/20"
+                            : "bg-gray-50 dark:bg-gray-800/50"
+                      }`}>
+                        <span className="text-[0.9375rem] font-medium text-gray-800 dark:text-gray-200">{player}</span>
+                        <span className={`text-[1.0625rem] font-bold ${
+                          amt > 0 ? "text-green-600 dark:text-green-400"
+                            : amt < 0 ? "text-red-500"
+                            : "text-gray-400"
+                        }`}>
+                          {amt > 0 ? "+" : ""}${Math.round(amt).toLocaleString()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-[0.6875rem] text-muted-foreground mt-3 text-center">
+                  Settlement = total points × ${pointValue}/point. Press multipliers already included in points.
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Mini-Games Settlement */}
         {(() => {

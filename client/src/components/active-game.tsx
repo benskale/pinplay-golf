@@ -131,6 +131,9 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   const isPar3 = currentPar === 3;
   const isTeamStrokes = ["scramble", "alternate_shot", "alternate_shot_4", "shamble"].includes(game.gameType);
 
+  // Dollar value per point (0 = tracking only, no money)
+  const pointValue = (game.gameSettings as any)?.pointValue || 0;
+
   // Press sides — determines who can press against whom
   const pressSides = useMemo(() => getPressSides(game), [game.players, game.teams]);
   const sideALabel = pressSides.sideA.length > 1 ? 'Team A' : (pressSides.sideA[0]?.split(' ')[0] || 'Side A');
@@ -653,7 +656,6 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                         </button>
                       </div>
                     ) : (
-                      /* Press buttons — one per side */
                       <div className="flex gap-2">
                         <Button
                           size="sm"
@@ -662,6 +664,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                           onClick={() => setPendingPress({ from: pressSides.sideA[0] || sideALabel, fromSide: 'A' })}
                         >
                           {sideALabel} Press
+                          {pointValue > 0 && <span className="ml-1 text-[0.625rem] opacity-70">${pointValue * pressMultiplier * 2}/pt</span>}
                         </Button>
                         <Button
                           size="sm"
@@ -670,6 +673,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                           onClick={() => setPendingPress({ from: pressSides.sideB[0] || sideBLabel, fromSide: 'B' })}
                         >
                           {sideBLabel} Press
+                          {pointValue > 0 && <span className="ml-1 text-[0.625rem] opacity-70">${pointValue * pressMultiplier * 2}/pt</span>}
                         </Button>
                       </div>
                     )}
@@ -1108,6 +1112,11 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                                   : "text-gray-400"
                               }`}>
                                 {lower ? pts : pts > 0 ? `+${pts}` : pts === 0 ? "0" : pts}
+                                {pointValue > 0 && !lower && pts !== 0 && (
+                                  <span className="text-[0.6875rem] font-semibold ml-1 opacity-70">
+                                    {pts > 0 ? "+" : ""}${Math.round(pts * pointValue)}
+                                  </span>
+                                )}
                               </span>
                             </div>
                           );
@@ -1161,6 +1170,11 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                             <p className="text-[0.875rem] font-semibold text-gray-800 dark:text-gray-200">{entry.player.split(" ")[0]}</p>
                             {(game.gameType === "wolf" || game.gameType === "wolf_3") && (
                               <p className="text-[0.6875rem] text-muted-foreground leading-none">Wolf {game.wolfCounts[entry.player] || 0}×</p>
+                            )}
+                            {pointValue > 0 && !lower && (
+                              <p className="text-[0.6875rem] leading-none mt-0.5 font-medium" style={{ color: (game.totalScores?.[entry.player] ?? 0) > 0 ? "#16a34a" : (game.totalScores?.[entry.player] ?? 0) < 0 ? "#dc2626" : undefined }}>
+                                {(game.totalScores?.[entry.player] ?? 0) > 0 ? "+" : ""}${Math.round((game.totalScores?.[entry.player] ?? 0) * pointValue)}
+                              </p>
                             )}
                           </div>
                         </div>
