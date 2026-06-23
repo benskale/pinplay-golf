@@ -149,6 +149,7 @@ export default function Game() {
         try {
           await apiRequest("DELETE", `/api/games/${gameId}`);
         } catch {}
+        untrackGame(gameId);
         setLocation("/");
       }} />
 

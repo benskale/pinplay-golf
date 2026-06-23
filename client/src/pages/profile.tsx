@@ -12,6 +12,7 @@ import {
   ChevronRight, Trash2, MapPin, Link2
 } from "lucide-react";
 import { GAME_DEFINITIONS } from "@/lib/game-logic";
+import { completeGame } from "@/lib/game-recovery";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Game } from "@shared/schema";
@@ -163,8 +164,11 @@ export default function ProfilePage() {
       const res = await apiRequest("DELETE", `/api/games/${gameId}`);
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
     },
-    onSuccess: () => {
+    onSuccess: (_data, gameId) => {
+      completeGame(gameId); // remove from localStorage guest-tracking
       queryClient.invalidateQueries({ queryKey: ["/api/auth/games"] });
+      queryClient.invalidateQueries({ queryKey: ["guest-games"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/games"] });
       toast({ title: "Round deleted" });
     },
     onError: (err: Error) => toast({ title: "Couldn't delete round", description: err.message, variant: "destructive" }),
