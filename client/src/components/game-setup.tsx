@@ -674,7 +674,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
                     <div>
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{course.name}</p>
                       <p className="text-xs text-gray-500">
-                        {[course.city, course.state, course.country].filter(Boolean).join(", ")}{course.par ? ` · Par ${course.par}` : " · Scorecard unavailable"}
+                        {[course.city, course.state, course.country].filter(Boolean).join(", ")}{course.par ? ` · Par ${course.par}` : course.id?.startsWith("osm-") ? " · No scorecard" : ""}
                       </p>
                     </div>
                   </button>

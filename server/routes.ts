@@ -162,6 +162,51 @@ async function fetchGolfApi(path: string) {
   return res.json();
 }
 
+/**
+ * Search OpenStreetMap (Nominatim) for golf courses worldwide.
+ * Returns name + location only — no scorecard/pars data.
+ * Timeout ensures it never blocks the response if Nominatim is slow.
+ */
+async function searchOsmCourses(query: string, timeoutMs = 3000): Promise<any[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + " golf course")}&format=json&limit=20&addressdetails=1&accept-language=en`;
+    const res = await fetch(nominatimUrl, {
+      headers: { "User-Agent": "PinPlayGolf/1.0" },
+      signal: controller.signal,
+    });
+    if (!res.ok) return [];
+    const data: any[] = await res.json();
+    const seen = new Set<string>();
+    return data
+      .filter((d: any) =>
+        (d.class === "leisure" && d.type === "golf_course") ||
+        (d.display_name || "").toLowerCase().includes("golf") ||
+        (d.display_name || "").toLowerCase().includes("course"))
+      .map((d: any) => {
+        const addr = d.address || {};
+        const name = d.name || (d.display_name || "").split(",")[0].trim();
+        const city = addr.city || addr.town || addr.village || addr.hamlet || "";
+        const state = addr.state || addr.county || "";
+        const country = addr.country || "";
+        const locKey = `${name}::${city}::${country}`.toLowerCase();
+        const id = `osm-${d.osm_type}-${d.osm_id}`;
+        return { id, name, city, state, country, locKey, par: 0, holes: 0 };
+      })
+      .filter((c: any) => {
+        if (seen.has(c.locKey)) return false;
+        seen.add(c.locKey);
+        return true;
+      })
+      .slice(0, 8);
+  } catch {
+    return []; // timeout or error — never block the response
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ── Tournament WebSocket broadcasting ────────────────────────────────────────
 
 function joinTournamentRoom(tournamentId: string, ws: WebSocket) {
@@ -220,28 +265,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Golf course search
+  // Golf course search — US courses from OpenGolfAPI, international from OpenStreetMap
   app.get("/api/courses/search", async (req, res) => {
-    try {
-      const q = (req.query.q as string || "").trim();
-      if (!q || q.length < 2) return res.json({ courses: [] });
-      const data = await fetchGolfApi(`/courses/search?q=${encodeURIComponent(q)}&limit=8`);
-      const courses = (data.courses || []).map((c: any) => ({
+    const q = (req.query.q as string || "").trim();
+    if (!q || q.length < 2) return res.json({ courses: [] });
+
+    // Run both searches in parallel; OSM is timeout-guarded so it never blocks
+    const [ogResult, osmResult] = await Promise.allSettled([
+      fetchGolfApi(`/courses/search?q=${encodeURIComponent(q)}&limit=8`),
+      searchOsmCourses(q),
+    ]);
+
+    // OpenGolfAPI results — US courses with scorecards
+    let courses: any[] = [];
+    if (ogResult.status === "fulfilled") {
+      courses = (ogResult.value.courses || []).map((c: any) => ({
         id: c.id,
         name: c.course_name || c.club_name,
         city: c.city,
         state: c.state,
+        country: "US",
         par: c.par_total,
         holes: c.holes_count,
       }));
-      res.json({ courses });
-    } catch {
-      res.json({ courses: [] });
     }
+
+    // OSM results — international courses (no scorecard)
+    // Append after US courses, dedupe by name
+    if (osmResult.status === "fulfilled" && osmResult.value.length > 0) {
+      const existingNames = new Set(courses.map((c: any) => c.name.toLowerCase()));
+      const osmCourses = osmResult.value
+        .filter((c: any) => {
+          const key = c.name.toLowerCase();
+          if (existingNames.has(key)) return false;
+          existingNames.add(key);
+          return true;
+        })
+        .map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          city: c.city,
+          state: c.state,
+          country: c.country,
+          par: 0,
+          holes: 0,
+        }));
+      courses = [...courses, ...osmCourses];
+    }
+
+    res.json({ courses });
   });
 
   // Golf course detail
   app.get("/api/courses/:id", async (req, res) => {
+    // OSM courses (international) don't have scorecard data
+    if (req.params.id.startsWith("osm-")) {
+      return res.status(404).json({ message: "International course — no scorecard data available" });
+    }
     try {
       const data = await fetchGolfApi(`/courses/${req.params.id}`);
       const pars: number[] = [];
