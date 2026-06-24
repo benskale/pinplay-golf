@@ -281,12 +281,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (ogResult.status === "fulfilled") {
       courses = (ogResult.value.courses || []).map((c: any) => ({
         id: c.id,
-        name: c.course_name || c.club_name,
+        name: c.name || c.course_name || c.club_name,
         city: c.city,
         state: c.state,
         country: "US",
-        par: c.par_total,
-        holes: c.holes_count,
+        par: c.par || c.par_total,
+        holes: c.holes || c.holes_count,
       }));
     }
 
@@ -327,10 +327,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const pars: number[] = [];
       const hcpRanks: number[] = [];
       if (Array.isArray(data.scorecard) && data.scorecard.length > 0) {
-        const sorted = [...data.scorecard].sort((a: any, b: any) => a.hole_number - b.hole_number);
-        sorted.forEach((h: any, idx: number) => {
+        const sorted = [...data.scorecard].sort((a: any, b: any) => (a.hole ?? a.hole_number ?? 0) - (b.hole ?? b.hole_number ?? 0));
+        sorted.forEach((h: any) => {
           pars.push(h.par || 4);
-          if (idx === 0) console.log("[CourseAPI] sample hole fields:", JSON.stringify(h));
           const rank = h.handicap ?? h.stroke_index ?? h.hcp ?? h.handicap_index ?? h.strokeIndex ?? h.si ?? h.difficulty ?? null;
           hcpRanks.push(rank);
         });
@@ -338,7 +337,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       while (pars.length < 18) pars.push(4);
       while (hcpRanks.length < 18) hcpRanks.push(null as any);
       const validHcpRanks = hcpRanks.length === 18 && hcpRanks.every(r => typeof r === "number" && r >= 1 && r <= 18) ? hcpRanks : null;
-      res.json({ id: data.id, name: data.course_name || data.club_name, city: data.city, state: data.state, par: data.par_total, pars: pars.slice(0, 18), hcpRanks: validHcpRanks });
+      res.json({ id: data.id, name: data.name || data.course_name || data.club_name, city: data.city, state: data.state, par: data.par || data.par_total, pars: pars.slice(0, 18), hcpRanks: validHcpRanks });
     } catch {
       res.status(500).json({ message: "Could not load course data" });
     }
