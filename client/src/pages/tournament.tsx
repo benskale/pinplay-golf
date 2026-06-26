@@ -300,9 +300,9 @@ export default function TournamentPage() {
               </span>
               {tournament.format && tournament.format !== "stroke_play" && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-white/10 text-white/70 border border-white/15">
-                  {tournament.format === "skins" && "🎯 Skins"}
-                  {tournament.format === "best_ball" && "👥 Best Ball"}
-                  {tournament.format === "scramble" && "🏌️ Scramble"}
+                  {tournament.format === "skins" && "Skins"}
+                  {tournament.format === "best_ball" && "Best Ball"}
+                  {tournament.format === "scramble" && "Scramble"}
                 </span>
               )}
             </div>

@@ -158,7 +158,7 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="text-white shadow-lg" style={{ background: "linear-gradient(160deg, #081f10 0%, #0f3520 60%, #155e35 100%)" }}>
+      <header className="text-white shadow-lg header-surface">
         <div className="max-w-md mx-auto px-4 py-6 text-center">
           <Trophy className="w-12 h-12 mx-auto mb-2 text-yellow-300" />
           <h1 className="text-2xl font-bold">Game Complete!</h1>
@@ -170,7 +170,7 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
 
         {/* ── "Was this you?" Claim Banner (for guests viewing shared link) ── */}
         {showClaim && !user && !showAuth && !claimed && (
-          <Card className="border-primary-300 dark:border-primary-700 bg-gradient-to-br from-primary-50 to-white dark:from-primary-950/40 dark:to-gray-800 shadow-md">
+          <Card className="border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/40 shadow-md">
             <CardContent className="p-5">
               <div className="flex items-start gap-3 mb-4">
                 <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center flex-shrink-0">
@@ -266,7 +266,7 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
 
         {/* ── Save banner (guest creators) ── */}
         {showSaveBanner && !user && !showClaim && !showAuth && !claimed && (
-          <Card className="border-primary-300 dark:border-primary-700 bg-gradient-to-br from-primary-50 to-white dark:from-primary-950/40 dark:to-gray-800 shadow-md">
+          <Card className="border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/40 shadow-md">
             <CardContent className="p-5">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center flex-shrink-0">
@@ -308,11 +308,11 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
         )}
 
         {/* Winner */}
-        <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-950/20 dark:to-orange-950/20 border-yellow-200 dark:border-yellow-800">
+        <Card className="bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800">
           <CardContent className="p-6 text-center">
             <Crown className="w-16 h-16 mx-auto mb-4 text-yellow-500" />
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2">
-              🏆 {winner} Wins!
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200 mb-2 font-display">
+              {winner} Wins!
             </h2>
             <p className="text-lg text-yellow-700 dark:text-yellow-300 font-semibold">
               {lower ? `${winnerScore} strokes` : `${winnerScore} points`}
@@ -331,7 +331,7 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
         {/* Final Standings */}
         <Card>
           <CardContent className="p-6">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Final Standings</h3>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 font-display">Final Standings</h3>
             <div className="space-y-3">
               {sortedPlayers.map((player, index) => (
                 <div key={player} className={`flex items-center justify-between p-4 rounded-lg border ${getPositionBg(index)}`}>
@@ -619,11 +619,11 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
           if (settlement.transactions.length === 0) return null;
 
           return (
-            <Card className="border-emerald-300 dark:border-emerald-700 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-950/20">
+            <Card className="border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20">
               <CardContent className="p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <DollarSign className="w-5 h-5 text-emerald-500" />
-                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Total Settlement</h3>
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 font-display">Total Settlement</h3>
                   <span className="text-[0.6875rem] text-muted-foreground ml-auto font-medium">Combined</span>
                 </div>
 

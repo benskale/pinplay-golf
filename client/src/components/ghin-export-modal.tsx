@@ -119,7 +119,7 @@ export function GhinExportModal({ isOpen, onClose, game }: GhinExportModalProps)
           {/* Score summary card */}
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             {/* Header */}
-            <div className="px-4 py-3 text-white" style={{ background: "linear-gradient(135deg, #0f3520 0%, #155e35 100%)" }}>
+            <div className="px-4 py-3 text-white header-surface">
               <p className="font-bold text-sm">{selectedPlayer}</p>
               {game.courseName && <p className="text-xs mt-0.5" style={{ color: "rgba(134,196,159,0.9)" }}>{game.courseName}</p>}
               <p className="text-xs mt-0.5" style={{ color: "rgba(134,196,159,0.7)" }}>

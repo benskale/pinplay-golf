@@ -335,7 +335,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* ── Premium sticky header ── */}
-      <header className="text-white z-50 sticky top-0 hero-texture" style={{ background: "linear-gradient(160deg, #070f0a 0%, #0d1f15 60%, #1a3a2a 100%)" }}>
+      <header className="text-white z-50 sticky top-0 hero-texture header-surface">
         <div className="max-w-md mx-auto px-4 pt-4 pb-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -809,7 +809,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                   <CardContent className="p-5">
                     <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-3">BBB Points</h3>
                     {[
-                      { key: "bingo", label: "Bingo 🏌️", desc: "First on the green" },
+                      { key: "bingo", label: "Bingo", desc: "First on the green" },
                       { key: "bango", label: "Bango 📍", desc: "Closest to pin when all on" },
                       { key: "bongo", label: "Bongo 🕳️", desc: "First to hole out" },
                     ].map(({ key, label, desc }) => (

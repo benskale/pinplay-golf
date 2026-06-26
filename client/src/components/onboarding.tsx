@@ -52,7 +52,7 @@ export default function Onboarding({ onDismiss }: OnboardingProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header with gradient */}
-        <div className="relative px-6 pt-8 pb-6 text-center" style={{ background: "linear-gradient(160deg, #081f10 0%, #0f3520 60%, #155e35 100%)" }}>
+        <div className="relative px-6 pt-8 pb-6 text-center header-surface">
           <button
             onClick={handleSkip}
             className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
@@ -62,7 +62,7 @@ export default function Onboarding({ onDismiss }: OnboardingProps) {
           <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-white/10 flex items-center justify-center">
             {current.icon}
           </div>
-          <h2 className="text-xl font-bold text-white mb-1">{current.title}</h2>
+          <h2 className="text-xl font-bold text-white mb-1 font-display">{current.title}</h2>
           <p className="text-sm text-white/70 leading-relaxed">{current.desc}</p>
         </div>
 
@@ -83,7 +83,7 @@ export default function Onboarding({ onDismiss }: OnboardingProps) {
           <Button
             onClick={handleNext}
             className="w-full h-12 rounded-xl font-semibold text-white"
-            style={{ background: "linear-gradient(135deg, #1a3a2a 0%, #2e7d52 100%)" }}
+            style={{ background: "var(--cta)", }}
           >
             {step < STEPS.length - 1 ? (
               <>
@@ -91,7 +91,7 @@ export default function Onboarding({ onDismiss }: OnboardingProps) {
                 <ChevronRight className="w-4 h-4 ml-1" />
               </>
             ) : (
-              "Start Playing ⛳"
+              "Start Playing"
             )}
           </Button>
           <button

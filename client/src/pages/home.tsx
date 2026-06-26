@@ -113,8 +113,7 @@ export default function Home() {
           <div className="mb-5 -mt-1">
             <button
               onClick={() => setLocation(`/game/${game.id}`)}
-              className="w-full p-4 rounded-2xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg border-2 border-green-400/50 dark:border-green-600/40"
-              style={{ background: "linear-gradient(135deg, #065f46 0%, #064e3b 100%)" }}
+              className="w-full p-4 rounded-2xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg border-2 border-green-400/50 dark:border-green-600/40 header-surface"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">

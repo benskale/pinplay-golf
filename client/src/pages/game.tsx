@@ -87,7 +87,7 @@ export default function Game() {
   if (isLoading || !currentGame) {
     return (
       <div className="bg-gray-50 dark:bg-gray-900 font-sans min-h-screen">
-        <header className="text-white shadow-lg sticky top-0 z-50" style={{ background: "linear-gradient(160deg, #070f0a 0%, #0d1f15 60%, #1a3a2a 100%)" }}>
+        <header className="text-white shadow-lg sticky top-0 z-50 header-surface">
           <div className="max-w-md mx-auto px-4 py-4">
             <div className="flex items-center space-x-3">
               <PinPlayLogo className="w-8 h-8" />
@@ -111,7 +111,7 @@ export default function Game() {
   if (error) {
     return (
       <div className="bg-gray-50 dark:bg-gray-900 font-sans min-h-screen">
-        <header className="text-white shadow-lg sticky top-0 z-50" style={{ background: "linear-gradient(160deg, #070f0a 0%, #0d1f15 60%, #1a3a2a 100%)" }}>
+        <header className="text-white shadow-lg sticky top-0 z-50 header-surface">
           <div className="max-w-md mx-auto px-4 py-4">
             <div className="flex items-center space-x-3">
               <PinPlayLogo className="w-8 h-8" />

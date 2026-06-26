@@ -363,7 +363,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="text-white sticky top-0 z-50" style={{ background: "linear-gradient(160deg, #081f10 0%, #0f3520 60%, #155e35 100%)" }}>
+      <header className="text-white sticky top-0 z-50 header-surface">
         <div className="max-w-md mx-auto px-4 pt-4 pb-5">
           <div className="flex items-center justify-between mb-4">
             <button onClick={() => setLocation("/")} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/15 text-white">

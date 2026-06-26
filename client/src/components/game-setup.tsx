@@ -42,9 +42,9 @@ const DEFAULT_PARS = Array(18).fill(4);
 type Step = "count" | "game" | "players" | "minigames";
 
 const PLAYER_COUNT_OPTIONS = [
-  { count: 2, label: "2 Players", icon: "🏌️‍♂️🏌️‍♂️", desc: "Match Play, Skins, Nassau & more" },
-  { count: 3, label: "3 Players", icon: "🏌️‍♂️🏌️‍♂️🏌️‍♂️", desc: "Wolf, Sixes, Bingo Bango Bongo" },
-  { count: 4, label: "4 Players", icon: "🏌️‍♂️🏌️‍♂️🏌️‍♂️🏌️‍♂️", desc: "Wolf, Scramble, Vegas & more" },
+  { count: 2, label: "2 Players", desc: "Match Play, Skins, Nassau & more" },
+  { count: 3, label: "3 Players", desc: "Wolf, Sixes, Bingo Bango Bongo" },
+  { count: 4, label: "4 Players", desc: "Wolf, Scramble, Vegas & more" },
 ];
 
 export default function GameSetup({ onGameCreated }: GameSetupProps) {
@@ -375,7 +375,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
     return (
       <div className="pt-6 pb-2 space-y-3">
         <div className="mb-5">
-          <h2 className="text-[1.375rem] font-bold text-gray-900 dark:text-gray-50 tracking-tight">New Game</h2>
+          <h2 className="text-[1.375rem] font-bold text-gray-900 dark:text-gray-50 tracking-tight font-display">New Game</h2>
           <p className="text-sm text-muted-foreground mt-0.5">How many players?</p>
         </div>
 
@@ -415,7 +415,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h2 className="text-[1.375rem] font-bold text-gray-900 dark:text-gray-50 tracking-tight leading-none">Choose Game</h2>
+            <h2 className="text-[1.375rem] font-bold text-gray-900 dark:text-gray-50 tracking-tight leading-none font-display">Choose Game</h2>
             <p className="text-[0.8125rem] text-muted-foreground mt-1">{playerCount} players</p>
           </div>
         </div>

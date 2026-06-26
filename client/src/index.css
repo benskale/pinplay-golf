@@ -60,7 +60,13 @@
   --cta-foreground: hsl(0 0% 100%);
 
   /* ── Shape ── */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
   --radius: 1rem;
+  --radius-lg: 1.25rem;
+
+  /* ── Header surface — flat, no gradient ── */
+  --header-bg: var(--primary-800);
 }
 
 .dark {
@@ -140,9 +146,14 @@
       0 8px 20px rgba(0, 0, 0, 0.10);
   }
 
-  /* Display serif for hero moments (hole numbers, etc.) */
+  /* Display serif for hero moments (winners, onboarding titles) */
   .font-display {
     font-family: var(--font-display);
+  }
+
+  /* Flat header surface — replaces gradient soup everywhere */
+  .header-surface {
+    background: var(--header-bg);
   }
 
   /* Fixed-width digits for scores and stats */
