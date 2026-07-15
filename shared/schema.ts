@@ -100,6 +100,18 @@ export const insertTournamentSchema = createInsertSchema(tournaments).omit({
 export type InsertTournament = z.infer<typeof insertTournamentSchema>;
 export type Tournament = typeof tournaments.$inferSelect;
 
+// ── Tournament Teams (Phase 3: Teams and Groups) ─────────────────────────────
+
+export const tournamentTeams = pgTable("tournament_teams", {
+  id: serial("id").primaryKey(),
+  tournamentId: varchar("tournament_id").notNull().references(() => tournaments.id),
+  teamName: text("team_name").notNull(),
+  teamColor: text("team_color").notNull().default("#4A90D9"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export type TournamentTeam = typeof tournamentTeams.$inferSelect;
+
 // ── Tournament Players ───────────────────────────────────────────────────────
 
 export const tournamentPlayers = pgTable("tournament_players", {
@@ -109,6 +121,7 @@ export const tournamentPlayers = pgTable("tournament_players", {
   playerName: text("player_name").notNull(),
   isGuest: boolean("is_guest").notNull().default(false),
   status: text("status").notNull().default("registered"),
+  teamId: integer("team_id"), // references tournament_teams.id (null for non-team tournaments)
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -116,6 +129,7 @@ export const insertTournamentPlayerSchema = createInsertSchema(tournamentPlayers
   id: true,
   createdAt: true,
   isGuest: true,
+  teamId: true,
 });
 
 export type InsertTournamentPlayer = z.infer<typeof insertTournamentPlayerSchema>;

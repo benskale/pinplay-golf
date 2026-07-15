@@ -19,6 +19,14 @@ interface TournamentPlayer {
   isGuest: boolean;
   status: string;
   avatarUrl: string | null;
+  teamId: number | null;
+}
+
+interface TournamentTeam {
+  id: number;
+  teamName: string;
+  teamColor: string;
+  memberCount: number;
 }
 
 interface TournamentDetail {
@@ -31,6 +39,7 @@ interface TournamentDetail {
   status: string;
   settings: Record<string, any> | null;
   players: TournamentPlayer[];
+  teams?: TournamentTeam[];
 }
 
 interface CourseDetail {
@@ -105,7 +114,7 @@ export default function TournamentPlayPage() {
 
   const createGameMutation = useMutation({
     mutationFn: async () => {
-      const payload = {
+      const payload: Record<string, any> = {
         gameType: selectedGame!.id,
         players: playerNames,
         courseName: tournament?.courseName || "",
@@ -116,6 +125,10 @@ export default function TournamentPlayPage() {
         miniGames: {} as Record<string, any>,
         gameSettings: {} as Record<string, any>,
       };
+      // For team-format tournaments, pass teamId for team-based game launch
+      if (isTeamFormat && myTeamId) {
+        payload.teamId = myTeamId;
+      }
       const res = await apiRequest("POST", `/api/tournaments/${tournamentId}/games`, payload);
       return res.json();
     },
@@ -163,6 +176,12 @@ export default function TournamentPlayPage() {
   const registeredPlayers = tournament.players || [];
   const canStart = playerNames.length >= 2 && playerNames.length <= 5 && selectedGame !== null;
 
+  // Team context for team-format tournaments
+  const isTeamFormat = tournament.format === "best_ball" || tournament.format === "scramble";
+  const myTeamId = user ? registeredPlayers.find(p => p.userId === user.id)?.teamId ?? null : null;
+  const myTeam = tournament.teams?.find(t => t.id === myTeamId);
+  const myTeamMembers = myTeamId ? registeredPlayers.filter(p => p.teamId === myTeamId) : [];
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -181,6 +200,66 @@ export default function TournamentPlayPage() {
       </div>
 
       <div className="max-w-md mx-auto px-4 pb-8 -mt-2 space-y-4">
+        {/* Team banner for team-format tournaments */}
+        {isTeamFormat && myTeam && (
+          <div
+            className="rounded-xl p-4"
+            style={{ backgroundColor: `${myTeam.teamColor}15`, borderLeftWidth: 4, borderLeftColor: myTeam.teamColor }}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-4 h-4 rounded-full" style={{ backgroundColor: myTeam.teamColor }} />
+              <span className="font-semibold text-sm" style={{ color: myTeam.teamColor }}>{myTeam.teamName}</span>
+              <span className="text-xs text-gray-500 ml-auto">{myTeamMembers.length} players</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {myTeamMembers.map(p => (
+                <span
+                  key={p.id}
+                  className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ backgroundColor: `${myTeam.teamColor}20`, color: myTeam.teamColor }}
+                >
+                  {p.playerName}
+                </span>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                setSelectedPlayers(new Set(myTeamMembers.map(p => p.playerName)));
+                // Default to stroke_play — tournament leaderboard computes team format from individual scores
+                const strokeGame = GAME_DEFINITIONS["stroke_play"];
+                if (strokeGame) setSelectedGame(strokeGame);
+              }}
+              className="w-full py-2 text-xs font-semibold rounded-lg text-white transition-colors"
+              style={{ backgroundColor: myTeam.teamColor }}
+            >
+              Start Team Round ({myTeamMembers.length} players)
+            </button>
+            {myTeamMembers.length < 2 && (
+              <p className="text-xs text-red-500 mt-2 text-center">
+                Need at least 2 players on your team to start
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Team-format warning: not on a team */}
+        {isTeamFormat && !myTeam && (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-center">
+            <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">
+              You are not on a team yet
+            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              Go back to the tournament lobby and join or create a team, or manually select players below.
+            </p>
+            <button
+              onClick={() => setLocation(`/tournament/${tournamentId}`)}
+              className="mt-3 px-4 py-1.5 text-xs font-semibold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+            >
+              Go to Lobby
+            </button>
+          </div>
+        )}
+
         {/* Step 1: Select Players */}
         <Card>
           <CardContent className="pt-5">

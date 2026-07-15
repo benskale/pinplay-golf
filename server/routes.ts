@@ -580,6 +580,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const players = await storage.getTournamentPlayers(req.params.id);
       const games = await storage.getTournamentGames(req.params.id);
+      const teams = await storage.getTournamentTeams(req.params.id);
 
       // Get creator info
       let creator = null;
@@ -604,6 +605,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...tournament,
         players,
         games,
+        teams,
         creator,
         isRegistered,
         isCreator,
@@ -621,7 +623,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tournament = await storage.getTournament(req.params.id);
       if (!tournament) return res.status(404).json({ message: "Tournament not found" });
 
-      const leaderboard = await storage.getTournamentLeaderboard(req.params.id);
+      const leaderboard = await storage.getTournamentLeaderboard(req.params.id, req.query.view as string);
       res.json(leaderboard);
     } catch (error) {
       console.error("Get leaderboard error:", error);
@@ -838,6 +840,188 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Tournament Teams (Phase 3: Teams and Groups) ──────────────────────────
+
+  // Get teams for a tournament (public)
+  app.get("/api/tournaments/:id/teams", async (req, res) => {
+    try {
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      const teams = await storage.getTournamentTeams(req.params.id);
+      res.json(teams);
+    } catch (error) {
+      console.error("Get teams error:", error);
+      res.status(500).json({ message: "Failed to fetch teams" });
+    }
+  });
+
+  // Create a team (auth required)
+  app.post("/api/tournaments/:id/teams", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+
+      const { teamName, teamColor } = req.body;
+      if (!teamName?.trim()) {
+        return res.status(400).json({ message: "Team name is required" });
+      }
+
+      const team = await storage.createTournamentTeam(
+        req.params.id,
+        teamName.trim().replace(/[\x00-\x1F\x7F<>]/g, "").slice(0, 100),
+        teamColor || "#4A90D9",
+      );
+
+      const teams = await storage.getTournamentTeams(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { teams },
+      });
+
+      res.status(201).json(team);
+    } catch (error) {
+      console.error("Create team error:", error);
+      res.status(500).json({ message: "Failed to create team" });
+    }
+  });
+
+  // Update a team (creator only)
+  app.patch("/api/tournaments/:id/teams/:teamId", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can edit teams" });
+      }
+
+      const updates: { teamName?: string; teamColor?: string } = {};
+      if (req.body.teamName !== undefined) {
+        updates.teamName = req.body.teamName.trim().replace(/[\x00-\x1F\x7F<>]/g, "").slice(0, 100);
+      }
+      if (req.body.teamColor !== undefined) {
+        updates.teamColor = req.body.teamColor;
+      }
+
+      const updated = await storage.updateTournamentTeam(parseInt(req.params.teamId), updates);
+      if (!updated) return res.status(404).json({ message: "Team not found" });
+
+      const teams = await storage.getTournamentTeams(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { teams },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Update team error:", error);
+      res.status(500).json({ message: "Failed to update team" });
+    }
+  });
+
+  // Delete a team (creator only)
+  app.delete("/api/tournaments/:id/teams/:teamId", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can delete teams" });
+      }
+
+      const ok = await storage.deleteTournamentTeam(parseInt(req.params.teamId));
+      if (!ok) return res.status(404).json({ message: "Team not found" });
+
+      const teams = await storage.getTournamentTeams(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { teams },
+      });
+
+      res.json({ message: "Team deleted" });
+    } catch (error) {
+      console.error("Delete team error:", error);
+      res.status(500).json({ message: "Failed to delete team" });
+    }
+  });
+
+  // Join a team (registered players only)
+  app.post("/api/tournaments/:id/teams/:teamId/join", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+
+      // Must be registered for the tournament
+      const players = await storage.getTournamentPlayers(req.params.id);
+      const playerRecord = players.find(p => p.userId === user.id);
+      if (!playerRecord) {
+        return res.status(400).json({ message: "You must be registered for this tournament to join a team" });
+      }
+
+      // Check team size limit if set in tournament settings
+      const teamSize = (tournament.settings as any)?.teamSize || 4;
+      const teams = await storage.getTournamentTeams(req.params.id);
+      const targetTeam = teams.find(t => t.id === parseInt(req.params.teamId));
+      if (!targetTeam) return res.status(404).json({ message: "Team not found" });
+      if (targetTeam.memberCount >= teamSize) {
+        return res.status(400).json({ message: `Team is full (max ${teamSize})` });
+      }
+
+      await storage.assignPlayerToTeam(req.params.id, user.name, parseInt(req.params.teamId));
+
+      const updatedTeams = await storage.getTournamentTeams(req.params.id);
+      const updatedPlayers = await storage.getTournamentPlayers(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { teams: updatedTeams, players: updatedPlayers },
+      });
+
+      res.json({ message: "Joined team", teams: updatedTeams });
+    } catch (error) {
+      console.error("Join team error:", error);
+      res.status(500).json({ message: "Failed to join team" });
+    }
+  });
+
+  // Leave a team (registered players only)
+  app.delete("/api/tournaments/:id/teams/:teamId/leave", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+
+      await storage.removePlayerFromTeam(req.params.id, user.name);
+
+      const updatedTeams = await storage.getTournamentTeams(req.params.id);
+      const updatedPlayers = await storage.getTournamentPlayers(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { teams: updatedTeams, players: updatedPlayers },
+      });
+
+      res.json({ message: "Left team", teams: updatedTeams });
+    } catch (error) {
+      console.error("Leave team error:", error);
+      res.status(500).json({ message: "Failed to leave team" });
+    }
+  });
+
   // Get tournament games
   app.get("/api/tournaments/:id/games", async (req, res) => {
     try {
@@ -876,6 +1060,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Sanitize player names
       if (req.body.players) {
         req.body.players = validatePlayers(req.body.players);
+      }
+      // Team-based game launch: auto-populate players from team roster
+      if (req.body.teamId && !req.body.players) {
+        const allPlayers = await storage.getTournamentPlayers(req.params.id);
+        const teamPlayers = allPlayers.filter(p => p.teamId === req.body.teamId);
+        if (teamPlayers.length < 2) {
+          return res.status(400).json({ message: "Team needs at least 2 players to start a team game" });
+        }
+        req.body.players = validatePlayers(teamPlayers.map(p => p.playerName));
+        // Auto-build the teams array for the game
+        req.body.teams = [validatePlayers(teamPlayers.map(p => p.playerName))];
       }
       if (req.body.handicaps && typeof req.body.handicaps === "object") {
         const clean: Record<string, number> = {};

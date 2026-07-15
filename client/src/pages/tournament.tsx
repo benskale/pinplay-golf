@@ -16,10 +16,19 @@ import {
 import type { Tournament, TournamentPlayer, Game, LeaderboardEntry, WSMessage } from "@shared/schema";
 import TournamentLeaderboard from "@/components/tournament-leaderboard";
 import TournamentPlayerList from "@/components/tournament-player-list";
+import { TournamentTeams } from "@/components/tournament-teams";
+
+interface TournamentTeam {
+  id: number;
+  teamName: string;
+  teamColor: string;
+  memberCount: number;
+}
 
 interface TournamentDetail extends Tournament {
   players: (TournamentPlayer & { avatarUrl: string | null })[];
   games: Game[];
+  teams?: TournamentTeam[];
   creator: { id: number; name: string; avatarUrl: string | null } | null;
   isRegistered: boolean;
   isCreator: boolean;
@@ -293,6 +302,8 @@ export default function TournamentPage() {
   const isComplete = tournament.status === "complete";
   const isInProgress = tournament.status === "in_progress";
   const isOpen = tournament.status === "open";
+  const isTeamFormat = tournament.format === "best_ball" || tournament.format === "scramble";
+  const teamSize = (tournament.settings as any)?.teamSize || 4;
 
   return (
     <div className="min-h-screen bg-background font-sans">
@@ -582,11 +593,17 @@ export default function TournamentPage() {
 
         {/* ── Tabs ── */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="w-full grid grid-cols-2 mb-4">
+          <TabsList className={`w-full grid mb-4 ${isTeamFormat ? "grid-cols-3" : "grid-cols-2"}`}>
             <TabsTrigger value="players" className="flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5" />
               Players ({tournament.players?.length || 0})
             </TabsTrigger>
+            {isTeamFormat && (
+              <TabsTrigger value="teams" className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" />
+                Teams ({tournament.teams?.length || 0})
+              </TabsTrigger>
+            )}
             <TabsTrigger value="leaderboard" className="flex items-center gap-1.5">
               <Trophy className="w-3.5 h-3.5" />
               Leaderboard
@@ -604,11 +621,29 @@ export default function TournamentPage() {
             </Card>
           </TabsContent>
 
+          {isTeamFormat && (
+            <TabsContent value="teams">
+              <Card className="border-0 shadow-card">
+                <CardContent className="p-4">
+                  <TournamentTeams
+                    tournamentId={tournamentId!}
+                    isRegistered={tournament.isRegistered}
+                    isCreator={tournament.isCreator}
+                    currentUser={user ? { id: user.id, name: user.name } : null}
+                    teamSize={teamSize}
+                    onTeamsChange={() => queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] })}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
           <TabsContent value="leaderboard">
             <TournamentLeaderboard
               tournamentId={tournamentId!}
               leaderboardData={wsLeaderboard}
               format={tournament?.format}
+              teams={tournament.teams}
             />
           </TabsContent>
         </Tabs>

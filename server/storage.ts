@@ -1,7 +1,7 @@
-import { eq, desc, and, or, ilike, sql as sqlOp } from "drizzle-orm";
+import { eq, desc, and, or, ilike, sql as sqlOp, count } from "drizzle-orm";
 import { db, pool } from "./db";
-import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers } from "@shared/schema";
-import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite, Tournament, InsertTournament, TournamentPlayer, InsertTournamentPlayer, LeaderboardEntry } from "@shared/schema";
+import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers, tournamentTeams } from "@shared/schema";
+import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite, Tournament, InsertTournament, TournamentPlayer, InsertTournamentPlayer, LeaderboardEntry, TournamentTeam } from "@shared/schema";
 import { generateInviteCode } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
@@ -59,12 +59,20 @@ export interface IStorage {
   leaveTournament(tournamentId: string, userId: number): Promise<boolean>;
   getTournamentPlayers(tournamentId: string): Promise<(TournamentPlayer & { avatarUrl: string | null })[]>;
   getTournamentGames(tournamentId: string): Promise<Game[]>;
-  getTournamentLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]>;
+  getTournamentLeaderboard(tournamentId: string, view?: string): Promise<LeaderboardEntry[]>;
   updateTournamentStatus(tournamentId: string, status: string): Promise<Tournament | undefined>;
   getTournamentsByUser(userId: number): Promise<(Tournament & { playerCount: number })[]>;
   getTournamentsByCreator(userId: number): Promise<Tournament[]>;
   updateTournamentPlayerStatus(tournamentId: string, userId: number, status: string): Promise<void>;
   updateTournamentPlayerStatusByName(tournamentId: string, playerName: string, status: string): Promise<void>;
+
+  // Tournament Teams (Phase 3)
+  createTournamentTeam(tournamentId: string, teamName: string, teamColor: string): Promise<TournamentTeam>;
+  getTournamentTeams(tournamentId: string): Promise<(TournamentTeam & { memberCount: number })[]>;
+  updateTournamentTeam(teamId: number, updates: { teamName?: string; teamColor?: string }): Promise<TournamentTeam | undefined>;
+  deleteTournamentTeam(teamId: number): Promise<boolean>;
+  assignPlayerToTeam(tournamentId: string, playerName: string, teamId: number): Promise<void>;
+  removePlayerFromTeam(tournamentId: string, playerName: string): Promise<void>;
 
   // Session store
   sessionStore: session.Store;
@@ -486,9 +494,14 @@ export class DatabaseStorage implements IStorage {
     return base + extra;
   }
 
-  async getTournamentLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
+  async getTournamentLeaderboard(tournamentId: string, view?: string): Promise<LeaderboardEntry[]> {
     const tournament = await this.getTournament(tournamentId);
     const format = tournament?.format ?? "stroke_play";
+
+    // Individual view always uses stroke-play computation
+    if (view === "individual" && (format === "best_ball" || format === "scramble")) {
+      return this.getStrokePlayLeaderboard(tournamentId);
+    }
 
     if (format === "skins") return this.getSkinsLeaderboard(tournamentId);
     if (format === "best_ball") return this.getBestBallLeaderboard(tournamentId);
@@ -833,6 +846,76 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.playerName, playerName)));
   }
 
+  // Tournament Teams (Phase 3) ──────────────────────────────────────────────
+
+  async createTournamentTeam(tournamentId: string, teamName: string, teamColor: string): Promise<TournamentTeam> {
+    const [team] = await db
+      .insert(tournamentTeams)
+      .values({ tournamentId, teamName, teamColor })
+      .returning();
+    return team;
+  }
+
+  async getTournamentTeams(tournamentId: string): Promise<(TournamentTeam & { memberCount: number })[]> {
+    const teams = await db
+      .select()
+      .from(tournamentTeams)
+      .where(eq(tournamentTeams.tournamentId, tournamentId));
+
+    const result: (TournamentTeam & { memberCount: number })[] = [];
+    for (const team of teams) {
+      const [{ value: mc }] = await db
+        .select({ value: count() })
+        .from(tournamentPlayers)
+        .where(and(
+          eq(tournamentPlayers.tournamentId, tournamentId),
+          eq(tournamentPlayers.teamId, team.id),
+        ));
+      result.push({ ...team, memberCount: mc as number });
+    }
+    return result;
+  }
+
+  async updateTournamentTeam(teamId: number, updates: { teamName?: string; teamColor?: string }): Promise<TournamentTeam | undefined> {
+    const [team] = await db
+      .update(tournamentTeams)
+      .set(updates)
+      .where(eq(tournamentTeams.id, teamId))
+      .returning();
+    return team;
+  }
+
+  async deleteTournamentTeam(teamId: number): Promise<boolean> {
+    // First unassign all players from this team
+    await db
+      .update(tournamentPlayers)
+      .set({ teamId: null })
+      .where(eq(tournamentPlayers.teamId, teamId));
+
+    const result = await db.delete(tournamentTeams).where(eq(tournamentTeams.id, teamId));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async assignPlayerToTeam(tournamentId: string, playerName: string, teamId: number): Promise<void> {
+    await db
+      .update(tournamentPlayers)
+      .set({ teamId })
+      .where(and(
+        eq(tournamentPlayers.tournamentId, tournamentId),
+        eq(tournamentPlayers.playerName, playerName),
+      ));
+  }
+
+  async removePlayerFromTeam(tournamentId: string, playerName: string): Promise<void> {
+    await db
+      .update(tournamentPlayers)
+      .set({ teamId: null })
+      .where(and(
+        eq(tournamentPlayers.tournamentId, tournamentId),
+        eq(tournamentPlayers.playerName, playerName),
+      ));
+  }
+
   // Account deletion ────────────────────────────────────────────────────────
 
   async deleteUser(id: number): Promise<boolean> {
@@ -867,8 +950,10 @@ export class MemStorage implements IStorage {
   private userMap: Map<number, User> = new Map();
   private tournamentMap: Map<string, Tournament> = new Map();
   private tournamentPlayerMap: Map<number, TournamentPlayer> = new Map();
+  private teamMap: Map<number, TournamentTeam> = new Map();
   private nextUserId = 1;
   private nextTournamentPlayerId = 1;
+  private nextTeamId = 1;
   sessionStore: session.Store;
 
   constructor() {
@@ -1020,6 +1105,7 @@ export class MemStorage implements IStorage {
       tournamentId, userId, playerName,
       isGuest,
       status: "registered",
+      teamId: null,
       createdAt: new Date(),
     };
     this.tournamentPlayerMap.set(tp.id, tp);
@@ -1045,7 +1131,7 @@ export class MemStorage implements IStorage {
   async getTournamentGames(tournamentId: string): Promise<Game[]> {
     return this.getGamesByTournament(tournamentId);
   }
-  async getTournamentLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> { return []; }
+  async getTournamentLeaderboard(tournamentId: string, view?: string): Promise<LeaderboardEntry[]> { return []; }
   async updateTournamentStatus(tournamentId: string, status: string): Promise<Tournament | undefined> {
     return this.updateTournament(tournamentId, { status } as any);
   }
@@ -1053,6 +1139,54 @@ export class MemStorage implements IStorage {
   async getTournamentsByCreator(userId: number): Promise<Tournament[]> { return []; }
   async updateTournamentPlayerStatus(tournamentId: string, userId: number, status: string): Promise<void> {}
   async updateTournamentPlayerStatusByName(tournamentId: string, playerName: string, status: string): Promise<void> {}
+
+  // Tournament Teams (Phase 3)
+  async createTournamentTeam(tournamentId: string, teamName: string, teamColor: string): Promise<TournamentTeam> {
+    const team: TournamentTeam = {
+      id: this.nextTeamId++,
+      tournamentId, teamName, teamColor,
+      createdAt: new Date(),
+    };
+    this.teamMap.set(team.id, team);
+    return team;
+  }
+  async getTournamentTeams(tournamentId: string): Promise<(TournamentTeam & { memberCount: number })[]> {
+    const teams = [...this.teamMap.values()].filter(t => t.tournamentId === tournamentId);
+    return teams.map(t => ({
+      ...t,
+      memberCount: [...this.tournamentPlayerMap.values()].filter(
+        tp => tp.tournamentId === tournamentId && tp.teamId === t.id
+      ).length,
+    }));
+  }
+  async updateTournamentTeam(teamId: number, updates: { teamName?: string; teamColor?: string }): Promise<TournamentTeam | undefined> {
+    const t = this.teamMap.get(teamId);
+    if (!t) return undefined;
+    const updated = { ...t, ...updates };
+    this.teamMap.set(teamId, updated);
+    return updated;
+  }
+  async deleteTournamentTeam(teamId: number): Promise<boolean> {
+    // Unassign players
+    for (const tp of this.tournamentPlayerMap.values()) {
+      if (tp.teamId === teamId) tp.teamId = undefined as any;
+    }
+    return this.teamMap.delete(teamId);
+  }
+  async assignPlayerToTeam(tournamentId: string, playerName: string, teamId: number): Promise<void> {
+    for (const tp of this.tournamentPlayerMap.values()) {
+      if (tp.tournamentId === tournamentId && tp.playerName === playerName) {
+        tp.teamId = teamId;
+      }
+    }
+  }
+  async removePlayerFromTeam(tournamentId: string, playerName: string): Promise<void> {
+    for (const tp of this.tournamentPlayerMap.values()) {
+      if (tp.tournamentId === tournamentId && tp.playerName === playerName) {
+        tp.teamId = undefined as any;
+      }
+    }
+  }
 
   async deleteUser(id: number): Promise<boolean> {
     this.userMap.delete(id);
