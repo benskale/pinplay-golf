@@ -54,7 +54,7 @@ const BET_TYPE_LABELS: Record<string, string> = {
 const SCOPE_LABELS: Record<string, string> = {
   hole: "This Hole",
   round: "This Round",
-  tournament: "Whole Tournament",
+    tournament: "Whole Event",
 };
 
 export function SideBets({ tournamentId, players, currentUserName }: Props) {

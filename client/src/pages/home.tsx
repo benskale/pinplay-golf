@@ -212,7 +212,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── Host a Tournament CTA ── */}
+        {/* ── Start Group Play CTA ── */}
         {user && (
           <div className="mt-4">
             <button
@@ -220,12 +220,12 @@ export default function Home() {
               className="w-full py-3 rounded-xl border-2 border-dashed border-amber-500/40 hover:border-amber-400/60 text-amber-400 hover:text-amber-300 transition-all flex items-center justify-center gap-2 text-sm font-semibold"
             >
               <Trophy className="w-4 h-4" />
-              Host a Tournament
+              Start Group Play
             </button>
           </div>
         )}
 
-        {/* ── Your Tournaments ── */}
+        {/* ── Your Group Play ── */}
         {user && (
           <YourTournaments />
         )}
@@ -292,7 +292,7 @@ function YourTournaments() {
     <div className="mt-4">
       <div className="flex items-center gap-2 mb-2">
         <Trophy className="w-3.5 h-3.5 text-amber-500" />
-        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Your Tournaments</span>
+        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Your Group Play</span>
       </div>
       <div className="space-y-2">
         {active.map((t: any) => (

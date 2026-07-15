@@ -150,7 +150,7 @@ export default function TournamentPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/tournaments"] });
-      toast({ title: "Joined tournament!" });
+      toast({ title: "Joined Group Play!" });
     },
     onError: (err: Error) => toast({ title: "Failed to join", description: err.message, variant: "destructive" }),
   });
@@ -164,7 +164,7 @@ export default function TournamentPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/tournaments"] });
-      toast({ title: "Left tournament" });
+      toast({ title: "Left Group Play" });
     },
     onError: (err: Error) => toast({ title: "Failed to leave", description: err.message, variant: "destructive" }),
   });
@@ -177,7 +177,7 @@ export default function TournamentPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
-      toast({ title: "Tournament started!" });
+      toast({ title: "Group Play started!" });
     },
     onError: (err: Error) => toast({ title: "Failed to start", description: err.message, variant: "destructive" }),
   });
@@ -190,7 +190,7 @@ export default function TournamentPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
-      toast({ title: "Tournament cancelled" });
+      toast({ title: "Group Play cancelled" });
     },
     onError: (err: Error) => toast({ title: "Failed to cancel", description: err.message, variant: "destructive" }),
   });
@@ -203,7 +203,7 @@ export default function TournamentPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
-      toast({ title: "Tournament complete!", description: "Final results are locked in." });
+      toast({ title: "Group Play complete!", description: "Final results are locked in." });
     },
     onError: (err: Error) => toast({ title: "Failed to complete", description: err.message, variant: "destructive" }),
   });
@@ -216,7 +216,7 @@ export default function TournamentPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
-      toast({ title: "Joined tournament!", description: "You joined as a guest." });
+      toast({ title: "Joined Group Play!", description: "You joined as a guest." });
     },
     onError: (err: Error) => toast({ title: "Failed to join", description: err.message, variant: "destructive" }),
   });
@@ -256,7 +256,7 @@ export default function TournamentPage() {
     if (!tournament) return;
     const baseUrl = window.location.origin;
     const link = `${baseUrl}/join/${tournament.inviteCode}`;
-    const text = `Join my golf tournament "${tournament.name}" on PinPlay! 🏌️ ${link}`;
+    const text = `Join my golf group "${tournament.name}" on PinPlay! ${link}`;
     if (navigator.share) {
       try {
         await navigator.share({ title: tournament.name, text, url: link });
@@ -364,7 +364,7 @@ export default function TournamentPage() {
           <div className="mt-4 text-center">
             <div className="flex items-center justify-center gap-2 mb-2">
               <Crown className="w-5 h-5 text-yellow-400" />
-              <span className="text-xs font-semibold text-yellow-400/80 uppercase tracking-wider">Tournament</span>
+              <span className="text-xs font-semibold text-yellow-400/80 uppercase tracking-wider">Group Play</span>
             </div>
             <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">
               {tournament.name}
@@ -465,7 +465,7 @@ export default function TournamentPage() {
               {startMutation.isPending ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Starting...</>
               ) : (
-                <><Play className="mr-2 h-4 w-4" />Start Tournament</>
+                <><Play className="mr-2 h-4 w-4" />Start Round</>
               )}
             </Button>
           )}
@@ -473,7 +473,7 @@ export default function TournamentPage() {
           {tournament.isCreator && !isCancelled && !isComplete && (
             <Button
               onClick={() => {
-                if (confirm("Are you sure you want to cancel this tournament?")) {
+                if (confirm("Are you sure you want to cancel this group play event?")) {
                   cancelMutation.mutate();
                 }
               }}
@@ -483,7 +483,7 @@ export default function TournamentPage() {
               {cancelMutation.isPending ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Cancelling...</>
               ) : (
-                <><XCircle className="mr-2 h-4 w-4" />Cancel Tournament</>
+                <><XCircle className="mr-2 h-4 w-4" />Cancel</>
               )}
             </Button>
           )}
@@ -492,7 +492,7 @@ export default function TournamentPage() {
           {tournament.isCreator && isInProgress && (
             <Button
               onClick={() => {
-                if (confirm("Mark this tournament as complete? Final results will be locked.")) {
+                if (confirm("Mark this group play as complete? Final results will be locked.")) {
                   completeMutation.mutate();
                 }
               }}
@@ -501,7 +501,7 @@ export default function TournamentPage() {
               {completeMutation.isPending ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Completing...</>
               ) : (
-                <><Flag className="mr-2 h-4 w-4" />Complete Tournament</>
+                <><Flag className="mr-2 h-4 w-4" />Complete</>
               )}
             </Button>
           )}
@@ -517,7 +517,7 @@ export default function TournamentPage() {
               {joinMutation.isPending ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Joining...</>
               ) : (
-                "Join Tournament"
+                "Join Group Play"
               )}
             </Button>
           )}
@@ -532,7 +532,7 @@ export default function TournamentPage() {
               {leaveMutation.isPending ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Leaving...</>
               ) : (
-                "Leave Tournament"
+                "Leave Group Play"
               )}
             </Button>
           )}
@@ -868,7 +868,7 @@ export default function TournamentPage() {
             <div className="mt-6">
               <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-3 flex items-center gap-2">
                 <DollarSign className="w-3.5 h-3.5" />
-                Tournament Mini-Games
+                Side Games
               </h3>
               <Card className="border-0 shadow-card">
                 <CardContent className="p-4">
