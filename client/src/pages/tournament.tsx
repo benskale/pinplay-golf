@@ -11,12 +11,15 @@ import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, Trophy, Users, Share2, Copy, Play, XCircle,
   Loader2, Calendar, MapPin, Gamepad2, ExternalLink,
-  Crown, CheckCircle, Clock, UserPlus, Flag
+  Crown, CheckCircle, Clock, UserPlus, Flag, DollarSign, Swords
 } from "lucide-react";
 import type { Tournament, TournamentPlayer, Game, LeaderboardEntry, WSMessage } from "@shared/schema";
 import TournamentLeaderboard from "@/components/tournament-leaderboard";
 import TournamentPlayerList from "@/components/tournament-player-list";
 import { TournamentTeams } from "@/components/tournament-teams";
+import { TournamentMatches } from "@/components/tournament-matches";
+import { SideBets } from "@/components/side-bets";
+import { MultiDayLeaderboard } from "@/components/multi-day-leaderboard";
 
 interface TournamentTeam {
   id: number;
@@ -94,6 +97,13 @@ export default function TournamentPage() {
           }
           if (message.type === "tournament_score_update") {
             setWsLeaderboard(message.leaderboard);
+          }
+          if (message.type === "tournament_match_update") {
+            queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId, "matches"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId, "ryder-cup"] });
+          }
+          if (message.type === "side_bet_update") {
+            queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId, "side-bets"] });
           }
         } catch (e) {
           console.error("[WS Tournament] parse error:", e);
@@ -257,6 +267,35 @@ export default function TournamentPage() {
     }
   };
 
+  // Fetch tournament rounds
+  const { data: rounds = [] } = useQuery<any[]>({
+    queryKey: ["/api/tournaments", tournamentId, "rounds"],
+    enabled: !!tournamentId,
+    queryFn: async () => {
+      const res = await fetch(`/api/tournaments/${tournamentId}/rounds`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const [showAddRound, setShowAddRound] = useState(false);
+  const [newRoundFormat, setNewRoundFormat] = useState("stroke_play");
+  const [newRoundName, setNewRoundName] = useState("");
+
+  const createRoundMutation = useMutation({
+    mutationFn: async (data: { name?: string; format: string }) => {
+      const res = await apiRequest("POST", `/api/tournaments/${tournamentId}/rounds`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId, "rounds"] });
+      setShowAddRound(false);
+      setNewRoundName("");
+      toast({ title: "Round added" });
+    },
+  });
+
   // Start My Round — navigate to a new game linked to tournament
   const handleStartRound = () => {
     setLocation(`/tournament/${tournamentId}/play`);
@@ -303,7 +342,10 @@ export default function TournamentPage() {
   const isInProgress = tournament.status === "in_progress";
   const isOpen = tournament.status === "open";
   const isTeamFormat = tournament.format === "best_ball" || tournament.format === "scramble";
+  const isRyderCup = tournament.format === "ryder_cup";
   const teamSize = (tournament.settings as any)?.teamSize || 4;
+  const showMatchesTab = isRyderCup;
+  const showSideBetsTab = true;
 
   return (
     <div className="min-h-screen bg-background font-sans">
@@ -358,6 +400,11 @@ export default function TournamentPage() {
                   {tournament.format === "skins" && "Skins"}
                   {tournament.format === "best_ball" && "Best Ball"}
                   {tournament.format === "scramble" && "Scramble"}
+                  {tournament.format === "stableford" && "Stableford"}
+                  {tournament.format === "match_play" && "Match Play"}
+                  {tournament.format === "ringer" && "Ringer"}
+                  {tournament.format === "net_ringer" && "Net Ringer"}
+                  {tournament.format === "ryder_cup" && "Ryder Cup"}
                 </span>
               )}
             </div>
@@ -593,20 +640,36 @@ export default function TournamentPage() {
 
         {/* ── Tabs ── */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className={`w-full grid mb-4 ${isTeamFormat ? "grid-cols-3" : "grid-cols-2"}`}>
-            <TabsTrigger value="players" className="flex items-center gap-1.5">
+          <TabsList className={`w-full grid mb-4 ${
+            (showMatchesTab || isTeamFormat) ? "grid-cols-4" : "grid-cols-3"
+          }`}>
+            <TabsTrigger value="players" className="flex items-center gap-1.5 text-xs">
               <Users className="w-3.5 h-3.5" />
-              Players ({tournament.players?.length || 0})
+              <span className="hidden xs:inline">Players</span>
+              <span className="xs:hidden">P</span>
+              ({tournament.players?.length || 0})
             </TabsTrigger>
-            {isTeamFormat && (
-              <TabsTrigger value="teams" className="flex items-center gap-1.5">
+            {isTeamFormat && !showMatchesTab && (
+              <TabsTrigger value="teams" className="flex items-center gap-1.5 text-xs">
                 <Users className="w-3.5 h-3.5" />
-                Teams ({tournament.teams?.length || 0})
+                Teams
               </TabsTrigger>
             )}
-            <TabsTrigger value="leaderboard" className="flex items-center gap-1.5">
+            {showMatchesTab && (
+              <TabsTrigger value="matches" className="flex items-center gap-1.5 text-xs">
+                <Swords className="w-3.5 h-3.5" />
+                Matches
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="leaderboard" className="flex items-center gap-1.5 text-xs">
               <Trophy className="w-3.5 h-3.5" />
-              Leaderboard
+              <span className="hidden xs:inline">Scores</span>
+              <span className="xs:hidden">Scores</span>
+            </TabsTrigger>
+            <TabsTrigger value="side-bets" className="flex items-center gap-1.5 text-xs">
+              <DollarSign className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline">Bets</span>
+              <span className="xs:hidden">Bets</span>
             </TabsTrigger>
           </TabsList>
 
@@ -638,15 +701,200 @@ export default function TournamentPage() {
             </TabsContent>
           )}
 
+          {showMatchesTab && (
+            <TabsContent value="matches">
+              <Card className="border-0 shadow-card">
+                <CardContent className="p-3">
+                  <TournamentMatches
+                    tournamentId={tournamentId!}
+                    players={tournament.players || []}
+                    teams={(tournament.teams || []) as any}
+                    isCreator={tournament.isCreator}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
           <TabsContent value="leaderboard">
-            <TournamentLeaderboard
-              tournamentId={tournamentId!}
-              leaderboardData={wsLeaderboard}
-              format={tournament?.format}
-              teams={tournament.teams}
-            />
+            <div className="space-y-3">
+              <MultiDayLeaderboard tournamentId={tournamentId!} />
+              <TournamentLeaderboard
+                tournamentId={tournamentId!}
+                leaderboardData={wsLeaderboard}
+                format={tournament?.format}
+                teams={tournament.teams}
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="side-bets">
+            <Card className="border-0 shadow-card">
+              <CardContent className="p-3">
+                <SideBets
+                  tournamentId={tournamentId!}
+                  players={tournament.players || []}
+                  currentUserName={user?.name || null}
+                />
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
+
+        {/* ── Tournament Rounds (multi-format) ── */}
+        {tournament.isCreator && (
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                <Calendar className="w-3.5 h-3.5" />
+                Rounds
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-7"
+                onClick={() => setShowAddRound(!showAddRound)}
+              >
+                {showAddRound ? "Cancel" : "+ Add Round"}
+              </Button>
+            </div>
+
+            {showAddRound && (
+              <Card className="border-0 shadow-card mb-3">
+                <CardContent className="p-4 space-y-3">
+                  <Input
+                    placeholder="Round name (e.g. 'Day 1', 'Final Round')"
+                    value={newRoundName}
+                    onChange={(e) => setNewRoundName(e.target.value)}
+                    className="text-sm"
+                  />
+                  <div className="flex gap-2 flex-wrap">
+                    {[
+                      { v: "stroke_play", l: "Stroke Play" },
+                      { v: "stableford", l: "Stableford" },
+                      { v: "match_play", l: "Match Play" },
+                      { v: "skins", l: "Skins" },
+                      { v: "best_ball", l: "Best Ball" },
+                      { v: "scramble", l: "Scramble" },
+                    ].map(opt => (
+                      <button
+                        key={opt.v}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                          newRoundFormat === opt.v
+                            ? "bg-primary-600 text-white"
+                            : "bg-secondary-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
+                        }`}
+                        onClick={() => setNewRoundFormat(opt.v)}
+                      >
+                        {opt.l}
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    disabled={createRoundMutation.isPending}
+                    onClick={() => createRoundMutation.mutate({ name: newRoundName, format: newRoundFormat })}
+                  >
+                    {createRoundMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : "Create Round"}
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {rounds.length > 0 && (
+              <div className="space-y-2">
+                {rounds.map((round: any) => {
+                  const roundGames = (tournament.games || []).filter(
+                    (g: any) => g.tournamentRoundId === round.id
+                  );
+                  const formatLabels: Record<string, string> = {
+                    stroke_play: "Stroke Play",
+                    stableford: "Stableford",
+                    match_play: "Match Play",
+                    skins: "Skins",
+                    best_ball: "Best Ball",
+                    scramble: "Scramble",
+                    ringer: "Ringer",
+                    net_ringer: "Net Ringer",
+                  };
+                  return (
+                    <div
+                      key={round.id}
+                      className="flex items-center justify-between p-3 bg-card rounded-xl shadow-card border border-gray-200/50 dark:border-gray-700/30"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-50">
+                          {round.name || `Round ${round.roundNumber}`}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {formatLabels[round.format] || round.format}
+                          {roundGames.length > 0 && ` · ${roundGames.length} game${roundGames.length !== 1 ? "s" : ""}`}
+                        </p>
+                      </div>
+                      <span className="text-xs font-bold text-primary-500">
+                        R{round.roundNumber}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Tournament Mini-Games Summary ── */}
+        {(() => {
+          // Derive mini-games from tournament games
+          const games = tournament.games || [];
+          const allMiniGames: Record<string, { enabled: boolean; value: number }> = {};
+          let dollarPerPoint = 0;
+          for (const game of games) {
+            const mg = (game as any).miniGames as Record<string, { enabled: boolean; value: number }> | undefined;
+            if (mg) {
+              for (const [key, config] of Object.entries(mg)) {
+                if (config?.enabled) allMiniGames[key] = config;
+              }
+            }
+            const gs = (game as any).gameSettings as Record<string, any> | undefined;
+            if (gs?.dollarPerPoint) dollarPerPoint = Math.max(dollarPerPoint, gs.dollarPerPoint);
+          }
+          const miniGameEntries = Object.entries(allMiniGames);
+          if (miniGameEntries.length === 0) return null;
+
+          return (
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-3 flex items-center gap-2">
+                <DollarSign className="w-3.5 h-3.5" />
+                Tournament Mini-Games
+              </h3>
+              <Card className="border-0 shadow-card">
+                <CardContent className="p-4">
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {miniGameEntries.map(([key, config]) => (
+                      <span
+                        key={key}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary-100 dark:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-300"
+                      >
+                        {key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                        {config.value > 0 && (
+                          <span className="text-gray-400">${config.value}</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                  {dollarPerPoint > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      ${dollarPerPoint} per point · Settlements calculated per game
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
 
         {/* ── Active Games ── */}
         {tournament.games && tournament.games.length > 0 && (

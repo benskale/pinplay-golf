@@ -1,7 +1,7 @@
-import { eq, desc, and, or, ilike, sql as sqlOp, count } from "drizzle-orm";
+import { eq, desc, and, or, ilike, sql as sqlOp, count, asc } from "drizzle-orm";
 import { db, pool } from "./db";
-import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers, tournamentTeams } from "@shared/schema";
-import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite, Tournament, InsertTournament, TournamentPlayer, InsertTournamentPlayer, LeaderboardEntry, TournamentTeam } from "@shared/schema";
+import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers, tournamentTeams, tournamentRounds, gameTemplates, tournamentMatches, sideBets } from "@shared/schema";
+import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite, Tournament, InsertTournament, TournamentPlayer, InsertTournamentPlayer, LeaderboardEntry, TournamentTeam, TournamentRound, InsertTournamentRound, GameTemplate, InsertGameTemplate, TournamentMatch, InsertTournamentMatch, SideBet, InsertSideBet } from "@shared/schema";
 import { generateInviteCode } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
@@ -79,6 +79,32 @@ export interface IStorage {
 
   // Account deletion
   deleteUser(id: number): Promise<boolean>;
+
+  // Tournament Rounds
+  getTournamentRounds(tournamentId: string): Promise<TournamentRound[]>;
+  createTournamentRound(insertRound: InsertTournamentRound): Promise<TournamentRound>;
+  deleteTournamentRound(id: number): Promise<void>;
+
+  // Game Templates
+  getGameTemplates(userId: number): Promise<GameTemplate[]>;
+  createGameTemplate(insertTemplate: InsertGameTemplate): Promise<GameTemplate>;
+  deleteGameTemplate(id: number, userId: number): Promise<void>;
+
+  // Tournament Matches (Phase 5.2: Ryder Cup & pairings)
+  getTournamentMatches(tournamentId: string): Promise<TournamentMatch[]>;
+  createTournamentMatch(insertMatch: InsertTournamentMatch): Promise<TournamentMatch>;
+  updateTournamentMatch(id: number, updates: Partial<TournamentMatch>): Promise<TournamentMatch | undefined>;
+  deleteTournamentMatch(id: number): Promise<void>;
+  getRyderCupScore(tournamentId: string): Promise<{ team1Points: number; team2Points: number; matches: TournamentMatch[] }>;
+
+  // Side Bets (Phase 5.3)
+  getSideBets(tournamentId: string): Promise<SideBet[]>;
+  createSideBet(insertBet: InsertSideBet): Promise<SideBet>;
+  updateSideBetStatus(id: number, status: string, result?: { winnerId?: number; winnerName?: string }): Promise<SideBet | undefined>;
+  deleteSideBet(id: number): Promise<void>;
+
+  // Multi-day cumulative leaderboard (Phase 5.1)
+  getMultiDayLeaderboard(tournamentId: string, view?: string): Promise<{ leaderboard: LeaderboardEntry[]; rounds: TournamentRound[] }>;
 }
 
 // ── DatabaseStorage ───────────────────────────────────────────────────────────
@@ -506,6 +532,10 @@ export class DatabaseStorage implements IStorage {
     if (format === "skins") return this.getSkinsLeaderboard(tournamentId);
     if (format === "best_ball") return this.getBestBallLeaderboard(tournamentId);
     if (format === "scramble") return this.getScrambleLeaderboard(tournamentId);
+    if (format === "stableford") return this.getStablefordLeaderboard(tournamentId);
+    if (format === "match_play") return this.getMatchPlayLeaderboard(tournamentId);
+    if (format === "ringer") return this.getRingerLeaderboard(tournamentId, false);
+    if (format === "net_ringer") return this.getRingerLeaderboard(tournamentId, true);
     return this.getStrokePlayLeaderboard(tournamentId);
   }
 
@@ -791,6 +821,258 @@ export class DatabaseStorage implements IStorage {
     return this.assignPositions(entries);
   }
 
+  // ── Stableford ──
+  // Individual play. Points per hole based on net score vs par:
+  // Eagle(2-under)=5, Birdie=4, Par=3, Bogey=2, Dbl Bogey=1, Worse=0.
+  // Quota = 36 - handicap. Higher points wins.
+  private async getStablefordLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
+    const tournamentGames = await this.getGamesByTournament(tournamentId);
+    const tPlayers = await this.getTournamentPlayers(tournamentId);
+
+    const entries: LeaderboardEntry[] = [];
+
+    for (const game of tournamentGames) {
+      const scores = game.scores as Record<string, number[]>;
+      const handicaps = game.handicaps as Record<string, number>;
+      const pars = (game.pars as number[]) || [];
+      const strokeIndexes = (game.strokeIndexes as number[]) || [];
+      const holeHistory = game.holeHistory as Array<any>;
+      const holesCompleted = holeHistory.length;
+
+      for (const playerName of game.players as string[]) {
+        const tp = tPlayers.find(p => p.playerName === playerName);
+        if (!tp) continue;
+        const holeScores = scores[playerName] || [];
+        if (holeScores.length === 0) continue;
+
+        const handicap = handicaps[playerName] ?? 0;
+        let points = 0;
+
+        for (let i = 0; i < holeScores.length; i++) {
+          const gross = holeScores[i];
+          if (!gross || gross === 0) continue;
+          const par = pars[i] ?? 4;
+          const strokeIdx = strokeIndexes[i] ?? (i + 1);
+          const hs = this.handicapStrokesForHole(handicap, strokeIdx);
+          const net = gross - hs;
+          const diff = net - par;
+          if (diff <= -2) points += 5;
+          else if (diff === -1) points += 4;
+          else if (diff === 0) points += 3;
+          else if (diff === 1) points += 2;
+          else if (diff === 2) points += 1;
+        }
+
+        const totalGross = (game.totalScores as Record<string, number>)[playerName] ?? 0;
+        const quota = Math.max(0, 36 - Math.round(handicap));
+
+        entries.push({
+          position: 0,
+          playerName,
+          userId: tp.userId,
+          avatarUrl: tp.avatarUrl ?? null,
+          totalStrokes: totalGross,
+          netStrokes: totalGross - Math.round(handicap),
+          handicap,
+          holesCompleted,
+          complete: !game.active && holesCompleted > 0,
+          gameId: game.id,
+          stablefordPoints: points,
+          quota,
+          format: "stableford",
+        });
+      }
+    }
+
+    entries.sort((a, b) => {
+      if (a.complete !== b.complete) return a.complete ? -1 : 1;
+      const pa = a.stablefordPoints ?? 0;
+      const pb = b.stablefordPoints ?? 0;
+      if (pa !== pb) return pb - pa;
+      return b.holesCompleted - a.holesCompleted;
+    });
+    for (let i = 0; i < entries.length; i++) {
+      entries[i].position = i + 1;
+      if (i > 0 &&
+          (entries[i - 1].stablefordPoints ?? 0) === (entries[i].stablefordPoints ?? 0) &&
+          entries[i - 1].complete === entries[i].complete) {
+        entries[i].position = entries[i - 1].position;
+      }
+    }
+    return entries;
+  }
+
+  // ── Match Play ──
+  // Each game is a 1v1 match. Leaderboard shows match results.
+  private async getMatchPlayLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
+    const tournamentGames = await this.getGamesByTournament(tournamentId);
+    const tPlayers = await this.getTournamentPlayers(tournamentId);
+
+    const entries: LeaderboardEntry[] = [];
+
+    for (const game of tournamentGames) {
+      const players = game.players as string[];
+      if (players.length < 2) continue;
+
+      const scores = game.scores as Record<string, number[]>;
+      const handicaps = game.handicaps as Record<string, number>;
+      const strokeIndexes = (game.strokeIndexes as number[]) || [];
+      const holeHistory = game.holeHistory as Array<any>;
+      const holesCompleted = holeHistory.length;
+
+      let p1Wins = 0, p2Wins = 0;
+      const p1 = players[0], p2 = players[1];
+
+      for (let i = 0; i < holesCompleted; i++) {
+        const s1 = scores[p1]?.[i] ?? 0;
+        const s2 = scores[p2]?.[i] ?? 0;
+        if (!s1 || !s2) continue;
+
+        const h1 = handicaps[p1] ?? 0, h2 = handicaps[p2] ?? 0;
+        const strokeIdx = strokeIndexes[i] ?? (i + 1);
+        const net1 = s1 - this.handicapStrokesForHole(h1, strokeIdx);
+        const net2 = s2 - this.handicapStrokesForHole(h2, strokeIdx);
+
+        if (net1 < net2) p1Wins++;
+        else if (net2 < net1) p2Wins++;
+      }
+
+      const holesRemaining = 18 - holesCompleted;
+      const matchDiff = p1Wins - p2Wins;
+
+      const statusFor = (isP1: boolean): { status: string; holesUp: number } => {
+        const diff = isP1 ? matchDiff : -matchDiff;
+        if (diff > 0) {
+          if (diff > holesRemaining) {
+            return { status: `${diff}&${holesRemaining}`, holesUp: diff };
+          }
+          return { status: `${diff}UP`, holesUp: diff };
+        } else if (diff < 0) {
+          const d = -diff;
+          if (d > holesRemaining) {
+            return { status: `${d}&${holesRemaining}`, holesUp: diff };
+          }
+          return { status: `${d}DN`, holesUp: diff };
+        }
+        return { status: "AS", holesUp: 0 };
+      };
+
+      const tp1 = tPlayers.find(p => p.playerName === p1);
+      const tp2 = tPlayers.find(p => p.playerName === p2);
+      const totalScores = game.totalScores as Record<string, number>;
+
+      if (tp1) {
+        const st = statusFor(true);
+        entries.push({
+          position: 0, playerName: p1, userId: tp1.userId, avatarUrl: tp1.avatarUrl ?? null,
+          totalStrokes: totalScores[p1] ?? 0, netStrokes: (totalScores[p1] ?? 0) - Math.round(handicaps[p1] ?? 0),
+          handicap: handicaps[p1] ?? 0, holesCompleted, complete: !game.active && holesCompleted > 0, gameId: game.id,
+          matchStatus: st.status, matchHolesUp: st.holesUp, format: "match_play",
+        });
+      }
+      if (tp2) {
+        const st = statusFor(false);
+        entries.push({
+          position: 0, playerName: p2, userId: tp2.userId, avatarUrl: tp2.avatarUrl ?? null,
+          totalStrokes: totalScores[p2] ?? 0, netStrokes: (totalScores[p2] ?? 0) - Math.round(handicaps[p2] ?? 0),
+          handicap: handicaps[p2] ?? 0, holesCompleted, complete: !game.active && holesCompleted > 0, gameId: game.id,
+          matchStatus: st.status, matchHolesUp: st.holesUp, format: "match_play",
+        });
+      }
+    }
+
+    entries.sort((a, b) => {
+      if (a.complete !== b.complete) return a.complete ? -1 : 1;
+      return (b.matchHolesUp ?? 0) - (a.matchHolesUp ?? 0);
+    });
+    for (let i = 0; i < entries.length; i++) {
+      entries[i].position = i + 1;
+      if (i > 0 && entries[i - 1].matchHolesUp === entries[i].matchHolesUp &&
+          entries[i - 1].complete === entries[i].complete) {
+        entries[i].position = entries[i - 1].position;
+      }
+    }
+    return entries;
+  }
+
+  // ── Ringer / Net Ringer ──
+  // Best score on each hole across ALL of a player's games in the tournament.
+  private async getRingerLeaderboard(tournamentId: string, useNet: boolean): Promise<LeaderboardEntry[]> {
+    const tournamentGames = await this.getGamesByTournament(tournamentId);
+    const tPlayers = await this.getTournamentPlayers(tournamentId);
+
+    const playerData = new Map<string, {
+      holeScores: number[]; holeCount: number; handicap: number;
+      userId: number | null; avatarUrl: string | null; gameId: string | null; totalGross: number;
+    }>();
+
+    for (const game of tournamentGames) {
+      const scores = game.scores as Record<string, number[]>;
+      const handicaps = game.handicaps as Record<string, number>;
+      const strokeIndexes = (game.strokeIndexes as number[]) || [];
+      const holeHistory = game.holeHistory as Array<any>;
+
+      for (const playerName of game.players as string[]) {
+        const tp = tPlayers.find(p => p.playerName === playerName);
+        if (!tp) continue;
+        const rawScores = scores[playerName] || [];
+        if (rawScores.length === 0) continue;
+
+        const handicap = handicaps[playerName] ?? 0;
+        const existing = playerData.get(playerName);
+
+        if (!existing) {
+          const processed = rawScores.map((gross, i) => {
+            if (!gross || gross === 0) return 0;
+            if (useNet) {
+              const strokeIdx = strokeIndexes[i] ?? (i + 1);
+              const hs = this.handicapStrokesForHole(handicap, strokeIdx);
+              return gross - hs;
+            }
+            return gross;
+          });
+          playerData.set(playerName, {
+            holeScores: [...processed], holeCount: holeHistory.length, handicap,
+            userId: tp.userId, avatarUrl: tp.avatarUrl ?? null, gameId: game.id,
+            totalGross: (game.totalScores as Record<string, number>)[playerName] ?? 0,
+          });
+        } else {
+          for (let i = 0; i < rawScores.length; i++) {
+            const gross = rawScores[i];
+            if (!gross || gross === 0) continue;
+            let score = gross;
+            if (useNet) {
+              const strokeIdx = strokeIndexes[i] ?? (i + 1);
+              const hs = this.handicapStrokesForHole(handicap, strokeIdx);
+              score = gross - hs;
+            }
+            if (i >= existing.holeScores.length) {
+              existing.holeScores[i] = score;
+            } else if (score < existing.holeScores[i] || existing.holeScores[i] === 0) {
+              existing.holeScores[i] = score;
+            }
+          }
+          existing.holeCount = Math.max(existing.holeCount, holeHistory.length);
+        }
+      }
+    }
+
+    const entries: LeaderboardEntry[] = [];
+    for (const [playerName, data] of Array.from(playerData.entries())) {
+      const ringerTotal = data.holeScores.reduce((sum: number, s: number) => sum + (s > 0 ? s : 0), 0);
+      const holesCompleted = data.holeScores.filter((s: number) => s > 0).length;
+
+      entries.push({
+        position: 0, playerName, userId: data.userId, avatarUrl: data.avatarUrl,
+        totalStrokes: useNet ? data.totalGross : ringerTotal, netStrokes: ringerTotal,
+        handicap: data.handicap, holesCompleted, complete: false, gameId: data.gameId,
+        format: useNet ? "net_ringer" : "ringer",
+      });
+    }
+
+    return this.assignPositions(entries);
+  }
+
   async updateTournamentStatus(tournamentId: string, status: string): Promise<Tournament | undefined> {
     return this.updateTournament(tournamentId, { status } as any);
   }
@@ -941,6 +1223,210 @@ export class DatabaseStorage implements IStorage {
     });
     return true;
   }
+
+  // ── Tournament Rounds ────────────────────────────────────────────────────────
+
+  async getTournamentRounds(tournamentId: string): Promise<TournamentRound[]> {
+    return db.select().from(tournamentRounds)
+      .where(eq(tournamentRounds.tournamentId, tournamentId))
+      .orderBy(asc(tournamentRounds.roundNumber));
+  }
+
+  async createTournamentRound(insertRound: InsertTournamentRound): Promise<TournamentRound> {
+    const [round] = await db.insert(tournamentRounds).values(insertRound).returning();
+    return round;
+  }
+
+  async deleteTournamentRound(id: number): Promise<void> {
+    await db.delete(tournamentRounds).where(eq(tournamentRounds.id, id));
+  }
+
+  // ── Game Templates ───────────────────────────────────────────────────────────
+
+  async getGameTemplates(userId: number): Promise<GameTemplate[]> {
+    return db.select().from(gameTemplates)
+      .where(eq(gameTemplates.userId, userId))
+      .orderBy(desc(gameTemplates.createdAt));
+  }
+
+  async createGameTemplate(insertTemplate: InsertGameTemplate): Promise<GameTemplate> {
+    const [template] = await db.insert(gameTemplates).values(insertTemplate).returning();
+    return template;
+  }
+
+  async deleteGameTemplate(id: number, userId: number): Promise<void> {
+    await db.delete(gameTemplates).where(and(eq(gameTemplates.id, id), eq(gameTemplates.userId, userId)));
+  }
+
+  // ── Tournament Matches (Phase 5.2: Ryder Cup & pairings) ─────────────────────
+
+  async getTournamentMatches(tournamentId: string): Promise<TournamentMatch[]> {
+    return db.select().from(tournamentMatches)
+      .where(eq(tournamentMatches.tournamentId, tournamentId))
+      .orderBy(asc(tournamentMatches.id));
+  }
+
+  async createTournamentMatch(insertMatch: InsertTournamentMatch): Promise<TournamentMatch> {
+    const result = insertMatch.result ?? {
+      team1HolesUp: 0, team2HolesUp: 0, status: "pending", holesPlayed: 0, winner: null,
+    };
+    const [match] = await db.insert(tournamentMatches).values({
+      ...insertMatch,
+      result: { ...result, winner: result.winner ?? null },
+    } as any).returning();
+    return match;
+  }
+
+  async updateTournamentMatch(id: number, updates: Partial<TournamentMatch>): Promise<TournamentMatch | undefined> {
+    const [match] = await db.update(tournamentMatches)
+      .set(updates)
+      .where(eq(tournamentMatches.id, id))
+      .returning();
+    return match;
+  }
+
+  async deleteTournamentMatch(id: number): Promise<void> {
+    await db.delete(tournamentMatches).where(eq(tournamentMatches.id, id));
+  }
+
+  async getRyderCupScore(tournamentId: string): Promise<{ team1Points: number; team2Points: number; matches: TournamentMatch[] }> {
+    const matches = await this.getTournamentMatches(tournamentId);
+    let team1Points = 0;
+    let team2Points = 0;
+    for (const m of matches) {
+      const r = m.result as any;
+      if (!r || r.status !== "complete") continue;
+      if (r.winner === "team1") team1Points += 1;
+      else if (r.winner === "team2") team2Points += 1;
+      else if (r.winner === "halved") { team1Points += 0.5; team2Points += 0.5; }
+    }
+    return { team1Points, team2Points, matches };
+  }
+
+  // ── Side Bets (Phase 5.3) ────────────────────────────────────────────────────
+
+  async getSideBets(tournamentId: string): Promise<SideBet[]> {
+    return db.select().from(sideBets)
+      .where(eq(sideBets.tournamentId, tournamentId))
+      .orderBy(desc(sideBets.createdAt));
+  }
+
+  async createSideBet(insertBet: InsertSideBet): Promise<SideBet> {
+    const [bet] = await db.insert(sideBets).values({
+      ...insertBet,
+      result: insertBet.result ?? { winnerId: null, winnerName: null, settledAt: null },
+    } as any).returning();
+    return bet;
+  }
+
+  async updateSideBetStatus(id: number, status: string, result?: { winnerId?: number; winnerName?: string }): Promise<SideBet | undefined> {
+    const updates: any = { status };
+    if (result) {
+      updates.result = {
+        winnerId: result.winnerId ?? null,
+        winnerName: result.winnerName ?? null,
+        settledAt: status === "completed" ? new Date().toISOString() : null,
+      };
+    }
+    const [bet] = await db.update(sideBets)
+      .set(updates)
+      .where(eq(sideBets.id, id))
+      .returning();
+    return bet;
+  }
+
+  async deleteSideBet(id: number): Promise<void> {
+    await db.delete(sideBets).where(eq(sideBets.id, id));
+  }
+
+  // ── Multi-Day Cumulative Leaderboard (Phase 5.1) ─────────────────────────────
+
+  async getMultiDayLeaderboard(tournamentId: string, view?: string): Promise<{ leaderboard: LeaderboardEntry[]; rounds: TournamentRound[] }> {
+    const rounds = await this.getTournamentRounds(tournamentId);
+    if (rounds.length <= 1) {
+      // Single round — fall back to normal leaderboard
+      const leaderboard = await this.getTournamentLeaderboard(tournamentId, view);
+      return { leaderboard, rounds };
+    }
+
+    // Multi-round: compute per-round leaderboards then aggregate
+    const tournament = await this.getTournament(tournamentId);
+    const allPlayers = await this.getTournamentPlayers(tournamentId);
+    const allGames = await this.getGamesByTournament(tournamentId);
+
+    // Group games by round
+    const gamesByRound = new Map<number, Game[]>();
+    for (const round of rounds) {
+      gamesByRound.set(round.id, allGames.filter(g => g.tournamentRoundId === round.id));
+    }
+
+    // For each player, accumulate net strokes across all rounds
+    const playerTotals = new Map<string, { totalStrokes: number; netStrokes: number; totalHoles: number; roundScores: Record<string, number>; handicap: number; userId: number | null; avatarUrl: string | null }>();
+
+    for (const player of allPlayers) {
+      playerTotals.set(player.playerName, {
+        totalStrokes: 0,
+        netStrokes: 0,
+        totalHoles: 0,
+        roundScores: {},
+        handicap: 0,
+        userId: player.userId,
+        avatarUrl: (player as any).avatarUrl ?? null,
+      });
+    }
+
+    // Process each round
+    for (const round of rounds) {
+      const roundGames = gamesByRound.get(round.id) || [];
+      for (const game of roundGames) {
+        const scores = game.scores as Record<string, number[]>;
+        const strokes = game.strokes as Record<string, number[]>;
+        const handicaps = game.handicaps as Record<string, number>;
+        const pars = game.pars as number[];
+        for (const [playerName, holeScores] of Object.entries(scores)) {
+          const playerData = playerTotals.get(playerName);
+          if (!playerData) continue;
+          const validScores = holeScores.filter(s => s > 0);
+          const roundStrokes = validScores.reduce((a, b) => a + b, 0);
+          const holes = validScores.length;
+          playerData.totalStrokes += roundStrokes;
+          playerData.totalHoles += holes;
+          // Net using handicap
+          const hc = handicaps[playerName] || 0;
+          playerData.handicap = Math.max(playerData.handicap, hc);
+          // Store round score
+          playerData.roundScores[String(round.id)] = roundStrokes;
+        }
+      }
+    }
+
+    // Calculate net strokes using cumulative handicap across rounds
+    const entries: LeaderboardEntry[] = [];
+    for (const [playerName, data] of playerTotals) {
+      if (data.totalHoles === 0) continue;
+      entries.push({
+        position: 0,
+        playerName,
+        userId: data.userId,
+        avatarUrl: data.avatarUrl,
+        totalStrokes: data.totalStrokes,
+        netStrokes: data.totalStrokes - Math.round(data.handicap * (data.totalHoles / 18)),
+        handicap: data.handicap,
+        holesCompleted: data.totalHoles,
+        complete: data.totalHoles >= rounds.length * 18,
+        gameId: null,
+        roundScores: data.roundScores,
+        totalThroughRounds: data.totalStrokes,
+        thruRound: Math.ceil(data.totalHoles / 18),
+      });
+    }
+
+    // Sort by net strokes (low is good)
+    entries.sort((a, b) => a.netStrokes - b.netStrokes);
+    entries.forEach((e, i) => { e.position = i + 1; });
+
+    return { leaderboard: entries, rounds };
+  }
 }
 
 // ── Fallback in-memory (games only, no user persistence) ─────────────────────
@@ -1008,6 +1494,7 @@ export class MemStorage implements IStorage {
       miniGames: (insertGame as any).miniGames ?? {},
       gameSettings: (insertGame as any).gameSettings ?? {},
       tournamentId: (insertGame as any).tournamentId ?? null,
+      tournamentRoundId: (insertGame as any).tournamentRoundId ?? null,
       createdAt: now, updatedAt: now,
     };
     this.gameMap.set(id, game);
@@ -1050,7 +1537,7 @@ export class MemStorage implements IStorage {
   }
 
   // Favorites stubs (not supported in memory mode)
-  async getFavorites(_userId: number): Promise<(import("@shared/schema").Favorite & { avatarUrl: string | null })[]> { return []; }
+  async getFavorites(_userId: number): Promise<(import("@shared/schema").Favorite & { avatarUrl: string | null; handicapIndex: number | null })[]> { return []; }
   async addFavorite(_userId: number, _favoriteUserId: number, _favoriteName: string): Promise<import("@shared/schema").Favorite> {
     return { id: 1, userId: _userId, favoriteUserId: _favoriteUserId, favoriteName: _favoriteName, createdAt: new Date() };
   }
@@ -1192,6 +1679,30 @@ export class MemStorage implements IStorage {
     this.userMap.delete(id);
     return true;
   }
+
+  async getTournamentRounds(_tournamentId: string): Promise<TournamentRound[]> { return []; }
+  async createTournamentRound(_insertRound: InsertTournamentRound): Promise<TournamentRound> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async deleteTournamentRound(_id: number): Promise<void> {}
+
+  async getGameTemplates(_userId: number): Promise<GameTemplate[]> { return []; }
+  async createGameTemplate(_insertTemplate: InsertGameTemplate): Promise<GameTemplate> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async deleteGameTemplate(_id: number, _userId: number): Promise<void> {}
+
+  // Phase 5 stubs
+  async getTournamentMatches(_tournamentId: string): Promise<TournamentMatch[]> { return []; }
+  async createTournamentMatch(_insertMatch: InsertTournamentMatch): Promise<TournamentMatch> { throw new Error("Not implemented in MemStorage"); }
+  async updateTournamentMatch(_id: number, _updates: Partial<TournamentMatch>): Promise<TournamentMatch | undefined> { return undefined; }
+  async deleteTournamentMatch(_id: number): Promise<void> {}
+  async getRyderCupScore(_tournamentId: string): Promise<{ team1Points: number; team2Points: number; matches: TournamentMatch[] }> { return { team1Points: 0, team2Points: 0, matches: [] }; }
+  async getSideBets(_tournamentId: string): Promise<SideBet[]> { return []; }
+  async createSideBet(_insertBet: InsertSideBet): Promise<SideBet> { throw new Error("Not implemented in MemStorage"); }
+  async updateSideBetStatus(_id: number, _status: string, _result?: { winnerId?: number; winnerName?: string }): Promise<SideBet | undefined> { return undefined; }
+  async deleteSideBet(_id: number): Promise<void> {}
+  async getMultiDayLeaderboard(_tournamentId: string, _view?: string): Promise<{ leaderboard: LeaderboardEntry[]; rounds: TournamentRound[] }> { return { leaderboard: [], rounds: [] }; }
 }
 
 // ── Export singleton ──────────────────────────────────────────────────────────

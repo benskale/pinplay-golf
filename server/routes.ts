@@ -1087,6 +1087,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       (gameData as any).userId = user.id;
       (gameData as any).sessionId = req.sessionID;
       (gameData as any).tournamentId = req.params.id;
+      if (req.body.tournamentRoundId) {
+        (gameData as any).tournamentRoundId = req.body.tournamentRoundId;
+      }
 
       // Use tournament course if not specified
       if (!gameData.courseName && tournament.courseName) {
@@ -1130,6 +1133,337 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Get user tournaments error:", error);
       res.status(500).json({ message: "Failed to fetch tournaments" });
+    }
+  });
+
+  // ── Tournament Rounds ─────────────────────────────────────────────────────────
+
+  // Get all rounds for a tournament
+  app.get("/api/tournaments/:id/rounds", async (req, res) => {
+    try {
+      const rounds = await storage.getTournamentRounds(req.params.id);
+      res.json(rounds);
+    } catch (error) {
+      console.error("Get tournament rounds error:", error);
+      res.status(500).json({ message: "Failed to fetch tournament rounds" });
+    }
+  });
+
+  // Get tournament mini-games summary (aggregates mini-game config across all games)
+  app.get("/api/tournaments/:id/mini-games", async (req, res) => {
+    try {
+      const games = await storage.getGamesByTournament(req.params.id);
+      const allMiniGames: Record<string, { enabled: boolean; value: number; gameCount: number }> = {};
+
+      for (const game of games) {
+        const mg = (game as any).miniGames as Record<string, { enabled: boolean; value: number }> | undefined;
+        if (!mg) continue;
+        for (const [key, config] of Object.entries(mg)) {
+          if (!config?.enabled) continue;
+          if (!allMiniGames[key]) {
+            allMiniGames[key] = { enabled: true, value: config.value || 0, gameCount: 1 };
+          } else {
+            allMiniGames[key].gameCount++;
+          }
+        }
+      }
+
+      // Dollar value per point from gameSettings
+      let dollarPerPoint = 0;
+      for (const game of games) {
+        const gs = (game as any).gameSettings as Record<string, any> | undefined;
+        if (gs?.dollarPerPoint) {
+          dollarPerPoint = Math.max(dollarPerPoint, gs.dollarPerPoint);
+        }
+      }
+
+      res.json({ miniGames: allMiniGames, dollarPerPoint, gameCount: games.length });
+    } catch (error) {
+      console.error("Get tournament mini-games error:", error);
+      res.status(500).json({ message: "Failed to fetch tournament mini-games" });
+    }
+  });
+
+  // Create a round for a tournament (creator only)
+  app.post("/api/tournaments/:id/rounds", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can manage rounds" });
+      }
+
+      const existingRounds = await storage.getTournamentRounds(req.params.id);
+      const roundNumber = existingRounds.length + 1;
+
+      const round = await storage.createTournamentRound({
+        tournamentId: req.params.id,
+        roundNumber,
+        name: req.body.name || `Round ${roundNumber}`,
+        format: req.body.format || tournament.format,
+        date: req.body.date || null,
+      });
+      res.json(round);
+    } catch (error) {
+      console.error("Create tournament round error:", error);
+      res.status(400).json({ message: "Failed to create tournament round" });
+    }
+  });
+
+  // Delete a round (creator only)
+  app.delete("/api/tournaments/:id/rounds/:roundId", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can manage rounds" });
+      }
+      await storage.deleteTournamentRound(parseInt(req.params.roundId));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete tournament round error:", error);
+      res.status(500).json({ message: "Failed to delete tournament round" });
+    }
+  });
+
+  // ── Game Templates ────────────────────────────────────────────────────────────
+
+  // Get all templates for the current user
+  app.get("/api/game-templates", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const templates = await storage.getGameTemplates(user.id);
+      res.json(templates);
+    } catch (error) {
+      console.error("Get game templates error:", error);
+      res.status(500).json({ message: "Failed to fetch game templates" });
+    }
+  });
+
+  // Create a game template
+  app.post("/api/game-templates", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const template = await storage.createGameTemplate({
+        userId: user.id,
+        name: req.body.name || "Untitled Template",
+        gameType: req.body.gameType || "stroke_play",
+        playerCount: req.body.playerCount || 4,
+        defaultHandicaps: req.body.defaultHandicaps || {},
+        defaultMiniGames: req.body.defaultMiniGames || {},
+        defaultGameSettings: req.body.defaultGameSettings || {},
+        description: req.body.description || null,
+      });
+      res.json(template);
+    } catch (error) {
+      console.error("Create game template error:", error);
+      res.status(400).json({ message: "Failed to create game template" });
+    }
+  });
+
+  // Delete a game template
+  app.delete("/api/game-templates/:id", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      await storage.deleteGameTemplate(parseInt(req.params.id), user.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete game template error:", error);
+      res.status(500).json({ message: "Failed to delete game template" });
+    }
+  });
+
+  // ── Phase 5: Tournament Matches (Ryder Cup & pairings) ──────────────────────
+
+  app.get("/api/tournaments/:id/matches", async (req, res) => {
+    try {
+      const matches = await storage.getTournamentMatches(req.params.id);
+      res.json(matches);
+    } catch (error) {
+      console.error("Get tournament matches error:", error);
+      res.status(500).json({ message: "Failed to fetch tournament matches" });
+    }
+  });
+
+  app.post("/api/tournaments/:id/matches", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can manage matches" });
+      }
+      const match = await storage.createTournamentMatch({
+        tournamentId: req.params.id,
+        roundId: req.body.roundId ?? null,
+        session: req.body.session ?? "singles",
+        matchType: req.body.matchType ?? "singles",
+        team1Players: req.body.team1Players ?? [],
+        team2Players: req.body.team2Players ?? [],
+        gameId: req.body.gameId ?? null,
+        result: { team1HolesUp: 0, team2HolesUp: 0, status: "pending", holesPlayed: 0, winner: null },
+      });
+      broadcastToTournament(req.params.id, { type: "tournament_match_update", tournamentId: req.params.id, matchId: match.id });
+      res.json(match);
+    } catch (error) {
+      console.error("Create tournament match error:", error);
+      res.status(500).json({ message: "Failed to create tournament match" });
+    }
+  });
+
+  app.patch("/api/tournaments/:id/matches/:matchId", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can manage matches" });
+      }
+      const match = await storage.updateTournamentMatch(parseInt(req.params.matchId), req.body);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      broadcastToTournament(req.params.id, { type: "tournament_match_update", tournamentId: req.params.id, matchId: match.id });
+      res.json(match);
+    } catch (error) {
+      console.error("Update tournament match error:", error);
+      res.status(500).json({ message: "Failed to update tournament match" });
+    }
+  });
+
+  app.delete("/api/tournaments/:id/matches/:matchId", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can manage matches" });
+      }
+      await storage.deleteTournamentMatch(parseInt(req.params.matchId));
+      broadcastToTournament(req.params.id, { type: "tournament_match_update", tournamentId: req.params.id, matchId: parseInt(req.params.matchId) });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete tournament match error:", error);
+      res.status(500).json({ message: "Failed to delete tournament match" });
+    }
+  });
+
+  app.get("/api/tournaments/:id/ryder-cup", async (req, res) => {
+    try {
+      const score = await storage.getRyderCupScore(req.params.id);
+      res.json(score);
+    } catch (error) {
+      console.error("Get Ryder Cup score error:", error);
+      res.status(500).json({ message: "Failed to fetch Ryder Cup score" });
+    }
+  });
+
+  // ── Phase 5: Side Bets ───────────────────────────────────────────────────────
+
+  app.get("/api/tournaments/:id/side-bets", async (req, res) => {
+    try {
+      const bets = await storage.getSideBets(req.params.id);
+      res.json(bets);
+    } catch (error) {
+      console.error("Get side bets error:", error);
+      res.status(500).json({ message: "Failed to fetch side bets" });
+    }
+  });
+
+  app.post("/api/tournaments/:id/side-bets", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const bet = await storage.createSideBet({
+        tournamentId: req.params.id,
+        gameId: req.body.gameId ?? null,
+        proposerId: req.body.proposerId ?? null,
+        proposerName: req.body.proposerName ?? "Anonymous",
+        targetIds: req.body.targetIds ?? [],
+        amount: req.body.amount ?? 0,
+        betType: req.body.betType ?? "custom",
+        scope: req.body.scope ?? "round",
+        holeNumber: req.body.holeNumber ?? null,
+        description: req.body.description ?? null,
+        status: "pending",
+        result: { winnerId: null, winnerName: null, settledAt: null },
+      });
+      broadcastToTournament(req.params.id, { type: "side_bet_update", tournamentId: req.params.id, sideBetId: bet.id });
+      res.json(bet);
+    } catch (error) {
+      console.error("Create side bet error:", error);
+      res.status(500).json({ message: "Failed to create side bet" });
+    }
+  });
+
+  app.patch("/api/tournaments/:id/side-bets/:betId", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const bet = await storage.updateSideBetStatus(
+        parseInt(req.params.betId),
+        req.body.status,
+        req.body.result ?? undefined,
+      );
+      if (!bet) return res.status(404).json({ message: "Side bet not found" });
+      broadcastToTournament(req.params.id, { type: "side_bet_update", tournamentId: req.params.id, sideBetId: bet.id });
+      res.json(bet);
+    } catch (error) {
+      console.error("Update side bet error:", error);
+      res.status(500).json({ message: "Failed to update side bet" });
+    }
+  });
+
+  app.delete("/api/tournaments/:id/side-bets/:betId", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      await storage.deleteSideBet(parseInt(req.params.betId));
+      broadcastToTournament(req.params.id, { type: "side_bet_update", tournamentId: req.params.id, sideBetId: parseInt(req.params.betId) });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete side bet error:", error);
+      res.status(500).json({ message: "Failed to delete side bet" });
+    }
+  });
+
+  // ── Phase 5: Multi-Day Leaderboard ──────────────────────────────────────────
+
+  app.get("/api/tournaments/:id/multi-day-leaderboard", async (req, res) => {
+    try {
+      const view = req.query.view as string | undefined;
+      const data = await storage.getMultiDayLeaderboard(req.params.id, view);
+      res.json(data);
+    } catch (error) {
+      console.error("Get multi-day leaderboard error:", error);
+      res.status(500).json({ message: "Failed to fetch multi-day leaderboard" });
     }
   });
 
@@ -1395,6 +1729,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             break;
           }
+          case "leave_tournament": {
+            if (currentTournamentId) {
+              leaveTournamentRoom(currentTournamentId, ws);
+              currentTournamentId = null;
+            }
+            break;
+          }
         }
       } catch (error) {
         console.error("WebSocket message error:", error);
@@ -1448,9 +1789,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Broadcast a score update to all viewers of a tournament.
    * Sends the full updated leaderboard so the frontend can just swap it in.
    */
+  // Track previous leaderboard positions for differential view (Phase 5.4)
+  const prevTournamentPositions = new Map<string, Map<string, number>>();
+
   async function broadcastTournamentScoreUpdate(tournamentId: string, game: Game) {
     try {
       const leaderboard = await storage.getTournamentLeaderboard(tournamentId);
+
+      // Compute movement deltas (Phase 5.4)
+      const prevMap = prevTournamentPositions.get(tournamentId) || new Map<string, number>();
+      for (const entry of leaderboard) {
+        const prevPos = prevMap.get(entry.playerName);
+        (entry as any).previousPosition = prevPos ?? null;
+        // Compute birdie streak from game scores
+        if (game && game.scores) {
+          const playerScores = (game.scores as any)[entry.playerName];
+          if (playerScores && Array.isArray(playerScores) && game.pars) {
+            let streak = 0;
+            for (let i = playerScores.length - 1; i >= 0; i--) {
+              const s = playerScores[i];
+              const p = game.pars[i];
+              if (s > 0 && p > 0 && s < p) streak++;
+              else break;
+            }
+            (entry as any).birdieStreak = streak;
+          }
+        }
+      }
+      // Store current positions for next comparison
+      const newMap = new Map<string, number>();
+      leaderboard.forEach(e => newMap.set(e.playerName, e.position));
+      prevTournamentPositions.set(tournamentId, newMap);
+
       broadcastToTournament(tournamentId, {
         type: "tournament_score_update",
         tournamentId,

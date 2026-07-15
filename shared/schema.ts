@@ -166,6 +166,7 @@ export const games = pgTable("games", {
   miniGames: jsonb("mini_games").$type<Record<string, { enabled: boolean; value: number }>>().notNull().default({}),
   gameSettings: jsonb("game_settings").$type<Record<string, any>>().notNull().default({}),
   tournamentId: varchar("tournament_id").references(() => tournaments.id),
+  tournamentRoundId: integer("tournament_round_id"), // references tournament_rounds.id (null for non-round games)
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
 });
@@ -181,6 +182,109 @@ export const updateGameSchema = insertGameSchema.partial();
 export type InsertGame = z.infer<typeof insertGameSchema>;
 export type UpdateGame = z.infer<typeof updateGameSchema>;
 export type Game = typeof games.$inferSelect;
+
+// ── Tournament Rounds (multi-day / multi-format) ──────────────────────────────
+
+export const tournamentRounds = pgTable("tournament_rounds", {
+  id: serial("id").primaryKey(),
+  tournamentId: varchar("tournament_id").notNull().references(() => tournaments.id),
+  roundNumber: integer("round_number").notNull().default(1),
+  name: text("round_name"),              // e.g. "Day 1", "Rounds 1-2", "Final Round"
+  format: text("format").notNull().default("stroke_play"), // stroke_play, stableford, match_play, skins, best_ball, scramble, ringer, net_ringer
+  date: text("round_date"),              // ISO date string for this round
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const insertTournamentRoundSchema = createInsertSchema(tournamentRounds).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTournamentRound = z.infer<typeof insertTournamentRoundSchema>;
+export type TournamentRound = typeof tournamentRounds.$inferSelect;
+
+// ── Game Templates ───────────────────────────────────────────────────────────
+
+export const gameTemplates = pgTable("game_templates", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  name: text("name").notNull(),             // user-given name, e.g. "Tuesday Wolf"
+  gameType: text("game_type").notNull(),    // wolf, nassau, match_play, stableford, ...
+  playerCount: integer("player_count").notNull().default(4),
+  defaultHandicaps: jsonb("default_handicaps").$type<Record<string, number>>().notNull().default({}),
+  defaultMiniGames: jsonb("default_mini_games").$type<Record<string, { enabled: boolean; value: number }>>().notNull().default({}),
+  defaultGameSettings: jsonb("default_game_settings").$type<Record<string, any>>().notNull().default({}),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const insertGameTemplateSchema = createInsertSchema(gameTemplates).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertGameTemplate = z.infer<typeof insertGameTemplateSchema>;
+export type GameTemplate = typeof gameTemplates.$inferSelect;
+
+// ── Tournament Matches (Phase 5.2: Ryder Cup & match pairings) ────────────────
+
+export const tournamentMatches = pgTable("tournament_matches", {
+  id: serial("id").primaryKey(),
+  tournamentId: varchar("tournament_id").notNull().references(() => tournaments.id),
+  roundId: integer("round_id"), // references tournament_rounds.id
+  session: text("session").notNull().default("singles"), // fourball_am, fourball_pm, foursome, singles
+  matchType: text("match_type").notNull().default("singles"), // singles, fourball, foursome
+  team1Players: jsonb("team1_players").$type<string[]>().notNull().default([]),
+  team2Players: jsonb("team2_players").$type<string[]>().notNull().default([]),
+  gameId: varchar("game_id"), // linked game if any
+  result: jsonb("result").$type<{
+    team1HolesUp: number;
+    team2HolesUp: number;
+    status: string; // pending, in_progress, complete
+    holesPlayed: number;
+    winner: string | null; // "team1", "team2", "halved"
+  }>().notNull().default({ team1HolesUp: 0, team2HolesUp: 0, status: "pending", holesPlayed: 0, winner: null }),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const insertTournamentMatchSchema = createInsertSchema(tournamentMatches).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTournamentMatch = z.infer<typeof insertTournamentMatchSchema>;
+export type TournamentMatch = typeof tournamentMatches.$inferSelect;
+
+// ── Side Bets (Phase 5.3: Player-to-player with approval) ──────────────────────
+
+export const sideBets = pgTable("side_bets", {
+  id: serial("id").primaryKey(),
+  tournamentId: varchar("tournament_id").notNull().references(() => tournaments.id),
+  gameId: varchar("game_id"), // linked game for hole/round-scoped bets
+  proposerId: integer("proposer_id"), // references tournament_players.id
+  proposerName: text("proposer_name").notNull(),
+  targetIds: jsonb("target_ids").$type<number[]>().notNull().default([]), // tournament_players.id array
+  amount: real("amount").notNull().default(0),
+  betType: text("bet_type").notNull().default("custom"), // closest_to_pin, longest_drive, most_birdies, low_net, low_gross, custom
+  scope: text("scope").notNull().default("round"), // hole, round, tournament
+  holeNumber: integer("hole_number"), // for hole-scoped bets
+  description: text("description"),
+  status: text("status").notNull().default("pending"), // pending, accepted, declined, completed
+  result: jsonb("result").$type<{
+    winnerId: number | null;
+    winnerName: string | null;
+    settledAt: string | null;
+  }>().notNull().default({ winnerId: null, winnerName: null, settledAt: null }),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const insertSideBetSchema = createInsertSchema(sideBets).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSideBet = z.infer<typeof insertSideBetSchema>;
+export type SideBet = typeof sideBets.$inferSelect;
 
 // ── Input sanitization ────────────────────────────────────────────────────────
 
@@ -248,7 +352,10 @@ export const wsMessageSchema = z.union([
   z.object({ type: z.literal("game_updated"), game: z.any() }),
   // Tournament WebSocket messages
   z.object({ type: z.literal("join_tournament"), tournamentId: z.string() }),
+  z.object({ type: z.literal("leave_tournament"), tournamentId: z.string() }),
   z.object({ type: z.literal("tournament_updated"), tournament: z.any() }),
+  z.object({ type: z.literal("tournament_match_update"), tournamentId: z.string(), matchId: z.number() }),
+  z.object({ type: z.literal("side_bet_update"), tournamentId: z.string(), sideBetId: z.number() }),
   z.object({
     type: z.literal("tournament_score_update"),
     tournamentId: z.string(),
@@ -279,4 +386,17 @@ export interface LeaderboardEntry {
   teamName?: string;        // Team formats: display name (e.g. "Team 1")
   teamPlayers?: string[];   // Team formats: member names
   format?: string;          // Which tournament format produced this entry
+  // Stableford
+  stablefordPoints?: number;  // Total stableford points
+  quota?: number;             // Quota target (36 - handicap)
+  // Match Play
+  matchStatus?: string;       // "W", "L", "H", "AS", "2UP", "3&2" etc.
+  matchHolesUp?: number;      // Holes up (negative = down)
+  // Multi-day (Phase 5.1)
+  roundScores?: Record<string, number>; // roundId (as string) -> score for that round
+  totalThroughRounds?: number;          // cumulative total across all rounds
+  thruRound?: number;                   // which round number the player is currently in
+  // Enhanced live scoring (Phase 5.4)
+  previousPosition?: number;            // position before latest update (for movement arrows)
+  birdieStreak?: number;               // consecutive holes under par (for "on fire" indicator)
 }

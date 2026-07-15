@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Loader2, ChevronDown, ChevronUp, CheckCircle, MapPin, Search, X,
-  Users, ChevronRight, ArrowLeft, Shuffle, UserCircle, Sparkles, DollarSign
+  Users, ChevronRight, ArrowLeft, Shuffle, UserCircle, Sparkles, DollarSign, Bookmark
 } from "lucide-react";
 import { getGamesForPlayerCount, getMiniGamesForSetup, isLowerBetter, type GameDef, type MiniGameDef } from "@/lib/game-logic";
 import { trackGame } from "@/lib/game-recovery";
@@ -78,6 +78,28 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
 
   // Per-player autocomplete
   const [playerSearchText, setPlayerSearchText] = useState<Record<number, string>>({});
+
+  // ── Game Templates ──
+  const { data: templates = [] } = useQuery<any[]>({
+    queryKey: ["/api/game-templates"],
+    enabled: !!user,
+    queryFn: async () => {
+      const res = await fetch("/api/game-templates", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/game-templates", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Template saved", description: "You can load it next time you create a game" });
+    },
+  });
   const [activeDropdown, setActiveDropdown] = useState<number | null>(null);
   const [debouncedPlayerSearch, setDebouncedPlayerSearch] = useState("");
   const playerDropdownRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -411,6 +433,45 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
             <ChevronRight className="w-5 h-5 text-primary-300 dark:text-primary-500 group-hover:text-primary-600 flex-shrink-0 transition-colors" />
           </button>
         ))}
+
+        {/* Saved templates */}
+        {user && templates.length > 0 && (
+          <div className="pt-3">
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <Bookmark className="w-4 h-4 text-muted-foreground" />
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Saved Templates</span>
+            </div>
+            {templates.map(tpl => (
+              <button
+                key={tpl.id}
+                className="w-full flex items-center justify-between p-3 mb-2 bg-secondary-50 dark:bg-gray-800/50 rounded-lg text-left transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98]"
+                onClick={() => {
+                  setPlayerCount(tpl.playerCount);
+                  const gameDef = getGamesForPlayerCount(tpl.playerCount).find(g => g.id === tpl.gameType);
+                  if (gameDef) {
+                    setSelectedGame(gameDef);
+                    setStep("players");
+                  } else {
+                    // Game type may not exist for this count, go to game selection
+                    handleSelectCount(tpl.playerCount);
+                  }
+                  if (tpl.defaultHandicaps) setHandicaps(tpl.defaultHandicaps);
+                  if (tpl.defaultMiniGames) setSelectedMiniGames(tpl.defaultMiniGames);
+                  if (tpl.defaultGameSettings) setGameSettings(tpl.defaultGameSettings);
+                  toast({ title: `Loaded "${tpl.name}"`, description: "Adjust names and start" });
+                }}
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm text-gray-900 dark:text-gray-50 truncate">{tpl.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {tpl.gameType} · {tpl.playerCount} players
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -1186,6 +1247,28 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
           >
             Skip — no mini-games
           </Button>
+          {user && (
+            <Button
+              variant="ghost"
+              className="w-full text-muted-foreground py-2 text-[0.8125rem]"
+              disabled={saveTemplateMutation.isPending}
+              onClick={() => {
+                const name = window.prompt("Template name (e.g. 'Tuesday Wolf', 'Weekend Skins'):");
+                if (!name?.trim()) return;
+                saveTemplateMutation.mutate({
+                  name: name.trim(),
+                  gameType: selectedGame?.id || "wolf",
+                  playerCount,
+                  defaultHandicaps: handicaps,
+                  defaultMiniGames: selectedMiniGames,
+                  defaultGameSettings: gameSettings,
+                  description: `${selectedGame?.name || selectedGame?.id || "Custom"} · ${playerCount} players`,
+                });
+              }}
+            >
+              <Bookmark className="w-3.5 h-3.5 mr-1.5" /> Save as Template
+            </Button>
+          )}
         </div>
       </div>
     );

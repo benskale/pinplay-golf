@@ -41,7 +41,8 @@ export default function CreateTournamentPage() {
   const [teamSize, setTeamSize] = useState("2");
   const [maxPlayers, setMaxPlayers] = useState("");
 
-  const isTeamFormat = format === "best_ball" || format === "scramble";
+  const isTeamFormat = format === "best_ball" || format === "scramble" || format === "ryder_cup";
+  const isRyderCup = format === "ryder_cup";
 
   // Course search
   const [courseQuery, setCourseQuery] = useState("");
@@ -363,16 +364,26 @@ export default function CreateTournamentPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="stroke_play">Stroke Play</SelectItem>
+                  <SelectItem value="stableford">Stableford</SelectItem>
+                  <SelectItem value="match_play">Match Play</SelectItem>
                   <SelectItem value="skins">Skins</SelectItem>
                   <SelectItem value="best_ball">Best Ball (Teams)</SelectItem>
                   <SelectItem value="scramble">Scramble (Teams)</SelectItem>
+                  <SelectItem value="ryder_cup">Ryder Cup (Team Matches)</SelectItem>
+                  <SelectItem value="ringer">Ringer (Multi-Round)</SelectItem>
+                  <SelectItem value="net_ringer">Net Ringer (Multi-Round)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-gray-400 mt-1">
                 {format === "stroke_play" && "Lowest net strokes wins"}
+                {format === "stableford" && "Points per hole vs par. Highest points wins. Quota = 36 - handicap"}
+                {format === "match_play" && "Hole-by-hole 1v1 matches. Win a hole = go 1 up. Most holes won wins"}
                 {format === "skins" && "Lowest net score per hole wins a skin. Ties carry over."}
                 {format === "best_ball" && "Teams: best score per hole counts toward team total"}
                 {format === "scramble" && "Teams: everyone plays one ball, team posts one score per hole"}
+                {format === "ryder_cup" && "Two teams compete across four-ball, foursomes, and singles matches. Points-based team scoring."}
+                {format === "ringer" && "Best gross score on each hole across all rounds in the tournament"}
+                {format === "net_ringer" && "Best net score on each hole across all rounds (handicap-adjusted)"}
               </p>
             </div>
 

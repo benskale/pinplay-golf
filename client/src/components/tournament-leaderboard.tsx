@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import { Trophy, Loader2, Users } from "lucide-react";
+import { Trophy, Loader2, Users, Flame, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import type { LeaderboardEntry } from "@shared/schema";
 
 interface TournamentTeam {
@@ -29,6 +29,9 @@ export default function TournamentLeaderboard({
 
   const isTeam = format === "best_ball" || format === "scramble";
   const isSkins = format === "skins";
+  const isStableford = format === "stableford";
+  const isMatchPlay = format === "match_play";
+  const isRinger = format === "ringer" || format === "net_ringer";
 
   // Fetch leaderboard — uses individual endpoint when toggled
   const { data: fetchedLeaderboard = [], isLoading } = useQuery<LeaderboardEntry[]>({
@@ -55,10 +58,15 @@ export default function TournamentLeaderboard({
   const showTeamGroups = isTeam && view === "individual" && teams && teams.length > 0;
 
   // Column layout varies by format
-  // Skins: Pos | Player | Thru | Net | Skins
-  // Team:  Pos | Team   | Thru | Gross | Net
-  // Stroke:Pos | Player | Thru | Gross | Net
-  const gridCols = "grid-cols-[3rem_1fr_3.5rem_3.5rem_3.5rem]";
+  // Skins:      Pos | Player | Thru | Net | Skins
+  // Stableford:  Pos | Player | Thru | Pts  | Quota
+  // Match Play:  Pos | Player | Thru | Status
+  // Ringer:     Pos | Player | Thru | Holes | Total
+  // Team:       Pos | Team   | Thru | Gross | Net
+  // Stroke:     Pos | Player | Thru | Gross | Net
+  const gridCols = isMatchPlay
+    ? "grid-cols-[3rem_1fr_3.5rem_4rem]"
+    : "grid-cols-[3rem_1fr_3.5rem_3.5rem_3.5rem]";
 
   if (isLoading && !leaderboardData) {
     return (
@@ -84,6 +92,11 @@ export default function TournamentLeaderboard({
     const isCurrentUser = user && entry.userId === user.id;
     const entryTeam = isTeam && !showTeamGroups ? null : null;
 
+    // Phase 5.4: Enhanced live scoring indicators
+    const prevPos = entry.previousPosition;
+    const moved = prevPos != null ? prevPos - entry.position : 0;
+    const onFire = (entry.birdieStreak ?? 0) >= 2;
+
     return (
       <div
         key={`${entry.playerName}-${entry.gameId || index}`}
@@ -96,8 +109,8 @@ export default function TournamentLeaderboard({
         }`}
         style={teamColor ? { borderLeftWidth: 4, borderLeftColor: teamColor, paddingLeft: "0.625rem" } : undefined}
       >
-        {/* Position */}
-        <span className={`font-bold ${
+        {/* Position with movement indicator (Phase 5.4) */}
+        <span className={`font-bold flex items-center gap-0.5 ${
           entry.position === 1 ? "text-yellow-600" :
           entry.position === 2 ? "text-gray-400" :
           entry.position === 3 ? "text-amber-600" :
@@ -109,6 +122,9 @@ export default function TournamentLeaderboard({
               {entry.position === 1 ? "🥇" : entry.position === 2 ? "🥈" : "🥉"}
             </span>
           )}
+          {moved > 0 && <ArrowUp className="w-3 h-3 text-green-500" />}
+          {moved < 0 && <ArrowDown className="w-3 h-3 text-red-400" />}
+          {moved === 0 && prevPos != null && <Minus className="w-2.5 h-2.5 text-gray-300" />}
         </span>
 
         {/* Name / Team */}
@@ -118,6 +134,12 @@ export default function TournamentLeaderboard({
           }`}>
             {isTeam && <Users className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />}
             <span className="truncate">{entry.playerName}</span>
+            {onFire && (
+              <span className="flex items-center gap-0.5 text-xs flex-shrink-0" title={`${entry.birdieStreak} under par in a row`}>
+                <Flame className="w-3.5 h-3.5 text-orange-500 animate-pulse" style={{ animationDuration: "1.5s" }} />
+                {entry.birdieStreak}
+              </span>
+            )}
             {isCurrentUser && (
               <span className="text-[0.625rem] px-1.5 py-0.5 rounded-full bg-green-200/60 dark:bg-green-800/40 text-green-700 dark:text-green-300 font-semibold uppercase tracking-wide flex-shrink-0">
                 You
@@ -136,7 +158,29 @@ export default function TournamentLeaderboard({
           {entry.complete ? "F" : entry.holesCompleted > 0 ? `${entry.holesCompleted}` : "-"}
         </span>
 
-        {isSkins ? (
+        {isStableford ? (
+          <>
+            <span className="text-center font-bold text-gray-900 dark:text-gray-100">
+              {entry.holesCompleted > 0 ? (entry.stablefordPoints ?? 0) : "-"}
+            </span>
+            <span className="text-center text-gray-500 dark:text-gray-400 text-xs">
+              {entry.holesCompleted > 0 ? (entry.quota ?? 0) : "-"}
+            </span>
+          </>
+        ) : isMatchPlay ? (
+          <span className="text-center font-bold">
+            {entry.holesCompleted > 0 ? (entry.matchStatus ?? "AS") : "-"}
+          </span>
+        ) : isRinger ? (
+          <>
+            <span className="text-center font-semibold text-gray-700 dark:text-gray-300">
+              {entry.holesCompleted > 0 ? entry.totalStrokes : "-"}
+            </span>
+            <span className="text-center font-bold text-gray-900 dark:text-gray-100">
+              {entry.holesCompleted > 0 ? entry.netStrokes : "-"}
+            </span>
+          </>
+        ) : isSkins ? (
           <>
             <span className="text-center font-semibold text-gray-700 dark:text-gray-300">
               {entry.holesCompleted > 0 ? entry.netStrokes : "-"}
@@ -195,7 +239,19 @@ export default function TournamentLeaderboard({
           <span>Pos</span>
           <span>{(isTeam && view === "team") ? "Team" : "Player"}</span>
           <span className="text-center">Thru</span>
-          {isSkins ? (
+          {isStableford ? (
+            <>
+              <span className="text-center">Pts</span>
+              <span className="text-center">Quota</span>
+            </>
+          ) : isMatchPlay ? (
+            <span className="text-center">Match</span>
+          ) : isRinger ? (
+            <>
+              <span className="text-center">Gross</span>
+              <span className="text-center">Ringer</span>
+            </>
+          ) : isSkins ? (
             <>
               <span className="text-center">Net</span>
               <span className="text-center">Skins</span>
