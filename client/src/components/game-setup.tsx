@@ -245,10 +245,23 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
       } else {
         setHcpRanksSource("default");
       }
-      const hcpNote = detail.hcpRanks
-        ? " · HCP ranks auto-filled"
-        : " · HCP ranks not available — enter them manually below";
-      toast({ title: "Course loaded!", description: `${detail.name} — Par ${detail.par}${hcpNote}` });
+      // Data quality check — if pars total doesn't match claimed course par, warn and auto-expand editor
+      const parsTotal = (detail.pars || []).reduce((a: number, b: number) => a + b, 0);
+      const coursePar = detail.par || 0;
+      if (coursePar > 0 && Math.abs(parsTotal - coursePar) > 1) {
+        setShowParSetup(true);
+        setShowSISetup(true);
+        toast({
+          title: "Scorecard data may be wrong",
+          description: `Hole pars add up to ${parsTotal} but course says par ${coursePar}. Check and correct below before starting.`,
+          variant: "destructive",
+        });
+      } else {
+        const hcpNote = detail.hcpRanks
+          ? " · HCP ranks auto-filled"
+          : " · HCP ranks not available — enter them manually below";
+        toast({ title: "Course loaded!", description: `${detail.name} — Par ${detail.par}${hcpNote}` });
+      }
     } catch {
       toast({ title: "Course found", description: "Scorecard data unavailable. Set pars manually.", variant: "destructive" });
     } finally {
@@ -904,14 +917,17 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
             return null;
           })()}
 
-          {/* Par Setup */}
+          {/* Scorecard Manual Override — pars */}
           <button
             type="button"
             className="w-full flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg mb-4 text-left"
             onClick={() => setShowParSetup(v => !v)}
           >
             <div>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Hole Par Values</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Hole Par Values</span>
+                <span className="text-xs text-gray-400">(tap to edit if wrong)</span>
+              </div>
               <p className="text-xs text-gray-500 mt-0.5">Front: {front9Par} · Back: {back9Par} · Total: {totalPar}</p>
             </div>
             {showParSetup ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
@@ -950,15 +966,14 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
             </div>
           )}
 
-          {/* Stroke Index — shown when handicap play is enabled */}
-          {useHandicap && (
-            <>
-              {/* Warning when using default (uncustomised) HCP ranks */}
-              {hcpRanksSource === "default" && (
-                <div className="mb-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
-                  <span className="font-semibold">HCP ranks not set.</span> Search for your course above to auto-fill them, or enter them manually below. Without correct HCP ranks, strokes will be awarded on holes 1–4 by default instead of the actual hardest holes.
-                </div>
-              )}
+          {/* Stroke Index / Handicap Rankings — always editable */}
+          <>
+            {/* Warning when using default (uncustomised) HCP ranks — only matters for handicap play */}
+            {useHandicap && hcpRanksSource === "default" && (
+              <div className="mb-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
+                <span className="font-semibold">HCP ranks not set.</span> Search for your course above to auto-fill them, or enter them manually below. Without correct HCP ranks, strokes will be awarded on holes 1–4 by default instead of the actual hardest holes.
+              </div>
+            )}
 
               <button
                 type="button"
@@ -978,7 +993,7 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
                       <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 font-medium">Not set</span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">HCP 1 = hardest hole · determines which holes strokes are given on</p>
+                  <p className="text-xs text-gray-500 mt-0.5">HCP 1 = hardest hole · determines which holes strokes are given on{!useHandicap && " (optional unless handicap play)"}</p>
                 </div>
                 {showSISetup ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
               </button>
@@ -1022,7 +1037,6 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
                 </div>
               )}
             </>
-          )}
 
           <Button
             className="w-full bg-secondary-500 hover:bg-secondary-600 text-white py-3 rounded-lg font-semibold text-[0.9375rem] shadow-sm"

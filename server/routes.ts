@@ -14,6 +14,18 @@ const tournamentConnections = new Map<string, Set<WebSocket>>();
 
 const GOLF_API_BASE = "https://api.opengolfapi.org/v1";
 
+// Known course data overrides — corrects bad OpenGolfAPI data (wrong pars, missing handicap ranks)
+// Add entries here when the API returns incorrect scorecard data for a course.
+const COURSE_OVERRIDES: Record<string, { name: string; par: number; pars: number[]; hcpRanks: number[] }> = {
+  // Rock Hill Country Club, Rock Hill SC — API returns all par-5 for holes 1-13 and no handicap data
+  "56d19e5f-ed82-4cf3-b9d1-d6066decb863": {
+    name: "Rock Hill Country Club",
+    par: 72,
+    pars: [4, 3, 5, 4, 4, 3, 5, 4, 4, 4, 4, 3, 5, 4, 5, 4, 3, 4],
+    hcpRanks: [11, 17, 7, 9, 3, 13, 15, 1, 5, 8, 2, 10, 6, 4, 12, 18, 16, 14],
+  },
+};
+
 /**
  * Self-heal strokes array from holeHistory.
  * Reconstructs each player's strokes array so it matches holeHistory exactly.
@@ -322,6 +334,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (req.params.id.startsWith("osm-")) {
       return res.status(404).json({ message: "International course — no scorecard data available" });
     }
+
+    // Check overrides first — use corrected data when API data is known to be wrong
+    const override = COURSE_OVERRIDES[req.params.id];
+    if (override) {
+      return res.json({
+        id: req.params.id,
+        name: override.name,
+        city: "",
+        state: "",
+        par: override.par,
+        pars: override.pars,
+        hcpRanks: override.hcpRanks,
+        _overridden: true,
+      });
+    }
+
     try {
       const data = await fetchGolfApi(`/courses/${req.params.id}`);
       const pars: number[] = [];
