@@ -105,8 +105,9 @@ export type Tournament = typeof tournaments.$inferSelect;
 export const tournamentPlayers = pgTable("tournament_players", {
   id: serial("id").primaryKey(),
   tournamentId: varchar("tournament_id").notNull().references(() => tournaments.id),
-  userId: integer("user_id").notNull().references(() => users.id),
+  userId: integer("user_id").references(() => users.id),
   playerName: text("player_name").notNull(),
+  isGuest: boolean("is_guest").notNull().default(false),
   status: text("status").notNull().default("registered"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
@@ -114,6 +115,7 @@ export const tournamentPlayers = pgTable("tournament_players", {
 export const insertTournamentPlayerSchema = createInsertSchema(tournamentPlayers).omit({
   id: true,
   createdAt: true,
+  isGuest: true,
 });
 
 export type InsertTournamentPlayer = z.infer<typeof insertTournamentPlayerSchema>;
@@ -178,10 +180,10 @@ export function sanitizePlayerName(name: unknown): string {
     .slice(0, 50);                      // max 50 chars
 }
 
-/** Validate an array of player names: 2-4 players, each 1-50 chars after sanitization. */
+/** Validate an array of player names: 2-5 players, each 1-50 chars after sanitization. */
 export function validatePlayers(players: unknown): string[] {
   if (!Array.isArray(players)) throw new Error("Players must be an array");
-  if (players.length < 2 || players.length > 4) throw new Error("Must have 2-4 players");
+  if (players.length < 2 || players.length > 5) throw new Error("Must have 2-5 players");
   const sanitized = players.map((p: any) => sanitizePlayerName(p));
   if (sanitized.some(p => p.length < 1)) throw new Error("Player names cannot be empty");
   return sanitized;
@@ -251,6 +253,7 @@ export interface LeaderboardEntry {
   position: number;
   playerName: string;
   userId: number | null;
+  avatarUrl?: string | null;
   totalStrokes: number;
   netStrokes: number;
   handicap: number;

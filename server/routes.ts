@@ -243,6 +243,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes (passport init happens inside)
   setupAuth(app);
 
+  // Apple App Site Association (Universal Links / deep links)
+  app.get("/.well-known/apple-app-site-association", (_req, res) => {
+    res.set("Content-Type", "application/json");
+    res.json({
+      applinks: {
+        details: [
+          {
+            appIDs: ["UP49GYJACS.com.silverspringsventures.pinplay"],
+            components: [
+              { "/": "/join/*", comment: "Tournament invite deep links" },
+              { "/": "/tournament/*", comment: "Tournament pages" },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   // Health check
   app.get("/health", (_req, res) => {
     res.json({ status: "healthy", timestamp: new Date().toISOString(), uptime: process.uptime() });
@@ -780,6 +798,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Complete tournament (creator only)
+  app.post("/api/tournaments/:id/complete", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can complete this" });
+      }
+      if (tournament.status !== "in_progress") {
+        return res.status(400).json({ message: "Tournament must be in progress to complete" });
+      }
+
+      const updated = await storage.updateTournamentStatus(req.params.id, "complete");
+      const players = await storage.getTournamentPlayers(req.params.id);
+
+      // Auto-update all player statuses to "finished"
+      for (const player of players) {
+        if (player.userId !== null) {
+          await storage.updateTournamentPlayerStatus(req.params.id, player.userId, "finished");
+        } else {
+          await storage.updateTournamentPlayerStatusByName(req.params.id, player.playerName, "finished");
+        }
+      }
+
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { ...updated, players, status: "complete" },
+      });
+
+      res.json({ ...updated, players });
+    } catch (error) {
+      console.error("Complete tournament error:", error);
+      res.status(500).json({ message: "Failed to complete tournament" });
+    }
+  });
+
   // Get tournament games
   app.get("/api/tournaments/:id/games", async (req, res) => {
     try {
@@ -808,10 +866,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Tournament must be in progress to start games" });
       }
 
-      // Check if player is registered
+      // Check if player is registered (by userId for authed users, by session for guests)
       const tPlayers = await storage.getTournamentPlayers(req.params.id);
-      const isRegistered = tPlayers.some(p => p.userId === user.id);
-      if (!isRegistered) {
+      const playerRecord = tPlayers.find(p => p.userId === user.id);
+      if (!playerRecord) {
         return res.status(400).json({ message: "You must be registered for this tournament to start a game" });
       }
 
@@ -845,6 +903,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update tournament player status to "playing"
       await storage.updateTournamentPlayerStatus(req.params.id, user.id, "playing");
 
+      // Also update any other tournament players in this game by name
+      const gamePlayers = (gameData.players as string[]) || [];
+      for (const gPlayer of gamePlayers) {
+        if (gPlayer !== user.name) {
+          await storage.updateTournamentPlayerStatusByName(req.params.id, gPlayer, "playing");
+        }
+      }
+
       broadcastToTournament(req.params.id, {
         type: "tournament_updated",
         tournament: { ...tournament },
@@ -872,6 +938,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add player to tournament (creator only — manual add)
+  app.post("/api/tournaments/:id/players", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can add players" });
+      }
+
+      const name = typeof req.body.name === "string" ? sanitizePlayerName(req.body.name) : "";
+      if (!name || name.length < 1) {
+        return res.status(400).json({ message: "Player name is required" });
+      }
+      if (name.length > 50) {
+        return res.status(400).json({ message: "Player name must be 50 characters or less" });
+      }
+
+      // Check max players
+      if (tournament.maxPlayers) {
+        const players = await storage.getTournamentPlayers(req.params.id);
+        if (players.length >= tournament.maxPlayers) {
+          return res.status(400).json({ message: "Tournament is full" });
+        }
+      }
+
+      const tp = await storage.addTournamentPlayer(req.params.id, name);
+      const players = await storage.getTournamentPlayers(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { ...tournament, players },
+      });
+
+      res.json(tp);
+    } catch (error) {
+      console.error("Add tournament player error:", error);
+      res.status(500).json({ message: "Failed to add player" });
+    }
+  });
+
+  // Join tournament as guest (no auth required)
+  app.post("/api/tournaments/:id/join-guest", async (req, res) => {
+    try {
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.status === "cancelled" || tournament.status === "complete") {
+        return res.status(400).json({ message: "Tournament is no longer accepting players" });
+      }
+
+      const name = typeof req.body.name === "string" ? sanitizePlayerName(req.body.name) : "";
+      if (!name || name.length < 1) {
+        return res.status(400).json({ message: "Player name is required" });
+      }
+      if (name.length > 50) {
+        return res.status(400).json({ message: "Player name must be 50 characters or less" });
+      }
+
+      // Check max players
+      if (tournament.maxPlayers) {
+        const players = await storage.getTournamentPlayers(req.params.id);
+        if (players.length >= tournament.maxPlayers) {
+          return res.status(400).json({ message: "Tournament is full" });
+        }
+      }
+
+      const tp = await storage.joinTournament(req.params.id, null, name, true);
+      const players = await storage.getTournamentPlayers(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { ...tournament, players },
+      });
+
+      res.json(tp);
+    } catch (error) {
+      console.error("Guest join error:", error);
+      res.status(500).json({ message: "Failed to join tournament" });
+    }
+  });
+
   // Join via invite code — redirect handler
   app.get("/join/:inviteCode", async (req, res) => {
     try {
@@ -888,7 +1036,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // If not logged in, redirect to auth with return URL
       if (!req.isAuthenticated?.() || !req.user) {
-        return res.redirect(`/auth?redirect=/join/${req.params.inviteCode}`);
+        // Redirect to tournament page with guest flag so they can join by name
+        return res.redirect(`/tournament/${tournament.id}?join=1`);
       }
 
       const user = req.user as any;
@@ -1003,7 +1152,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               broadcastToGame(currentGameId, { type: "game_updated", game: fixStrokes(updatedGame) });
 
               // If this game is part of a tournament, broadcast score update
+              // and auto-update player status when game completes
               if (updatedGame.tournamentId) {
+                if (isGameComplete) {
+                  // Mark all players in this game as "finished"
+                  const gamePlayers = updatedGame.players as string[];
+                  for (const playerName of gamePlayers) {
+                    await storage.updateTournamentPlayerStatusByName(updatedGame.tournamentId, playerName, "finished");
+                  }
+                }
                 broadcastTournamentScoreUpdate(updatedGame.tournamentId, updatedGame);
               }
             }

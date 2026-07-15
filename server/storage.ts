@@ -54,7 +54,8 @@ export interface IStorage {
   getTournamentByInviteCode(code: string): Promise<Tournament | undefined>;
   updateTournament(id: string, updates: Partial<Tournament>): Promise<Tournament | undefined>;
   deleteTournament(id: string): Promise<boolean>;
-  joinTournament(tournamentId: string, userId: number, playerName: string): Promise<TournamentPlayer>;
+  joinTournament(tournamentId: string, userId: number | null, playerName: string, isGuest?: boolean): Promise<TournamentPlayer>;
+  addTournamentPlayer(tournamentId: string, playerName: string, userId?: number | null): Promise<TournamentPlayer>;
   leaveTournament(tournamentId: string, userId: number): Promise<boolean>;
   getTournamentPlayers(tournamentId: string): Promise<(TournamentPlayer & { avatarUrl: string | null })[]>;
   getTournamentGames(tournamentId: string): Promise<Game[]>;
@@ -63,6 +64,7 @@ export interface IStorage {
   getTournamentsByUser(userId: number): Promise<(Tournament & { playerCount: number })[]>;
   getTournamentsByCreator(userId: number): Promise<Tournament[]>;
   updateTournamentPlayerStatus(tournamentId: string, userId: number, status: string): Promise<void>;
+  updateTournamentPlayerStatusByName(tournamentId: string, playerName: string, status: string): Promise<void>;
 
   // Session store
   sessionStore: session.Store;
@@ -382,17 +384,41 @@ export class DatabaseStorage implements IStorage {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async joinTournament(tournamentId: string, userId: number, playerName: string): Promise<TournamentPlayer> {
-    // Check if already joined
-    const [existing] = await db
+  async joinTournament(tournamentId: string, userId: number | null, playerName: string, isGuest = false): Promise<TournamentPlayer> {
+    // Check if already joined (by userId for logged-in users, by name for guests)
+    if (userId !== null) {
+      const [existing] = await db
+        .select()
+        .from(tournamentPlayers)
+        .where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
+      if (existing) return existing;
+    }
+    // Check by name too (prevents duplicate names)
+    const [existingByName] = await db
       .select()
       .from(tournamentPlayers)
-      .where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
-    if (existing) return existing;
+      .where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.playerName, playerName)));
+    if (existingByName) return existingByName;
 
     const [tp] = await db
       .insert(tournamentPlayers)
-      .values({ tournamentId, userId, playerName, status: "registered" })
+      .values({ tournamentId, userId, playerName, isGuest, status: "registered" })
+      .returning();
+    return tp;
+  }
+
+  async addTournamentPlayer(tournamentId: string, playerName: string, userId: number | null = null): Promise<TournamentPlayer> {
+    // Check if player name already exists in this tournament
+    const [existing] = await db
+      .select()
+      .from(tournamentPlayers)
+      .where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.playerName, playerName)));
+    if (existing) return existing;
+
+    const isGuest = userId === null;
+    const [tp] = await db
+      .insert(tournamentPlayers)
+      .values({ tournamentId, userId, playerName, isGuest, status: "registered" })
       .returning();
     return tp;
   }
@@ -411,6 +437,7 @@ export class DatabaseStorage implements IStorage {
         tournamentId: tournamentPlayers.tournamentId,
         userId: tournamentPlayers.userId,
         playerName: tournamentPlayers.playerName,
+        isGuest: tournamentPlayers.isGuest,
         status: tournamentPlayers.status,
         createdAt: tournamentPlayers.createdAt,
         avatarUrl: users.avatarUrl,
@@ -491,8 +518,9 @@ export class DatabaseStorage implements IStorage {
             break;
           }
         }
-        if (matchedUserId === null) continue;
-
+        // Include players even if userId is null (guests), but only if registered
+        const tPlayer = tPlayers.find(tp => tp.playerName === playerName);
+        if (!tPlayer) continue;
         const totalStrokes = totalScores[playerName] ?? 0;
         const handicap = handicaps[playerName] ?? 0;
         const netStrokes = totalStrokes - Math.round(handicap);
@@ -501,6 +529,7 @@ export class DatabaseStorage implements IStorage {
           position: 0,
           playerName,
           userId: matchedUserId,
+          avatarUrl: tPlayer.avatarUrl ?? null,
           totalStrokes,
           netStrokes,
           handicap,
@@ -525,7 +554,7 @@ export class DatabaseStorage implements IStorage {
     // Gather all registered players' hole-by-hole data
     const allPlayers: Array<{
       playerName: string;
-      userId: number;
+      userId: number | null;
       gameId: string;
       handicap: number;
       holeScores: number[];
@@ -797,6 +826,13 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
   }
 
+  async updateTournamentPlayerStatusByName(tournamentId: string, playerName: string, status: string): Promise<void> {
+    await db
+      .update(tournamentPlayers)
+      .set({ status })
+      .where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.playerName, playerName)));
+  }
+
   // Account deletion ────────────────────────────────────────────────────────
 
   async deleteUser(id: number): Promise<boolean> {
@@ -970,19 +1006,27 @@ export class MemStorage implements IStorage {
     return updated;
   }
   async deleteTournament(id: string): Promise<boolean> { return this.tournamentMap.delete(id); }
-  async joinTournament(tournamentId: string, userId: number, playerName: string): Promise<TournamentPlayer> {
+  async joinTournament(tournamentId: string, userId: number | null, playerName: string, isGuest = false): Promise<TournamentPlayer> {
     const existing = [...this.tournamentPlayerMap.values()].find(
-      tp => tp.tournamentId === tournamentId && tp.userId === userId
+      tp => tp.tournamentId === tournamentId && (userId !== null && tp.userId === userId)
     );
     if (existing) return existing;
+    const existingByName = [...this.tournamentPlayerMap.values()].find(
+      tp => tp.tournamentId === tournamentId && tp.playerName === playerName
+    );
+    if (existingByName) return existingByName;
     const tp: TournamentPlayer = {
       id: this.nextTournamentPlayerId++,
       tournamentId, userId, playerName,
+      isGuest,
       status: "registered",
       createdAt: new Date(),
     };
     this.tournamentPlayerMap.set(tp.id, tp);
     return tp;
+  }
+  async addTournamentPlayer(tournamentId: string, playerName: string, userId: number | null = null): Promise<TournamentPlayer> {
+    return this.joinTournament(tournamentId, userId, playerName, userId === null);
   }
   async leaveTournament(tournamentId: string, userId: number): Promise<boolean> {
     for (const [key, tp] of this.tournamentPlayerMap.entries()) {
@@ -1008,6 +1052,7 @@ export class MemStorage implements IStorage {
   async getTournamentsByUser(userId: number): Promise<(Tournament & { playerCount: number })[]> { return []; }
   async getTournamentsByCreator(userId: number): Promise<Tournament[]> { return []; }
   async updateTournamentPlayerStatus(tournamentId: string, userId: number, status: string): Promise<void> {}
+  async updateTournamentPlayerStatusByName(tournamentId: string, playerName: string, status: string): Promise<void> {}
 
   async deleteUser(id: number): Promise<boolean> {
     this.userMap.delete(id);

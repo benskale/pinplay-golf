@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["UP49GYJACS.com.silverspringsventures.pinplay"],
+        "components": [
+          {
+            "/": "/join/*",
+            "comment": "Tournament invite deep links"
+          },
+          {
+            "/": "/tournament/*",
+            "comment": "Tournament pages"
+          }
+        ]
+      }
+    ]
+  }
+}

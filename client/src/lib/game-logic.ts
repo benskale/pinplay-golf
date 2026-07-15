@@ -31,22 +31,22 @@ export interface MiniGameDef {
 
 export const MINI_GAME_DEFINITIONS: Record<string, MiniGameDef> = {
   sandies: {
-    id: "sandies", name: "Sandies", playerCounts: [2, 3, 4], gameTypes: null,
+    id: "sandies", name: "Sandies", playerCounts: [2, 3, 4, 5], gameTypes: null,
     description: "Make par or better after hitting into a bunker. Earn the amount for each sandy.",
     defaultValue: 1, valueLabel: "each", inputType: "achievement",
   },
   polies: {
-    id: "polies", name: "Polies", playerCounts: [2, 3, 4], gameTypes: null,
+    id: "polies", name: "Polies", playerCounts: [2, 3, 4, 5], gameTypes: null,
     description: "Sink a putt from farther than the length of the flagstick.",
     defaultValue: 1, valueLabel: "each", inputType: "achievement",
   },
   chippies: {
-    id: "chippies", name: "Chippies", playerCounts: [2, 3, 4], gameTypes: null,
+    id: "chippies", name: "Chippies", playerCounts: [2, 3, 4, 5], gameTypes: null,
     description: "Chip in from off the green. Any holed shot that wasn't a putt.",
     defaultValue: 1, valueLabel: "each", inputType: "achievement",
   },
   birdie_pool: {
-    id: "birdie_pool", name: "Birdie Pool", playerCounts: [2, 3, 4], gameTypes: null,
+    id: "birdie_pool", name: "Birdie Pool", playerCounts: [2, 3, 4, 5], gameTypes: null,
     description: "Everyone buys in. Most birdies (and eagles) at the end takes the pot.",
     defaultValue: 5, valueLabel: "buy-in", inputType: "auto",
   },
@@ -56,12 +56,12 @@ export const MINI_GAME_DEFINITIONS: Record<string, MiniGameDef> = {
     defaultValue: 1, valueLabel: "per point", inputType: "auto",
   },
   snake: {
-    id: "snake", name: "Snake", playerCounts: [2, 3, 4], gameTypes: null,
+    id: "snake", name: "Snake", playerCounts: [2, 3, 4, 5], gameTypes: null,
     description: "Last player to 3-putt holds the snake. Whoever holds it at the end owes every other player the set amount.",
     defaultValue: 1, valueLabel: "per player", inputType: "achievement",
   },
   rabbit: {
-    id: "rabbit", name: "Rabbit", playerCounts: [2, 3, 4], gameTypes: null,
+    id: "rabbit", name: "Rabbit", playerCounts: [2, 3, 4, 5], gameTypes: null,
     description: "Win a hole outright to catch the rabbit. Hold it after 9 or 18 to earn the amount.",
     defaultValue: 5, valueLabel: "per 9", inputType: "auto",
   },
@@ -71,18 +71,18 @@ export const MINI_GAME_DEFINITIONS: Record<string, MiniGameDef> = {
     defaultValue: 5, valueLabel: "base bet", inputType: "winner",
   },
   trash: {
-    id: "trash", name: "Trash / Junk", playerCounts: [2, 3, 4], gameTypes: null,
+    id: "trash", name: "Trash / Junk", playerCounts: [2, 3, 4, 5], gameTypes: null,
     description: "Birdies, sandies, chippies, and greenies (par 3s) each pay the set amount.",
     defaultValue: 1, valueLabel: "each", inputType: "achievement",
   },
   longest_drive: {
-    id: "longest_drive", name: "Longest Drive", playerCounts: [2, 3, 4], gameTypes: null,
+    id: "longest_drive", name: "Longest Drive", playerCounts: [2, 3, 4, 5], gameTypes: null,
     description: "Longest drive in the fairway on par 5s. Must be in the short grass to count.",
     defaultValue: 0, valueLabel: "bragging rights", inputType: "winner",
     holeFilter: "par5",
   },
   closest_to_pin: {
-    id: "closest_to_pin", name: "Closest to the Pin", playerCounts: [2, 3, 4], gameTypes: null,
+    id: "closest_to_pin", name: "Closest to the Pin", playerCounts: [2, 3, 4, 5], gameTypes: null,
     description: "Closest to the hole on par 3s. Must be on the green to count.",
     defaultValue: 0, valueLabel: "bragging rights", inputType: "winner",
     holeFilter: "par3",
@@ -106,7 +106,7 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
     isTeamGame: false, needsHandicap: true, carryover: false,
   },
   stroke_play: {
-    id: "stroke_play", name: "Stroke Play", playerCounts: [2, 3, 4],
+    id: "stroke_play", name: "Stroke Play", playerCounts: [2, 3, 4, 5],
     description: "Total strokes for the round. Lowest score wins.",
     detailedDescription: "The classic format: count every stroke for the entire round. Lowest total gross score wins. No handicaps applied in this format - it's pure golf. Simple and straightforward.",
     isTeamGame: false, needsHandicap: false, carryover: false,
@@ -118,7 +118,7 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
     isTeamGame: false, needsHandicap: true, carryover: false,
   },
   skins: {
-    id: "skins", name: "Skins", playerCounts: [2, 3, 4],
+    id: "skins", name: "Skins", playerCounts: [2, 3, 4, 5],
     description: "Lowest score wins the hole outright. Ties carry the skin to the next hole.",
     detailedDescription: "Every hole is worth a 'skin' (1 point). To win a skin, you must have the lowest score outright - ties don't count. If two or more players tie for the low score, the skin carries over to the next hole, making it worth 2 skins. Carries can accumulate across multiple holes, creating big payouts. The pressure builds with each carryover hole.",
     isTeamGame: false, needsHandicap: false, carryover: true,
@@ -223,7 +223,7 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
     specialInputs: ["hammer"],
   },
   stableford: {
-    id: "stableford", name: "Quota / Stableford", playerCounts: [4],
+    id: "stableford", name: "Quota / Stableford", playerCounts: [2, 3, 4, 5],
     description: "Points per hole: Eagle=5, Birdie=4, Par=3, Bogey=2, Dbl Bogey=1, Worse=0. Quota = 36 minus handicap.",
     detailedDescription: "Point-based scoring where higher is better. Each hole earns points based on your net score relative to par: Eagle (2-under) = 5pts, Birdie (1-under) = 4pts, Par = 3pts, Bogey (1-over) = 2pts, Double Bogey (2-over) = 1pt, Worse = 0. Your quota target = 36 minus your handicap. Beat your quota and you're in the money.",
     isTeamGame: false, needsHandicap: true, carryover: false,

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, Trophy, Users, Share2, Copy, Play, XCircle,
   Loader2, Calendar, MapPin, Gamepad2, ExternalLink,
-  Crown, CheckCircle, Clock
+  Crown, CheckCircle, Clock, UserPlus, Flag
 } from "lucide-react";
 import type { Tournament, TournamentPlayer, Game, LeaderboardEntry, WSMessage } from "@shared/schema";
 import TournamentLeaderboard from "@/components/tournament-leaderboard";
@@ -35,6 +35,9 @@ export default function TournamentPage() {
   const [activeTab, setActiveTab] = useState("players");
   const [copiedLink, setCopiedLink] = useState(false);
   const [wsLeaderboard, setWsLeaderboard] = useState<LeaderboardEntry[] | undefined>(undefined);
+  const [guestName, setGuestName] = useState("");
+  const [newPlayerName, setNewPlayerName] = useState("");
+  const [showAddPlayer, setShowAddPlayer] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attemptRef = useRef(0);
@@ -171,6 +174,47 @@ export default function TournamentPage() {
       toast({ title: "Tournament cancelled" });
     },
     onError: (err: Error) => toast({ title: "Failed to cancel", description: err.message, variant: "destructive" }),
+  });
+
+  // Complete tournament mutation (creator only)
+  const completeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/tournaments/${tournamentId}/complete`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
+      toast({ title: "Tournament complete!", description: "Final results are locked in." });
+    },
+    onError: (err: Error) => toast({ title: "Failed to complete", description: err.message, variant: "destructive" }),
+  });
+
+  // Guest join mutation (no auth)
+  const guestJoinMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", `/api/tournaments/${tournamentId}/join-guest`, { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
+      toast({ title: "Joined tournament!", description: "You joined as a guest." });
+    },
+    onError: (err: Error) => toast({ title: "Failed to join", description: err.message, variant: "destructive" }),
+  });
+
+  // Add player mutation (creator only)
+  const addPlayerMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", `/api/tournaments/${tournamentId}/players`, { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
+      toast({ title: "Player added!" });
+      setNewPlayerName("");
+      setShowAddPlayer(false);
+    },
+    onError: (err: Error) => toast({ title: "Failed to add player", description: err.message, variant: "destructive" }),
   });
 
   // Copy invite link
@@ -386,6 +430,24 @@ export default function TournamentPage() {
             </Button>
           )}
 
+          {/* Complete Tournament (creator, when in progress) */}
+          {tournament.isCreator && isInProgress && (
+            <Button
+              onClick={() => {
+                if (confirm("Mark this tournament as complete? Final results will be locked.")) {
+                  completeMutation.mutate();
+                }
+              }}
+              className="w-full py-2 rounded-xl text-sm bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {completeMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Completing...</>
+              ) : (
+                <><Flag className="mr-2 h-4 w-4" />Complete Tournament</>
+              )}
+            </Button>
+          )}
+
           {/* Player actions */}
           {!tournament.isRegistered && !isCancelled && !isComplete && user && (
             <Button
@@ -428,15 +490,93 @@ export default function TournamentPage() {
             </Button>
           )}
 
-          {/* Login prompt */}
-          {!user && !isCancelled && (
-            <Button
-              onClick={() => setLocation(`/auth?redirect=/tournament/${tournamentId}`)}
-              className="w-full py-3 rounded-xl font-semibold text-sm"
-              style={{ background: "#C9A84C", color: "#000" }}
-            >
-              Sign In to Join
-            </Button>
+          {/* Add Player (creator, when open or in progress) */}
+          {tournament.isCreator && !isCancelled && !isComplete && (
+            <div>
+              {showAddPlayer ? (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Player name"
+                    value={newPlayerName}
+                    onChange={(e) => setNewPlayerName(e.target.value)}
+                    maxLength={50}
+                    className="text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newPlayerName.trim()) {
+                        addPlayerMutation.mutate(newPlayerName.trim());
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={() => addPlayerMutation.mutate(newPlayerName.trim())}
+                    disabled={!newPlayerName.trim() || addPlayerMutation.isPending}
+                    size="sm"
+                    className="bg-gold-500 hover:bg-gold-600 text-black font-semibold"
+                    style={{ background: "#C9A84C", color: "#000" }}
+                  >
+                    {addPlayerMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add"}
+                  </Button>
+                  <Button
+                    onClick={() => { setShowAddPlayer(false); setNewPlayerName(""); }}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  onClick={() => setShowAddPlayer(true)}
+                  variant="outline"
+                  className="w-full py-2 rounded-xl text-sm"
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />Add Player
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Guest join form (when not logged in) */}
+          {!user && !isCancelled && !isComplete && (
+            <div className="p-4 bg-card rounded-xl border border-border space-y-3">
+              <p className="text-sm text-muted-foreground text-center">
+                Join as a guest without creating an account
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter your name"
+                  value={guestName}
+                  onChange={(e) => setGuestName(e.target.value)}
+                  maxLength={50}
+                  className="text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && guestName.trim()) {
+                      guestJoinMutation.mutate(guestName.trim());
+                    }
+                  }}
+                />
+                <Button
+                  onClick={() => guestJoinMutation.mutate(guestName.trim())}
+                  disabled={!guestName.trim() || guestJoinMutation.isPending}
+                  className="font-semibold text-sm"
+                  style={{ background: "#C9A84C", color: "#000" }}
+                >
+                  {guestJoinMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Join"
+                  )}
+                </Button>
+              </div>
+              <div className="text-center">
+                <button
+                  onClick={() => setLocation(`/auth?redirect=/tournament/${tournamentId}`)}
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                >
+                  Or sign in for full features
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

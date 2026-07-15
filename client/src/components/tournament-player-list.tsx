@@ -9,6 +9,7 @@ interface TournamentPlayerListProps {
 const statusConfig: Record<string, { label: string; color: string; icon: typeof Play }> = {
   registered: { label: "Registered", color: "text-gray-500 dark:text-gray-400", icon: UserCircle },
   playing: { label: "Playing", color: "text-green-500 dark:text-green-400", icon: Play },
+  finished: { label: "Finished", color: "text-blue-500 dark:text-blue-400", icon: CheckCircle },
   complete: { label: "Finished", color: "text-blue-500 dark:text-blue-400", icon: CheckCircle },
   dnf: { label: "DNF", color: "text-red-500 dark:text-red-400", icon: UserCircle },
 };
@@ -64,6 +65,11 @@ export default function TournamentPlayerList({ players, currentUserId }: Tournam
                 {isCurrentUser && (
                   <span className="text-[0.625rem] px-1.5 py-0.5 rounded-full bg-green-200/60 dark:bg-green-800/40 text-green-700 dark:text-green-300 font-semibold uppercase tracking-wide">
                     You
+                  </span>
+                )}
+                {player.isGuest && (
+                  <span className="text-[0.625rem] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold uppercase tracking-wide">
+                    Guest
                   </span>
                 )}
               </div>
