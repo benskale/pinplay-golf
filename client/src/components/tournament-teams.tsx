@@ -133,6 +133,51 @@ export function TournamentTeams({
     setLoading(false);
   };
 
+  const [assignTeamId, setAssignTeamId] = useState<number | null>(null);
+
+  const handleAssignPlayer = async (teamId: number, playerName: string) => {
+    setLoading(true);
+    setAssignTeamId(null);
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/teams/${teamId}/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerName }),
+      });
+      if (res.ok) {
+        toast({ title: `${playerName} assigned` });
+        await loadTeams();
+        onTeamsChange?.();
+      } else {
+        const data = await res.json();
+        toast({ title: data.message || "Failed to assign", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to assign player", variant: "destructive" });
+    }
+    setLoading(false);
+  };
+
+  const handleRemovePlayer = async (playerName: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/teams/0/players/${encodeURIComponent(playerName)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        toast({ title: `${playerName} removed from team` });
+        await loadTeams();
+        onTeamsChange?.();
+      } else {
+        const data = await res.json();
+        toast({ title: data.message || "Failed to remove", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to remove player", variant: "destructive" });
+    }
+    setLoading(false);
+  };
+
   const handleDeleteTeam = async (teamId: number) => {
     setLoading(true);
     try {
@@ -271,13 +316,25 @@ export function TournamentTeams({
                     members.map(name => (
                       <span
                         key={name}
-                        className="text-xs px-2 py-0.5 rounded-full font-medium"
+                        className="text-xs px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1"
                         style={{
                           backgroundColor: `${team.teamColor}20`,
                           color: team.teamColor,
                         }}
                       >
                         {name}
+                        {isCreator && (
+                          <button
+                            onClick={() => handleRemovePlayer(name)}
+                            disabled={loading}
+                            className="ml-0.5 opacity-60 hover:opacity-100 disabled:opacity-30"
+                            title={`Remove ${name}`}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                              <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                          </button>
+                        )}
                       </span>
                     ))
                   ) : (
@@ -285,25 +342,56 @@ export function TournamentTeams({
                   )}
                 </div>
 
+                {/* Creator: Add player dropdown */}
+                {isCreator && !isFull && unassignedPlayers.length > 0 && (
+                  <div className="relative mb-2">
+                    <button
+                      onClick={() => setAssignTeamId(assignTeamId === team.id ? null : team.id)}
+                      disabled={loading}
+                      className="text-xs px-3 py-1 border border-dashed border-[#D4D4D8] text-[#71717A] rounded-lg hover:border-[#18181B] hover:text-[#18181B] disabled:opacity-50 transition-colors font-medium w-full"
+                    >
+                      + Add Player
+                    </button>
+                    {assignTeamId === team.id && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-[#E4E4E7] rounded-lg shadow-lg overflow-hidden">
+                        {unassignedPlayers.map(p => (
+                          <button
+                            key={p.id}
+                            onClick={() => handleAssignPlayer(team.id, p.playerName)}
+                            disabled={loading}
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-[#F4F4F5] transition-colors font-medium text-[#18181B]"
+                          >
+                            {p.playerName}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex gap-2">
-                  {isMyTeam ? (
-                    <button
-                      onClick={() => handleLeaveTeam(team.id)}
-                      disabled={loading}
-                      className="text-xs px-3 py-1 bg-[#F4F4F5] text-[#71717A] rounded-lg hover:bg-[#E4E4E7] disabled:opacity-50 transition-colors font-medium"
-                    >
-                      Leave Team
-                    </button>
-                  ) : !isFull ? (
-                    <button
-                      onClick={() => handleJoinTeam(team.id)}
-                      disabled={loading}
-                      className="text-xs px-3 py-1 bg-[#18181B] text-white rounded-lg hover:bg-[#27272A] disabled:opacity-50 transition-colors font-medium"
-                    >
-                      Join Team
-                    </button>
-                  ) : null}
+                  {!isCreator && (
+                    <>
+                      {isMyTeam ? (
+                        <button
+                          onClick={() => handleLeaveTeam(team.id)}
+                          disabled={loading}
+                          className="text-xs px-3 py-1 bg-[#F4F4F5] text-[#71717A] rounded-lg hover:bg-[#E4E4E7] disabled:opacity-50 transition-colors font-medium"
+                        >
+                          Leave Team
+                        </button>
+                      ) : !isFull ? (
+                        <button
+                          onClick={() => handleJoinTeam(team.id)}
+                          disabled={loading}
+                          className="text-xs px-3 py-1 bg-[#18181B] text-white rounded-lg hover:bg-[#27272A] disabled:opacity-50 transition-colors font-medium"
+                        >
+                          Join Team
+                        </button>
+                      ) : null}
+                    </>
+                  )}
                   {isCreator && (
                     <button
                       onClick={() => handleDeleteTeam(team.id)}
@@ -323,7 +411,9 @@ export function TournamentTeams({
       {/* Unassigned players */}
       {unassignedPlayers.length > 0 && (
         <div className="pt-2">
-          <p className="text-xs text-[#A1A1AA] mb-1.5">Not on a team:</p>
+          <p className="text-xs text-[#A1A1AA] mb-1.5">
+            {isCreator ? "Tap Add Player on a team to assign:" : "Not on a team:"}
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {unassignedPlayers.map(p => (
               <span

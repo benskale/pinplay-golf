@@ -74,10 +74,14 @@ export default function Home() {
           <div className="absolute top-4 right-2">
             <button
               onClick={() => setLocation(user ? "/profile" : "/auth")}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
-              style={{ background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.9)" }}
+              className="flex items-center gap-2 rounded-full font-medium transition-all duration-200 active:scale-95"
+              style={
+                user
+                  ? { background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.9)", padding: "6px 12px", fontSize: "0.75rem" }
+                  : { background: "rgba(61,214,140,0.9)", color: "#070f0a", padding: "8px 16px", fontSize: "0.8125rem", fontWeight: 600 }
+              }
             >
-              <User className="w-3.5 h-3.5" />
+              <User className={user ? "w-3.5 h-3.5" : "w-4 h-4"} />
               {user ? user.name.split(" ")[0] : "Sign In"}
             </button>
           </div>
@@ -231,6 +235,35 @@ export default function Home() {
         )}
 
         <GameSetup onGameCreated={(id) => setLocation(`/game/${id}`)} />
+
+        {/* Guest sign-up CTA */}
+        {!user && (
+          <div className="mt-5 mb-2">
+            <button
+              onClick={() => setLocation("/auth")}
+              className="w-full p-4 rounded-2xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg"
+              style={{
+                background: "linear-gradient(135deg, #1a3a2a 0%, #0d1f15 100%)",
+                border: "1px solid rgba(61,214,140,0.3)",
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-white">
+                    Create a Free Account
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: "rgba(134,196,159,0.8)" }}>
+                    Save your rounds and join group play
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg flex-shrink-0" style={{ background: "rgba(61,214,140,0.9)" }}>
+                  <span className="text-xs font-bold text-[#070f0a]">Sign Up</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-[#070f0a] group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* App Store badge — only on web, not in native app */}
         {!isNative() && (
