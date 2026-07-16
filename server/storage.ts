@@ -99,6 +99,7 @@ export interface IStorage {
 
   // Side Bets (Phase 5.3)
   getSideBets(tournamentId: string): Promise<SideBet[]>;
+  getGameSideBets(gameId: string): Promise<SideBet[]>;
   createSideBet(insertBet: InsertSideBet): Promise<SideBet>;
   updateSideBetStatus(id: number, status: string, result?: { winnerId?: number; winnerName?: string }): Promise<SideBet | undefined>;
   deleteSideBet(id: number): Promise<void>;
@@ -1311,6 +1312,12 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(sideBets.createdAt));
   }
 
+  async getGameSideBets(gameId: string): Promise<SideBet[]> {
+    return db.select().from(sideBets)
+      .where(eq(sideBets.gameId, gameId))
+      .orderBy(desc(sideBets.createdAt));
+  }
+
   async createSideBet(insertBet: InsertSideBet): Promise<SideBet> {
     const [bet] = await db.insert(sideBets).values({
       ...insertBet,
@@ -1699,6 +1706,7 @@ export class MemStorage implements IStorage {
   async deleteTournamentMatch(_id: number): Promise<void> {}
   async getRyderCupScore(_tournamentId: string): Promise<{ team1Points: number; team2Points: number; matches: TournamentMatch[] }> { return { team1Points: 0, team2Points: 0, matches: [] }; }
   async getSideBets(_tournamentId: string): Promise<SideBet[]> { return []; }
+  async getGameSideBets(_gameId: string): Promise<SideBet[]> { return []; }
   async createSideBet(_insertBet: InsertSideBet): Promise<SideBet> { throw new Error("Not implemented in MemStorage"); }
   async updateSideBetStatus(_id: number, _status: string, _result?: { winnerId?: number; winnerName?: string }): Promise<SideBet | undefined> { return undefined; }
   async deleteSideBet(_id: number): Promise<void> {}

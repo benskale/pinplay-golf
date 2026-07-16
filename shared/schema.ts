@@ -259,11 +259,12 @@ export type TournamentMatch = typeof tournamentMatches.$inferSelect;
 
 export const sideBets = pgTable("side_bets", {
   id: serial("id").primaryKey(),
-  tournamentId: varchar("tournament_id").notNull().references(() => tournaments.id),
+  tournamentId: varchar("tournament_id"), // nullable for game-only side bets
   gameId: varchar("game_id"), // linked game for hole/round-scoped bets
-  proposerId: integer("proposer_id"), // references tournament_players.id
+  proposerId: integer("proposer_id"), // references tournament_players.id (null for regular games)
   proposerName: text("proposer_name").notNull(),
   targetIds: jsonb("target_ids").$type<number[]>().notNull().default([]), // tournament_players.id array
+  targetNames: jsonb("target_names").$type<string[]>().notNull().default([]), // player names for regular game side bets
   amount: real("amount").notNull().default(0),
   betType: text("bet_type").notNull().default("custom"), // closest_to_pin, longest_drive, most_birdies, low_net, low_gross, custom
   scope: text("scope").notNull().default("round"), // hole, round, tournament

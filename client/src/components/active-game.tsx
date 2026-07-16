@@ -6,6 +6,7 @@ import { ShareModal } from "@/components/share-modal";
 import Scorecard from "@/components/scorecard";
 import EditHoleModal from "@/components/edit-hole-modal";
 import LiveSettlement from "@/components/live-settlement";
+import GameSideBets from "@/components/game-side-bets";
 import {
   Share2, Crown, Minus, Plus, TableProperties, ClipboardList,
   Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target, MoreVertical, Trash2, Flag, Sparkles, Flame
@@ -1245,6 +1246,13 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                   return <LiveSettlement game={game} />;
                 }
                 return null;
+              })()}
+
+              {/* ── SIDE BETS (1-on-1 wagers between players) ── */}
+              {(() => {
+                const currentUser = myPlayer || game.players[0];
+                if (!currentUser) return null;
+                return <GameSideBets gameId={game.id} players={game.players} currentUser={currentUser} />;
               })()}
 
 

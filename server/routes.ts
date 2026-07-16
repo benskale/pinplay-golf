@@ -1514,6 +1514,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Game Side Bets (regular, non-tournament games) ──────────────────────────
+
+  app.get("/api/games/:gameId/side-bets", async (req, res) => {
+    try {
+      const bets = await storage.getGameSideBets(req.params.gameId);
+      res.json(bets);
+    } catch (error) {
+      console.error("Get game side bets error:", error);
+      res.status(500).json({ message: "Failed to fetch game side bets" });
+    }
+  });
+
+  app.post("/api/games/:gameId/side-bets", async (req, res) => {
+    try {
+      const bet = await storage.createSideBet({
+        tournamentId: null,
+        gameId: req.params.gameId,
+        proposerId: null,
+        proposerName: req.body.proposerName ?? "Anonymous",
+        targetIds: [],
+        targetNames: req.body.targetNames ?? [],
+        amount: req.body.amount ?? 0,
+        betType: req.body.betType ?? "custom",
+        scope: req.body.scope ?? "round",
+        holeNumber: req.body.holeNumber ?? null,
+        description: req.body.description ?? null,
+        status: "pending",
+        result: { winnerId: null, winnerName: null, settledAt: null },
+      });
+      broadcastToGame(req.params.gameId, { type: "side_bet_update", gameId: req.params.gameId, sideBetId: bet.id });
+      res.json(bet);
+    } catch (error) {
+      console.error("Create game side bet error:", error);
+      res.status(500).json({ message: "Failed to create side bet" });
+    }
+  });
+
+  app.patch("/api/games/:gameId/side-bets/:betId", async (req, res) => {
+    try {
+      const bet = await storage.updateSideBetStatus(
+        parseInt(req.params.betId),
+        req.body.status,
+        req.body.result ?? undefined,
+      );
+      if (!bet) return res.status(404).json({ message: "Side bet not found" });
+      broadcastToGame(req.params.gameId, { type: "side_bet_update", gameId: req.params.gameId, sideBetId: bet.id });
+      res.json(bet);
+    } catch (error) {
+      console.error("Update game side bet error:", error);
+      res.status(500).json({ message: "Failed to update side bet" });
+    }
+  });
+
+  app.delete("/api/games/:gameId/side-bets/:betId", async (req, res) => {
+    try {
+      await storage.deleteSideBet(parseInt(req.params.betId));
+      broadcastToGame(req.params.gameId, { type: "side_bet_update", gameId: req.params.gameId, sideBetId: parseInt(req.params.betId) });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete game side bet error:", error);
+      res.status(500).json({ message: "Failed to delete side bet" });
+    }
+  });
+
   // ── Phase 5: Multi-Day Leaderboard ──────────────────────────────────────────
 
   app.get("/api/tournaments/:id/multi-day-leaderboard", async (req, res) => {

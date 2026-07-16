@@ -45,6 +45,7 @@ const PLAYER_COUNT_OPTIONS = [
   { count: 2, label: "2 Players", desc: "Match Play, Skins, Nassau & more" },
   { count: 3, label: "3 Players", desc: "Wolf, Sixes, Bingo Bango Bongo" },
   { count: 4, label: "4 Players", desc: "Wolf, Scramble, Vegas & more" },
+  { count: 5, label: "5 Players", desc: "Stroke Play, Skins, Scramble & more" },
 ];
 
 export default function GameSetup({ onGameCreated }: GameSetupProps) {
@@ -315,6 +316,12 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
 
   const handleSelectCount = (count: number) => {
     setPlayerCount(count);
+    // Ensure players array has enough slots
+    setPlayers(prev => {
+      const next = [...prev];
+      while (next.length < count) next.push("");
+      return next;
+    });
     setSelectedGame(null);
     setSelfRemoved(false);
     setStep("game");

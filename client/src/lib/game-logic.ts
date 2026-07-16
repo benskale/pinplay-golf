@@ -174,30 +174,30 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   },
   // ── 4-player ──────────────────────────────────────────────────────
   best_ball_4: {
-    id: "best_ball_4", name: "Best Ball (2v2)", playerCounts: [4],
-    description: "Two teams of two. Best score from each team counts per hole. Match play format.",
+    id: "best_ball_4", name: "Best Ball (2v2)", playerCounts: [4, 5],
+    description: "Two teams. Best score from each team counts per hole. Match play format.",
     detailedDescription: "Two teams of two players. Everyone plays their own ball the entire hole. The best (lowest) net score from each team counts. Those two scores are compared match-play style - lower net score wins the hole for that team. Handicap strokes apply based on each player's handicap.",
     isTeamGame: true, needsHandicap: true, carryover: false,
   },
   scramble: {
-    id: "scramble", name: "Scramble", playerCounts: [4],
-    description: "All hit, choose best shot, everyone plays from there. Two teams, enter one score each.",
-    detailedDescription: "The classic scramble format! Two teams of two. Everyone tees off, then the team picks the best shot and both players play their next shot from that spot. Repeat until the ball is holed. Enter one team score per hole. Strategy: mix safe and aggressive shots so you always have a good option.",
+    id: "scramble", name: "Scramble", playerCounts: [4, 5],
+    description: "Best shot from each team counts. Two teams, enter one score each.",
+    detailedDescription: "The classic scramble format! Two teams compete - everyone tees off, then the team picks the best shot and all team members play their next shot from that spot. Repeat until the ball is holed. Enter one team score per hole. For 5 players, teams are 2v3. Strategy: mix safe and aggressive shots so you always have a good option.",
     isTeamGame: true, needsHandicap: false, carryover: false,
   },
   alternate_shot_4: {
-    id: "alternate_shot_4", name: "Alternate Shot (Foursomes)", playerCounts: [4],
+    id: "alternate_shot_4", name: "Alternate Shot (Foursomes)", playerCounts: [4, 5],
     description: "Two teams of 2. Partners alternate hitting the same ball. Stroke play or match play.",
     isTeamGame: true, needsHandicap: false, carryover: false,
   },
   shamble: {
-    id: "shamble", name: "Shamble", playerCounts: [4],
+    id: "shamble", name: "Shamble", playerCounts: [4, 5],
     description: "Best tee shot chosen for all. Each player then plays their own ball. Best ball counts.",
     isTeamGame: true, needsHandicap: false, carryover: false,
   },
   nassau_4: {
-    id: "nassau_4", name: "Nassau (2v2)", playerCounts: [4],
-    description: "Two teams of 2 compete in three bets: front 9, back 9, and 18 total (match play).",
+    id: "nassau_4", name: "Nassau (2v2)", playerCounts: [4, 5],
+    description: "Two teams compete in three bets: front 9, back 9, and 18 total (match play).",
     isTeamGame: true, needsHandicap: true, carryover: false,
   },
   skins_4: {
@@ -217,7 +217,7 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
     isTeamGame: true, needsHandicap: false, carryover: false,
   },
   hammer: {
-    id: "hammer", name: "Hammer", playerCounts: [4],
+    id: "hammer", name: "Hammer", playerCounts: [2, 3, 4, 5],
     description: "Any player can double the bet ('Hammer'). Lower score wins the current bet value.",
     isTeamGame: false, needsHandicap: false, carryover: false,
     specialInputs: ["hammer"],
@@ -229,7 +229,7 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
     isTeamGame: false, needsHandicap: true, carryover: false,
   },
   dots_junk: {
-    id: "dots_junk", name: "Dots / Junk", playerCounts: [4],
+    id: "dots_junk", name: "Dots / Junk", playerCounts: [2, 3, 4, 5],
     description: "Base stroke play with bonus dots for birdies (+1), eagles (+2), sandies (+1), greenies (+1 on par 3s).",
     isTeamGame: false, needsHandicap: false, carryover: false,
     specialInputs: ["dots"],
@@ -700,7 +700,7 @@ export function calcHoleResult(
       let result = "";
       if (winners.length === 1) {
         const loser = players.filter(p => p !== winners[0]);
-        deltas[winners[0]] = betMultiplier * 3; // wins from all 3 others
+        deltas[winners[0]] = betMultiplier * loser.length; // wins from all others
         loser.forEach(p => { deltas[p] = -betMultiplier; });
         result = `${winners[0].split(" ")[0]} wins! ${betMultiplier > 1 ? `(×${betMultiplier} Hammer)` : ""}`;
       } else {
