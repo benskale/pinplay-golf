@@ -8,7 +8,7 @@ import type { Game } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import * as schema from "@shared/schema";
-import { parseGameConfig } from "./game-config-parser";
+import { parseGameConfig, parseGameConfigWithAnswers } from "./game-config-parser";
 
 const gameConnections = new Map<string, Set<WebSocket>>();
 const tournamentConnections = new Map<string, Set<WebSocket>>();
@@ -1322,9 +1322,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Game Config Parser (LLM) ────────────────────────────────────────────────
 
   // Parse a natural language game format description into a GameConfig
+  // Supports clarification mode: if the LLM needs more info, it returns
+  // questions instead of a config. The client collects answers and sends
+  // a second request with them.
   app.post("/api/game-config/parse", async (req, res) => {
     try {
-      const { description, playerCount } = req.body;
+      const { description, playerCount, answers } = req.body;
 
       if (!description || typeof description !== "string") {
         return res.status(400).json({ message: "description is required" });
@@ -1333,16 +1336,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "playerCount must be at least 2" });
       }
 
-      const result = await parseGameConfig(description.trim(), playerCount);
+      // If answers are provided, this is a follow-up call — always generates
+      let result;
+      if (answers && typeof answers === "object" && Object.keys(answers).length > 0) {
+        result = await parseGameConfigWithAnswers(
+          description.trim(),
+          playerCount,
+          answers as Record<string, string>,
+        );
+      } else {
+        result = await parseGameConfig(description.trim(), playerCount);
+      }
 
+      // Clarification mode — return questions for the user to answer
+      if (result.mode === "clarify" && result.questions.length > 0) {
+        return res.json({
+          mode: "clarify",
+          questions: result.questions,
+        });
+      }
+
+      // Generate mode — check for errors
       if (result.error || !result.config) {
         return res.status(422).json({
+          mode: "generate",
           message: result.error || "Failed to parse game config",
           raw: result.raw,
         });
       }
 
-      res.json({ config: result.config });
+      res.json({ mode: "generate", config: result.config });
     } catch (error: any) {
       console.error("Game config parse error:", error);
       res.status(500).json({ message: error?.message || "Failed to parse game config" });
