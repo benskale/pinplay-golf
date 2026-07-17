@@ -242,6 +242,10 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
 };
 
 export function getGamesForPlayerCount(count: number): GameDef[] {
+  // For 6+ players, show games that scale to any count (those supporting 5+)
+  if (count >= 6) {
+    return Object.values(GAME_DEFINITIONS).filter(g => g.playerCounts.includes(5));
+  }
   return Object.values(GAME_DEFINITIONS).filter(g => g.playerCounts.includes(count));
 }
 

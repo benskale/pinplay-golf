@@ -46,6 +46,7 @@ const PLAYER_COUNT_OPTIONS = [
   { count: 3, label: "3 Players", desc: "Wolf, Sixes, Bingo Bango Bongo" },
   { count: 4, label: "4 Players", desc: "Wolf, Scramble, Vegas & more" },
   { count: 5, label: "5 Players", desc: "Stroke Play, Skins, Scramble & more" },
+  { count: 6, label: "6+ Players", desc: "Large group or tournament" },
 ];
 
 export default function GameSetup({ onGameCreated }: GameSetupProps) {
@@ -66,6 +67,8 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
   const [hcpRanksSource, setHcpRanksSource] = useState<"default" | "course" | "manual">("default");
   const [showSISetup, setShowSISetup] = useState(false);
   const [loadingCourse, setLoadingCourse] = useState(false);
+  const [showGroupPrompt, setShowGroupPrompt] = useState(false);
+  const [customPlayerCount, setCustomPlayerCount] = useState(6);
   const [selectedMiniGames, setSelectedMiniGames] = useState<Record<string, { enabled: boolean; value: number }>>({});
   const [expandedGameInfo, setExpandedGameInfo] = useState<string | null>(null);
   const [gameSettings, setGameSettings] = useState<Record<string, any>>({});
@@ -315,11 +318,27 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
   });
 
   const handleSelectCount = (count: number) => {
+    if (count >= 6) {
+      setShowGroupPrompt(true);
+      return;
+    }
     setPlayerCount(count);
-    // Ensure players array has enough slots
     setPlayers(prev => {
       const next = [...prev];
       while (next.length < count) next.push("");
+      return next;
+    });
+    setSelectedGame(null);
+    setSelfRemoved(false);
+    setStep("game");
+  };
+
+  const handleConfirmLargeGroup = (confirmedCount: number) => {
+    setShowGroupPrompt(false);
+    setPlayerCount(confirmedCount);
+    setPlayers(prev => {
+      const next = [...prev];
+      while (next.length < confirmedCount) next.push("");
       return next;
     });
     setSelectedGame(null);
@@ -477,6 +496,55 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
                 <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Large group prompt modal */}
+        {showGroupPrompt && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-6" onClick={() => setShowGroupPrompt(false)}>
+            <div className="bg-card rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-xl" onClick={e => e.stopPropagation()}>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-gray-50">Large Group Detected</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  For groups of 6 or more, a tournament or group game provides better scoring, team management, and multiple bet pools.
+                </p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Number of Players</label>
+                <input
+                  type="number"
+                  min={6}
+                  max={20}
+                  value={customPlayerCount}
+                  onChange={e => setCustomPlayerCount(Math.max(6, Math.min(20, parseInt(e.target.value) || 6)))}
+                  className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-gray-50"
+                />
+              </div>
+              <div className="space-y-2">
+                <button
+                  className="w-full py-3 bg-primary-600 text-white rounded-xl font-semibold text-sm active:scale-[0.98]"
+                  onClick={() => handleConfirmLargeGroup(customPlayerCount)}
+                >
+                  Continue as Regular Round ({customPlayerCount} players)
+                </button>
+                <button
+                  className="w-full py-3 bg-secondary-500 text-white rounded-xl font-semibold text-sm active:scale-[0.98]"
+                  onClick={() => {
+                    setShowGroupPrompt(false);
+                    toast({ title: "Tournament mode coming soon", description: "Group tournaments are being built. Using regular round for now." });
+                    handleConfirmLargeGroup(customPlayerCount);
+                  }}
+                >
+                  Set Up Group Tournament
+                </button>
+                <button
+                  className="w-full py-2 text-muted-foreground text-sm font-medium"
+                  onClick={() => setShowGroupPrompt(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

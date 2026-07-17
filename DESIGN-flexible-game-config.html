@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PinPlay — Flexible Game Config Design</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Geist', -apple-system, sans-serif;
+    background: #F8F6F2;
+    color: #191A2E;
+    line-height: 1.65;
+    padding: 40px 20px;
+  }
+
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .header {
+    text-align: center;
+    padding: 40px 0 30px;
+    border-bottom: 2px solid #A0522D;
+    margin-bottom: 30px;
+  }
+
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+
+  .header .subtitle {
+    font-size: 14px;
+    color: #666;
+    font-family: 'Geist Mono', monospace;
+  }
+
+  .status-badge {
+    display: inline-block;
+    background: #A0522D;
+    color: #fff;
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+
+  h2 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-top: 40px;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #ddd;
+    letter-spacing: -0.3px;
+  }
+
+  h3 {
+    font-size: 17px;
+    font-weight: 600;
+    margin-top: 28px;
+    margin-bottom: 10px;
+    color: #A0522D;
+  }
+
+  h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 20px;
+    margin-bottom: 8px;
+  }
+
+  p {
+    margin-bottom: 12px;
+    font-size: 15px;
+  }
+
+  ul, ol {
+    margin-bottom: 14px;
+    padding-left: 24px;
+  }
+
+  li {
+    margin-bottom: 6px;
+    font-size: 15px;
+  }
+
+  code {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    background: rgba(160, 82, 45, 0.1);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: #A0522D;
+  }
+
+  pre {
+    background: #191A2E;
+    color: #e0e0e0;
+    padding: 18px 20px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin-bottom: 18px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+  }
+
+  .flow-diagram {
+    background: #fff;
+    border: 1px solid #e0ddd5;
+    border-left: 4px solid #A0522D;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 18px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  .callout {
+    background: rgba(160, 82, 45, 0.06);
+    border-left: 3px solid #A0522D;
+    padding: 14px 18px;
+    border-radius: 0 6px 6px 0;
+    margin-bottom: 18px;
+  }
+
+  .callout strong {
+    color: #A0522D;
+  }
+
+  .phase-card {
+    background: #fff;
+    border: 1px solid #e0ddd5;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 14px;
+  }
+
+  .phase-card .phase-num {
+    display: inline-block;
+    background: #191A2E;
+    color: #fff;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 28px;
+    font-size: 14px;
+    font-weight: 700;
+    margin-right: 10px;
+  }
+
+  .phase-card h3 {
+    display: inline;
+    margin: 0;
+    color: #191A2E;
+  }
+
+  .question-box {
+    background: #fff;
+    border: 1px dashed #A0522D;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-top: 16px;
+  }
+
+  .question-box ol {
+    margin-top: 8px;
+  }
+
+  .keyword {
+    color: #569cd6;
+  }
+
+  .type-annot {
+    color: #4ec9b0;
+  }
+
+  .comment {
+    color: #6a9955;
+  }
+
+  .string {
+    color: #ce9178;
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid #e0ddd5;
+    margin: 36px 0;
+  }
+
+  @media (max-width: 600px) {
+    body { padding: 20px 12px; }
+    .header h1 { font-size: 22px; }
+    pre { font-size: 12px; padding: 14px; }
+    .flow-diagram { font-size: 11px; padding: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+  <div class="status-badge">DESIGN LOCKED — v2</div>
+  <h1>PinPlay — Flexible Game Config</h1>
+  <div class="subtitle">Design Doc · Updated 2026-07-17 · Open questions resolved</div>
+</div>
+
+<h2>What We're Building</h2>
+
+<p>A flexible game-config system that lets PinPlay handle <strong>any</strong> golf format — from a casual 2-player match to a 4-day, 20-player tournament with multiple bet pools, rotating partners, and custom scoring rules — without hardcoding every format as a separate game type.</p>
+
+<p>Two entry paths into the same config:</p>
+<ol>
+  <li><strong>Presets</strong> (dropdowns) — fast path, covers common formats that already exist</li>
+  <li><strong>Custom Game</strong> (LLM-powered) — describe your format in plain language, app parses it into a valid config</li>
+</ol>
+
+<div class="callout">
+  <strong>Key rule:</strong> Config is frozen once the round/tournament starts. Side bets can still be added mid-round (they slot into the bet pool system, not the game config).
+</div>
+
+<hr>
+
+<h2>UX Flow</h2>
+
+<h3>Top-Level Entry</h3>
+<div class="flow-diagram">[New Game]
+    │
+    ├── Regular Round ──── single day, one game format
+    │
+    └── Tournament ─────── multi-day event, per-day formats, teams</div>
+
+<h3>Regular Round Flow</h3>
+<div class="flow-diagram">Step 1: Player Count
+  2 / 3 / 4 / 5 / 6 / 7 / 8  (expanded — any number supported)
+
+  ⚠️ If 6 or more players:
+     "That's a big group! Want to set this up as a
+      group game with teams?" → [Group Game] [Keep as Round]
+     → Group Game routes to Tournament flow (1-day, teams)
+     → Keep as Round continues with all players as individuals
+
+Step 2: Game Type
+  ┌─────────────────────────────────────────┐
+  │  Preset games (filtered by player count) │   ← current dropdowns
+  │  Match Play · Wolf · Skins · Scramble    │
+  ├─────────────────────────────────────────┤
+  │  ✨ Create Custom Game                   │   ← NEW: LLM entry
+  └─────────────────────────────────────────┘
+
+Step 3: Players + Handicaps
+  ├── Add players by name
+  ├── Handicap entry per player:
+  │     🔍 GHIN Lookup (enter GHIN # → auto-fill index)
+  │     ✏️ Manual Entry (type handicap index directly)
+  └── Strokes auto-calculated from course rating/slope
+
+Step 4: Mini-Games / Side Bets (same as today)
+Step 5: Course + Pars (same as today)
+
+→ Round starts, config frozen</div>
+
+<h3>Tournament Flow</h3>
+<div class="flow-diagram">Step 1: Event Setup
+  ├── Number of days: 1 / 2 / 3 / 4
+  ├── Number of players: up to 20+
+  └── Team structure (optional):
+      ├── Individual (no teams)
+      ├── Pre-set teams (assign players to teams)
+      └── Generated (system creates teams)
+
+Step 2: Per-Day Configuration (for each day)
+  ┌──────────────────────────────────────────┐
+  │  Day 1:                                  │
+  │    ┌──────────────┐  ┌────────────────┐ │
+  │    │ Preset ▼     │  │ Custom Game    │ │
+  │    │ (Scramble)   │  │                │ │
+  │    └──────────────┘  └────────────────┘ │
+  │                                          │
+  │  Day 2:                                  │
+  │    ┌──────────────┐  ┌────────────────┐ │
+  │    │ Preset ▼     │  │ Custom Game    │ │
+  │    │ (Best Ball)  │  │                │ │
+  │    └──────────────┘  └────────────────┘ │
+  │                                          │
+  │  Day 3: ...                              │
+  └──────────────────────────────────────────┘
+  Each day can be a different preset OR custom game.
+
+Step 3: Tournament-Wide Pools
+  ├── Team Match Play ($X per match)
+  ├── Individual Skins ($Y per hole)
+  ├── Closest to Pin / Longest Drive
+  └── Custom bet pool (LLM or manual)
+  Each pool runs across ALL days
+
+Step 4: Players + Teams + Handicaps
+  ├── Bulk add players (20+)
+  ├── GHIN lookup per player (batch: paste list of GHIN #s)
+  ├── Manual entry fallback for non-GHIN players
+  ├── Team assignment (drag-and-drop or auto-generate)
+  └── Strokes auto-calculated per course
+
+Step 5: Course(s) — same or different per day
+Step 6: Offline mode check — "Enable offline tracking?"
+        (recommended for courses with poor cell service)
+
+→ Tournament starts, config frozen</div>
+
+<hr>
+
+<h2>Config Schema</h2>
+
+<p>Every game — preset or custom — produces the same JSON shape. The scoring engine reads this config and knows exactly what to do. Presets are just pre-built configs; the LLM generates configs in the same shape.</p>
+
+<h3>GameConfig (per day / per round)</h3>
+<pre><code><span class="keyword">interface</span> <span class="type-annot">GameConfig</span> {
+  <span class="comment">// ── Identity ──</span>
+  id: <span class="keyword">string</span>;                          <span class="comment">// "custom_xxx" or preset id</span>
+  name: <span class="keyword">string</span>;                        <span class="comment">// display name</span>
+  source: <span class="string">"preset"</span> | <span class="string">"custom"</span>;         <span class="comment">// how it was created</span>
+
+  <span class="comment">// ── Players &amp; Teams ──</span>
+  playerCount: <span class="keyword">number</span>;
+  teamStructure: <span class="type-annot">TeamStructure</span>;
+
+  <span class="comment">// ── Scoring ──</span>
+  scoring: <span class="type-annot">ScoringRules</span>;
+
+  <span class="comment">// ── Bet Pools ──</span>
+  betPools: <span class="type-annot">BetPool</span>[];
+
+  <span class="comment">// ── Press Rules ──</span>
+  pressRules?: <span class="type-annot">PressRules</span>;
+
+  <span class="comment">// ── Mini-Games (auto-tracked) ──</span>
+  miniGames: <span class="type-annot">MiniGameConfig</span>[];
+
+  <span class="comment">// ── Side Bets (1-on-1 personal wagers) ──</span>
+  sideBets: <span class="type-annot">SideBetConfig</span>[];
+
+  <span class="comment">// ── Metadata ──</span>
+  needsHandicap: <span class="keyword">boolean</span>;
+  carryover: <span class="keyword">boolean</span>;
+  specialInputs?: <span class="keyword">string</span>[];            <span class="comment">// e.g. ["bingo","bango","bongo"]</span>
+
+  <span class="comment">// ── Template / Sharing ──</span>
+  isTemplate?: <span class="keyword">boolean</span>;                 <span class="comment">// saved as shareable template</span>
+  templateId?: <span class="keyword">string</span>;                <span class="comment">// ID if created from a shared template</span>
+  authorName?: <span class="keyword">string</span>;
+  description?: <span class="keyword">string</span>;               <span class="comment">// human-readable summary</span>
+  tags?: <span class="keyword">string</span>[];                     <span class="comment">// ["wolf", "high-stakes", "beginner"]</span>
+}
+
+<span class="keyword">interface</span> <span class="type-annot">Player</span> {
+  id: <span class="keyword">string</span>;
+  name: <span class="keyword">string</span>;
+  handicapIndex?: <span class="keyword">number</span>;
+  handicapSource: <span class="string">"ghin"</span> | <span class="string">"manual"</span> | <span class="string">"none"</span>;
+  ghinNumber?: <span class="keyword">string</span>;
+  teamId?: <span class="keyword">string</span>;
+}
+
+<span class="keyword">interface</span> <span class="type-annot">GameTemplate</span> {
+  id: <span class="keyword">string</span>;
+  config: <span class="type-annot">GameConfig</span>;                  <span class="comment">// frozen config snapshot</span>
+  name: <span class="keyword">string</span>;
+  authorName: <span class="keyword">string</span>;
+  description: <span class="keyword">string</span>;
+  tags: <span class="keyword">string</span>[];
+  uses: <span class="keyword">number</span>;                        <span class="comment">// popularity counter</span>
+  rating?: <span class="keyword">number</span>;                     <span class="comment">// optional community rating</span>
+  createdAt: <span class="keyword">string</span>;
+}</code></pre>
+
+<h3>TeamStructure</h3>
+<pre><code><span class="keyword">interface</span> <span class="type-annot">TeamStructure</span> {
+  type: <span class="string">"individual"</span> | <span class="string">"teams"</span>;
+  teams?: <span class="type-annot">TeamDef</span>[];
+  assignmentMode?: <span class="string">"preset"</span> | <span class="string">"rotating"</span> | <span class="string">"wolf_style"</span>;
+  rotationRules?: <span class="type-annot">RotationRules</span>;
+}
+
+<span class="keyword">interface</span> <span class="type-annot">TeamDef</span> {
+  id: <span class="keyword">string</span>;        <span class="comment">// "A", "B", "C"...</span>
+  name: <span class="keyword">string</span>;
+  playerIds: <span class="keyword">string</span>[];
+}
+
+<span class="keyword">interface</span> <span class="type-annot">RotationRules</span> {
+  method: <span class="string">"segments"</span> | <span class="string">"per_hole"</span> | <span class="string">"wolf_pick"</span>;
+  segments?: <span class="keyword">number</span>;          <span class="comment">// e.g. 3 segments of 6 holes</span>
+  wolfOrder?: <span class="string">"last"</span> | <span class="string">"first"</span>;
+}</code></pre>
+
+<h3>ScoringRules (the heart of the system)</h3>
+<pre><code><span class="keyword">interface</span> <span class="type-annot">ScoringRules</span> {
+  format: <span class="type-annot">ScoringFormat</span>;
+  <span class="comment">// stroke_play | match_play | skins | points | stableford | quota</span>
+
+  countingScores?: <span class="type-annot">CountingScoreDef</span>[];
+  <span class="comment">// e.g. "2 best gross + 1 best net" = [
+  //   { type: "gross", count: 2, order: "low" },
+  //   { type: "net",  count: 1, order: "low" }
+  // ]</span>
+
+  pointsTable?: <span class="type-annot">Record</span>&lt;<span class="keyword">string</span>, <span class="keyword">number</span>&gt;;
+  <span class="comment">// e.g. { eagle: 4, birdie: 2, par: 1, bogey: 0 }</span>
+
+  stablefordTable?: <span class="type-annot">Record</span>&lt;<span class="keyword">string</span>, <span class="keyword">number</span>&gt;;
+
+  carryover: <span class="keyword">boolean</span>;
+  carryoverType?: <span class="string">"skins"</span> | <span class="string">"nassau"</span>;
+
+  handicapBased: <span class="keyword">boolean</span>;
+  handicapMethod?: <span class="string">"full"</span> | <span class="string">"match_play_diff"</span> | <span class="string">"peoria"</span> | <span class="string">"callaway"</span>;
+
+  holeValue?: <span class="keyword">number</span>;        <span class="comment">// e.g. $5 per hole</span>
+  holeValueUnit?: <span class="string">"points"</span> | <span class="string">"dollars"</span>;
+
+  segments?: <span class="type-annot">ScoringSegment</span>[];
+  <span class="comment">// Nassau = front 9, back 9, overall</span>
+}
+
+<span class="keyword">interface</span> <span class="type-annot">CountingScoreDef</span> {
+  type: <span class="string">"gross"</span> | <span class="string">"net"</span>;
+  count: <span class="keyword">number</span>;
+  order: <span class="string">"low"</span> | <span class="string">"high"</span>;
+}
+
+<span class="keyword">type</span> <span class="type-annot">ScoringFormat</span> =
+  | <span class="string">"stroke_play"</span>
+  | <span class="string">"match_play"</span>
+  | <span class="string">"skins"</span>
+  | <span class="string">"points"</span>
+  | <span class="string">"stableford"</span>
+  | <span class="string">"quota"</span>
+  | <span class="string">"nine_point"</span>
+  | <span class="string">"bingo_bango_bongo"</span>
+  | <span class="string">"custom"</span>;</code></pre>
+
+<h3>BetPool</h3>
+<pre><code><span class="keyword">interface</span> <span class="type-annot">BetPool</span> {
+  id: <span class="keyword">string</span>;
+  name: <span class="keyword">string</span>;          <span class="comment">// "Team Match", "Skins", "Closest to Pin"</span>
+  type: <span class="type-annot">BetPoolType</span>;
+  scope: <span class="string">"per_hole"</span> | <span class="string">"per_round"</span> | <span class="string">"per_day"</span> | <span class="string">"per_tournament"</span>;
+  participants: <span class="string">"all"</span> | <span class="string">"teams"</span> | <span class="string">"individuals"</span> | <span class="keyword">string</span>[];
+  value: <span class="keyword">number</span>;
+  valueUnit: <span class="string">"per_hole"</span> | <span class="string">"per_round"</span> | <span class="string">"per_point"</span> | <span class="string">"flat"</span>;
+  qualifier?: <span class="keyword">string</span>;      <span class="comment">// "par 3s only", "birdies only"</span>
+}
+
+<span class="keyword">type</span> <span class="type-annot">BetPoolType</span> =
+  | <span class="string">"match"</span> | <span class="string">"skins"</span> | <span class="string">"pool"</span>
+  | <span class="string">"achievement"</span> | <span class="string">"side_bet"</span> | <span class="string">"custom"</span>;</code></pre>
+
+<h3>PressRules</h3>
+<pre><code><span class="keyword">interface</span> <span class="type-annot">PressRules</span> {
+  enabled: <span class="keyword">boolean</span>;
+  maxPerHole: <span class="keyword">number</span>;         <span class="comment">// 3 default</span>
+  multiplier: <span class="keyword">number</span>[];       <span class="comment">// [2, 4, 8]</span>
+  whoCanPress: <span class="string">"anyone"</span> | <span class="string">"losing_only"</span>;
+  responseType: <span class="string">"accept_or_drop"</span>;
+  crossGroup?: <span class="keyword">boolean</span>;       <span class="comment">// press between teams in tournament</span>
+}</code></pre>
+
+<h3>TournamentConfig</h3>
+<pre><code><span class="keyword">interface</span> <span class="type-annot">TournamentConfig</span> {
+  id: <span class="keyword">string</span>;
+  name: <span class="keyword">string</span>;
+  totalDays: <span class="keyword">number</span>;
+  players: <span class="type-annot">Player</span>[];
+  teams?: <span class="type-annot">TeamDef</span>[];
+
+  days: <span class="type-annot">TournamentDay</span>[];          <span class="comment">// per-day game configs</span>
+  tournamentPools: <span class="type-annot">BetPool</span>[][];    <span class="comment">// span all days</span>
+
+  leaderboard: <span class="type-annot">LeaderboardConfig</span>;
+}
+
+<span class="keyword">interface</span> <span class="type-annot">TournamentDay</span> {
+  dayNumber: <span class="keyword">number</span>;
+  gameConfig: <span class="type-annot">GameConfig</span>;       <span class="comment">// preset or custom per day</span>
+  status: <span class="string">"upcoming"</span> | <span class="string">"in_progress"</span> | <span class="string">"complete"</span> | <span class="string">"rest_day"</span>;
+}
+
+<span class="keyword">interface</span> <span class="type-annot">LeaderboardConfig</span> {
+  aggregation: <span class="string">"total_strokes"</span> | <span class="string">"total_points"</span> | <span class="string">"match_record"</span> | <span class="string">"custom"</span>;
+  countingMethod?: <span class="type-annot">CountingScoreDef</span>[];
+  tiesResolvedBy?: <span class="string">"playoff"</span> | <span class="string">"countback"</span> | <span class="string">"split"</span>;
+}</code></pre>
+
+<hr>
+
+<h2>Preset to Config Mapping</h2>
+
+<p>Every existing game type maps to a GameConfig. A few examples:</p>
+
+<h4>Match Play</h4>
+<pre><code>{ scoring: { format: <span class="string">"match_play"</span>, holeValue: <span class="keyword">1</span>, carryover: <span class="keyword">false</span>, handicapBased: <span class="keyword">true</span> } }</code></pre>
+
+<h4>Skins</h4>
+<pre><code>{ scoring: { format: <span class="string">"skins"</span>, carryover: <span class="keyword">true</span> } }
+{ betPools: [{ type: <span class="string">"skins"</span>, scope: <span class="string">"per_hole"</span>, value: <span class="keyword">5</span> }] }</code></pre>
+
+<h4>Nassau</h4>
+<pre><code>{ scoring: { format: <span class="string">"match_play"</span>, segments: [
+    { name: <span class="string">"Front 9"</span>, holes: [<span class="keyword">1</span>,<span class="keyword">9</span>] },
+    { name: <span class="string">"Back 9"</span>, holes: [<span class="keyword">10</span>,<span class="keyword">18</span>] },
+    { name: <span class="string">"Overall"</span>, holes: [<span class="keyword">1</span>,<span class="keyword">18</span>] }
+]}}</code></pre>
+
+<h4>Custom: "2 best gross + 1 best net, $20 team match, $2 skins no strokes"</h4>
+<pre><code>{ teamStructure: { type: <span class="string">"teams"</span>, teams: [A,B,C] }}
+{ scoring: { format: <span class="string">"match_play"</span>, countingScores: [
+    { type: <span class="string">"gross"</span>, count: <span class="keyword">2</span>, order: <span class="string">"low"</span> },
+    { type: <span class="string">"net"</span>,  count: <span class="keyword">1</span>, order: <span class="string">"low"</span> }
+]}}
+{ betPools: [
+    { type: <span class="string">"match"</span>, scope: <span class="string">"per_round"</span>, value: <span class="keyword">20</span> },
+    { type: <span class="string">"skins"</span>, scope: <span class="string">"per_hole"</span>, value: <span class="keyword">2</span>, qualifier: <span class="string">"no_strokes"</span> }
+]}</code></pre>
+
+<hr>
+
+<h2>LLM Custom Game Parser</h2>
+
+<div class="flow-diagram">User types/speaks:
+  "3 teams of 5, 2 best gross and 1 best net per hole,
+   $20 team match play, individual par-3 closest to pin for $10,
+   skins with no strokes at $2 a hole plus $2 per birdie"
+
+         │
+         ▼
+
+  ┌──────────────────────────────┐
+  │  Backend API endpoint         │
+  │  POST /api/game-config/parse  │
+  │                               │
+  │  Calls GLM with:              │
+  │  - System prompt (schema)     │
+  │  - User's natural language    │
+  │  - Returns GameConfig JSON    │
+  └──────────────┬───────────────┘
+                 │
+                 ▼
+
+  ┌──────────────────────────────┐
+  │  Config Validator             │
+  │  - Checks all required fields │
+  │  - Validates player counts    │
+  │  - Validates bet pool logic   │
+  │  - Returns errors if invalid  │
+  └──────────────┬───────────────┘
+                 │
+                 ▼
+
+  ┌──────────────────────────────┐
+  │  Preview Screen               │
+  │  Shows parsed config in       │
+  │  human-readable form + allows │
+  │  manual tweaks before start   │
+  └──────────────┬───────────────┘
+                 │
+                 ▼
+
+  Config locked → game starts</div>
+
+<h3>GLM Prompt Design</h3>
+<ul>
+  <li>System prompt gives GLM the full GameConfig schema</li>
+  <li>10-15 few-shot examples (natural language to config mappings)</li>
+  <li>Golf terminology glossary (skins, nassau, press, shamble, etc.)</li>
+  <li>Strict instruction: output ONLY valid JSON, no explanation</li>
+</ul>
+
+<div class="callout">
+  <strong>No LLM during live scoring.</strong> The LLM runs ONCE at setup time. After that, the config is frozen and the scoring engine (pure TypeScript, deterministic) handles everything. Live scoring stays fast and reliable.
+</div>
+
+<hr>
+
+<h2>Scoring Engine</h2>
+
+<p>The current <code>game-logic.ts</code> uses a giant switch statement on <code>gameType</code> string. The new engine replaces this with a config-driven approach:</p>
+
+<pre><code><span class="comment">// Instead of:</span>
+<span class="keyword">switch</span> (gameType) {
+  <span class="keyword">case</span> <span class="string">"match_play"</span>: ...
+  <span class="keyword">case</span> <span class="string">"skins"</span>: ...
+}
+
+<span class="comment">// New approach:</span>
+<span class="keyword">function</span> <span class="type-annot">scoreHole</span>(config: <span class="type-annot">GameConfig</span>, holeData: <span class="type-annot">HoleData</span>): <span class="type-annot">HoleResult</span> {
+  <span class="comment">// 1. Apply handicap strokes if config.scoring.handicapBased</span>
+  <span class="comment">// 2. Compute counting scores per config.scoring.countingScores</span>
+  <span class="comment">// 3. Compare per config.scoring.format</span>
+  <span class="comment">// 4. Update bet pools per config.betPools</span>
+  <span class="comment">// 5. Handle press per config.pressRules</span>
+  <span class="comment">// 6. Return structured result</span>
+}</code></pre>
+
+<p>Existing presets still work because they produce GameConfig objects. The switch statement gets replaced incrementally — each preset's logic moves into a config-driven function.</p>
+
+<hr>
+
+<h2>Handicap Lookup (GHIN)</h2>
+
+<p>GHIN (Golf Handicap and Information Network) is the USGA's handicap system used by most US golfers. Looking up handicaps automatically removes friction from tournament setup — especially for 20+ player events.</p>
+
+<h3>How It Works</h3>
+<ul>
+  <li>Organizer enters a player's GHIN number (or last name + club)</li>
+  <li>PinPlay queries GHIN's handicap API for the player's current Handicap Index</li>
+  <li>Index auto-fills into the player record</li>
+  <li>Strokes per hole auto-calculated from course slope/rating using the World Handicap System formula</li>
+</ul>
+
+<div class="callout">
+  <strong>GHIN API access:</strong> The GHIN handicap lookup is available through the public GHIN website and mobile app. PinPlay can use the same lookup endpoint (ghin.com search). For batch tournament entry, the organizer can paste a list of GHIN numbers and PinPlay looks them all up in parallel.
+</div>
+
+<h3>Fallback Chain</h3>
+<ol>
+  <li><strong>GHIN lookup</strong> — best case, accurate and current</li>
+  <li><strong>Manual entry</strong> — organizer types handicap index directly</li>
+  <li><strong>No handicap</strong> — player plays scratch (0 strokes), used for casual rounds or no-handicap events</li>
+</ol>
+
+<p>Each player record stores the source (<code>handicapSource: "ghin" | "manual" | "none"</code>) so the scoring engine knows the provenance.</p>
+
+<hr>
+
+<h2>Config Sharing &amp; Game Templates</h2>
+
+<p>Custom game configs can be saved as reusable templates and shared with other PinPlay users. This turns one person's creative game format into something the whole community can try.</p>
+
+<h3>How It Works</h3>
+<ul>
+  <li>After creating a custom game (via LLM or manual config), user sees a <strong>"Save as Template"</strong> option</li>
+  <li>Template captures the frozen GameConfig snapshot plus a name, description, and tags</li>
+  <li>Saved templates appear in a <strong>Community Games</strong> browser, sortable by popularity, tags, or recency</li>
+  <li>Other users can one-tap load a template, adjust player count / stakes to their group, and start</li>
+</ul>
+
+<h3>Template Browser</h3>
+<div class="flow-diagram">Create Custom Game → Save as Template → Community Games Browser
+                                                      │
+                    ┌─────────────────────────────────┤
+                    │                                 │
+               Trending                           Browse by Tag
+               (most used this month)            (wolf, skins, team,
+                                                 high-stakes, beginner...)
+
+Load Template → Adjust Players/Stakes → Start Round</div>
+
+<div class="callout">
+  <strong>Viral potential:</strong> A clever game format can spread through golf groups organically. "We played this wild format we found on PinPlay" becomes user acquisition. Templates are shareable via link (pinplay.golf/game/abc123) — tapping the link opens PinPlay pre-loaded with that config.
+</div>
+
+<h3>Template Lifecycle</h3>
+<ul>
+  <li>Template stores a <strong>snapshot</strong> of the config at save time — it doesn't update if the original game is edited later</li>
+  <li>Loaders can modify player count, stake amounts, and team assignments — the scoring rules stay as the author intended</li>
+  <li>Template use count increments each time someone starts a game from it</li>
+  <li>Author can delete their own templates at any time</li>
+</ul>
+
+<hr>
+
+<h2>Offline / Local-First Mode</h2>
+
+<p>Many golf courses have poor or no cell service. PinPlay's current architecture relies on WebSocket for real-time multiplayer sync. For tournaments and group games, losing connection mid-round is unacceptable — scoring must continue uninterrupted.</p>
+
+<h3>Architecture: Local-First with Sync Queue</h3>
+<div class="flow-diagram">                   ┌─────────────┐
+  Score Input ───→ │  Local Store │ ← always writes here first
+                   │  (IndexedDB) │
+                   └──────┬───────┘
+                          │
+                     ┌────┴────┐
+                     │ Sync    │
+                     │ Engine  │
+                     └────┬────┘
+                          │
+              ┌───────────┴───────────┐
+              │                       │
+         Online                    Offline
+              │                       │
+     Push to server         Queue locally
+     via WebSocket          (every score stored)
+              │                       │
+     Other players           When connection
+     see updates              returns, flush
+     in real-time             entire queue to
+                              server in order</div>
+
+<h3>Key Design Decisions</h3>
+<ul>
+  <li><strong>Every score writes to local IndexedDB first</strong> — this is the source of truth during play, not the server</li>
+  <li><strong>Sync engine runs as background process</strong> — pushes to server when connected, queues when not</li>
+  <li><strong>Queue is ordered</strong> — scores replay in the exact order they were entered, preventing state corruption</li>
+  <li><strong>Conflict resolution: last-write-wins per hole</strong> — if two devices scored the same hole differently while offline, the latest timestamp wins and the other device gets a notification</li>
+  <li><strong>Tournament organizer's device is authoritative</strong> — in offline mode, the organizer's phone is the master scorecard; other players' devices sync to it when reconnected</li>
+</ul>
+
+<h3>Offline Capabilities</h3>
+<ul>
+  <li>Full scoring (all game types, all bet pools, all calculations)</li>
+  <li>Leaderboard updates (local only until reconnected)</li>
+  <li>Settlement card generation</li>
+  <li>Course data and pars (pre-cached at round start)</li>
+  <li>Game config (frozen at start, always available locally)</li>
+</ul>
+
+<h3>What Does NOT Work Offline</h3>
+<ul>
+  <li>Real-time sync to other players' devices</li>
+  <li>GHIN handicap lookup (do this before the round)</li>
+  <li>Custom game LLM parsing (do this before the round)</li>
+  <li>Loading new templates from the community browser</li>
+</ul>
+
+<div class="callout">
+  <strong>Pre-round caching:</strong> When a round or tournament starts, PinPlay caches the entire game state — config, course data, player list, par/handicap tables — to IndexedDB. This happens automatically and silently. The app is always ready to go offline.
+</div>
+
+<hr>
+
+<h2>Implementation Phases</h2>
+
+<div class="phase-card">
+  <span class="phase-num">1</span>
+  <h3>Schema + Preset Migration (foundation)</h3>
+  <ul>
+    <li>Define all TypeScript interfaces</li>
+    <li>Write config validator</li>
+    <li>Map all existing GAME_DEFINITIONS to GameConfig objects</li>
+    <li>Build scoring engine that handles all current formats via config</li>
+    <li><strong>Verify:</strong> every existing game type produces identical results through the new engine</li>
+    <li>No UI changes yet — pure backend refactor</li>
+  </ul>
+</div>
+
+<div class="phase-card">
+  <span class="phase-num">2</span>
+  <h3>Player Expansion</h3>
+  <ul>
+    <li>Remove the 4-player UI cap — support any number for regular rounds</li>
+    <li>Soft prompt: 6+ players in regular round → suggest group game mode</li>
+    <li>Team setup UI for tournaments (assign players to teams)</li>
+    <li>Tournament day-by-day config UI</li>
+    <li>Player interface with handicap source tracking (GHIN / manual / none)</li>
+    <li><strong>Verify:</strong> regular rounds work exactly as before, tournaments work for 20+ players</li>
+  </ul>
+</div>
+
+<div class="phase-card">
+  <span class="phase-num">3</span>
+  <h3>Custom Game (LLM)</h3>
+  <ul>
+    <li>Backend endpoint <code>/api/game-config/parse</code></li>
+    <li>GLM integration with few-shot prompt</li>
+    <li>Config preview screen with manual edit capability</li>
+    <li>"Create Custom Game" button on setup screen</li>
+    <li>Tournament: custom game per day</li>
+    <li><strong>Verify:</strong> common natural-language descriptions parse correctly</li>
+  </ul>
+</div>
+
+<div class="phase-card">
+  <span class="phase-num">4</span>
+  <h3>Handicap Lookup + Advanced Tournament Features</h3>
+  <ul>
+    <li>GHIN handicap lookup (single + batch entry)</li>
+    <li>Manual entry fallback with source tracking</li>
+    <li>Cross-group pressing</li>
+    <li>Tournament-wide aggregate leaderboard</li>
+    <li>Multi-pool simultaneous settlement</li>
+    <li>Per-day different course support</li>
+  </ul>
+
+<div class="phase-card">
+  <span class="phase-num">5</span>
+  <h3>Config Sharing + Offline Mode</h3>
+  <ul>
+    <li>Save custom game as template ("Save as Template" button)</li>
+    <li>Community Games browser (trending, by-tag, search)</li>
+    <li>Shareable template links (pinplay.golf/game/abc123)</li>
+    <li>Local-first scoring: IndexedDB write-first architecture</li>
+    <li>Sync engine with offline queue + ordered replay</li>
+    <li>Conflict resolution (last-write-wins per hole, organizer authoritative)</li>
+    <li>Pre-round state caching (automatic, silent)</li>
+    <li><strong>Verify:</strong> scoring works fully offline, syncs correctly on reconnect</li>
+  </ul>
+</div>
+</div>
+
+<hr>
+
+<h2>Decisions Log</h2>
+
+<div class="question-box">
+<ol>
+  <li><strong>Max player count for regular rounds?</strong> → <strong>Any number, with a soft nudge.</strong> No hard cap. At 6+ players, prompt: "Want to set this up as a group game?" Routes to tournament flow if yes, continues as regular round if no.</li>
+  <li><strong>Handicap sources?</strong> → <strong>GHIN lookup first, manual fallback.</strong> Per-player GHIN number lookup (single or batch). Manual entry for players without GHIN. Source tracked per player record.</li>
+  <li><strong>Config sharing?</strong> → <strong>Yes, full template system.</strong> Save custom configs as shareable templates. Community browser with trending, tags, search. Shareable via link. Viral growth mechanism.</li>
+  <li><strong>Offline handling?</strong> → <strong>Local-first mode.</strong> Every score writes to IndexedDB first. Sync engine pushes to server when online, queues when offline. Organizer's device is authoritative during offline tournaments. Pre-round caching makes the app always ready to go offline.</li>
+</ol>
+</div>
+
+</div>
+</body>
+</html>

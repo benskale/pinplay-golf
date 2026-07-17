@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   passwordHash: text("password_hash"),
   handicapIndex: real("handicap_index"),
+  ghinNumber: text("ghin_number"),
   homeCourse: text("home_course"),
   avatarUrl: text("avatar_url"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
@@ -165,6 +166,7 @@ export const games = pgTable("games", {
   active: boolean("active").notNull().default(true),
   miniGames: jsonb("mini_games").$type<Record<string, { enabled: boolean; value: number }>>().notNull().default({}),
   gameSettings: jsonb("game_settings").$type<Record<string, any>>().notNull().default({}),
+  gameConfig: jsonb("game_config").$type<Record<string, any>>().notNull().default({}),
   tournamentId: varchar("tournament_id").references(() => tournaments.id),
   tournamentRoundId: integer("tournament_round_id"), // references tournament_rounds.id (null for non-round games)
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
@@ -214,7 +216,10 @@ export const gameTemplates = pgTable("game_templates", {
   defaultHandicaps: jsonb("default_handicaps").$type<Record<string, number>>().notNull().default({}),
   defaultMiniGames: jsonb("default_mini_games").$type<Record<string, { enabled: boolean; value: number }>>().notNull().default({}),
   defaultGameSettings: jsonb("default_game_settings").$type<Record<string, any>>().notNull().default({}),
+  gameConfig: jsonb("game_config").$type<Record<string, any>>().notNull().default({}),
   description: text("description"),
+  isPublic: boolean("is_public").notNull().default(false),
+  shareCode: varchar("share_code", { length: 8 }).unique(),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -299,10 +304,10 @@ export function sanitizePlayerName(name: unknown): string {
     .slice(0, 50);                      // max 50 chars
 }
 
-/** Validate an array of player names: 2-5 players, each 1-50 chars after sanitization. */
+/** Validate an array of player names: 2+ players (no upper cap — tournament mode supports 20+), each 1-50 chars after sanitization. */
 export function validatePlayers(players: unknown): string[] {
   if (!Array.isArray(players)) throw new Error("Players must be an array");
-  if (players.length < 2 || players.length > 5) throw new Error("Must have 2-5 players");
+  if (players.length < 2) throw new Error("Must have at least 2 players");
   const sanitized = players.map((p: any) => sanitizePlayerName(p));
   if (sanitized.some(p => p.length < 1)) throw new Error("Player names cannot be empty");
   return sanitized;
