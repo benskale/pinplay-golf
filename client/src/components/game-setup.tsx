@@ -82,6 +82,8 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
   const [parsedGameConfig, setParsedGameConfig] = useState<any>(null);
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
+  const [clarifyAnswers, setClarifyAnswers] = useState<Record<number, string>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -366,22 +368,32 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
     if (!customFormatText.trim()) return;
     setParsing(true);
     setParseError(null);
+    setParsedGameConfig(null);
     try {
       const res = await apiRequest("POST", "/api/game-config/parse", {
         description: customFormatText.trim(),
         playerCount,
+        answers: Object.keys(clarifyAnswers).length > 0 ? clarifyAnswers : undefined,
       });
       if (!res.ok) {
         const err = await res.json();
         setParseError(err.message || "Failed to parse format");
         setParsedGameConfig(null);
+        setClarifyQuestions([]);
       } else {
         const data = await res.json();
-        setParsedGameConfig(data.config);
+        if (data.mode === "clarify" && data.questions?.length > 0) {
+          setClarifyQuestions(data.questions);
+          setClarifyAnswers({});
+        } else {
+          setParsedGameConfig(data.config);
+          setClarifyQuestions([]);
+        }
       }
     } catch (e: any) {
       setParseError(e?.message || "Network error");
       setParsedGameConfig(null);
+      setClarifyQuestions([]);
     } finally {
       setParsing(false);
     }
@@ -727,6 +739,8 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                 setCustomFormatText(e.target.value);
                 setParsedGameConfig(null);
                 setParseError(null);
+                setClarifyQuestions([]);
+                setClarifyAnswers({});
               }}
             />
 
@@ -735,8 +749,33 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
               disabled={!customFormatText.trim() || parsing}
               onClick={handleParseCustomFormat}
             >
-              {parsing ? "Parsing..." : "Parse Format"}
+              {parsing ? "Creating..." : "Create Game"}
             </button>
+
+            {clarifyQuestions.length > 0 && (
+              <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 space-y-3">
+                <p className="text-[0.8125rem] font-semibold text-amber-800 dark:text-amber-200">A few questions to get this right:</p>
+                {clarifyQuestions.map((q: string, i: number) => (
+                  <div key={i} className="space-y-1.5">
+                    <label className="text-[0.8125rem] text-amber-700 dark:text-amber-300 font-medium">{q}</label>
+                    <input
+                      type="text"
+                      className="w-full p-2.5 bg-white dark:bg-gray-800 rounded-lg border border-amber-200 dark:border-amber-700 text-sm text-gray-900 dark:text-gray-50 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      placeholder="Your answer..."
+                      value={clarifyAnswers[i] || ""}
+                      onChange={(e) => setClarifyAnswers(prev => ({ ...prev, [i]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+                <button
+                  className="w-full py-2.5 bg-amber-600 text-white font-semibold rounded-xl text-sm transition-all hover:bg-amber-700 active:scale-[0.98] disabled:opacity-50"
+                  disabled={parsing || clarifyQuestions.some((_, i) => !clarifyAnswers[i]?.trim())}
+                  onClick={handleParseCustomFormat}
+                >
+                  {parsing ? "Creating..." : "Submit Answers"}
+                </button>
+              </div>
+            )}
 
             {parseError && (
               <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
