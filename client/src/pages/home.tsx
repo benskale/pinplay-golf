@@ -19,6 +19,9 @@ export default function Home() {
   // Onboarding state
   const [showOnboarding, setShowOnboarding] = useState(false);
 
+  // Track whether game setup is actively in progress (hides home sections when true)
+  const [setupActive, setSetupActive] = useState(false);
+
   useEffect(() => {
     const seen = localStorage.getItem("pinplay_onboarding_seen");
     if (!seen) {
@@ -110,8 +113,8 @@ export default function Home() {
       {/* ── Setup content ── */}
       <main className="max-w-md mx-auto px-4 pb-24 -mt-1">
 
-        {/* ── Continue Round Banner (prominent CTA) ── */}
-        {(mostRecentActive || guestMostRecent) && (() => {
+        {/* ── Continue Round Banner (prominent CTA) ── hidden during active setup ── */}
+        {!setupActive && (mostRecentActive || guestMostRecent) && (() => {
           const game = mostRecentActive || guestMostRecent!;
           return (
           <div className="mb-5 -mt-1">
@@ -143,8 +146,8 @@ export default function Home() {
           );
         })()}
 
-        {/* Active Games (show remaining ones if multiple) */}
-        {(activeGames.length > 1 || guestActiveGames.length > 1) && (
+        {/* Active Games (show remaining ones if multiple) ── hidden during active setup */}
+        {!setupActive && (activeGames.length > 1 || guestActiveGames.length > 1) && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -185,8 +188,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* Recent Completed Games */}
-        {completedGames.length > 0 && activeGames.length <= 1 && (
+        {/* Recent Completed Games ── hidden during active setup */}
+        {!setupActive && completedGames.length > 0 && activeGames.length <= 1 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
               <Trophy className="w-3.5 h-3.5 text-gray-400" />
@@ -216,8 +219,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── Start Group Play CTA ── */}
-        {user && (
+        {/* ── Start Group Play CTA ── hidden during active setup */}
+        {!setupActive && user && (
           <div className="mt-4">
             <button
               onClick={() => setLocation("/tournament/create")}
@@ -229,15 +232,18 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── Your Group Play ── */}
-        {user && (
+        {/* ── Your Group Play ── hidden during active setup */}
+        {!setupActive && user && (
           <YourTournaments />
         )}
 
-        <GameSetup onGameCreated={(id) => setLocation(`/game/${id}`)} />
+        <GameSetup
+          onGameCreated={(id) => setLocation(`/game/${id}`)}
+          onStepChange={(step) => setSetupActive(step !== "count")}
+        />
 
-        {/* Guest sign-up CTA */}
-        {!user && (
+        {/* Guest sign-up CTA ── hidden during active setup */}
+        {!setupActive && !user && (
           <div className="mt-5 mb-2">
             <button
               onClick={() => setLocation("/auth")}

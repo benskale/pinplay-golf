@@ -15,6 +15,7 @@ import { trackGame } from "@/lib/game-recovery";
 
 interface GameSetupProps {
   onGameCreated: (gameId: string) => void;
+  onStepChange?: (step: Step) => void;
 }
 
 interface CourseResult {
@@ -49,7 +50,7 @@ const PLAYER_COUNT_OPTIONS = [
   { count: 6, label: "6+ Players", desc: "Large group or tournament" },
 ];
 
-export default function GameSetup({ onGameCreated }: GameSetupProps) {
+export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProps) {
   const [step, setStep] = useState<Step>("count");
   const [playerCount, setPlayerCount] = useState<number>(4);
   const [selectedGame, setSelectedGame] = useState<GameDef | null>(null);
@@ -76,6 +77,11 @@ export default function GameSetup({ onGameCreated }: GameSetupProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
+
+  // Notify parent when step changes (so home page can hide sections during active setup)
+  useEffect(() => {
+    onStepChange?.(step);
+  }, [step, onStepChange]);
 
   // Self-removal from Player 1 slot
   const [selfRemoved, setSelfRemoved] = useState(false);
