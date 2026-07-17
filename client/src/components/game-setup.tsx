@@ -415,6 +415,17 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
     setSelectedGame(customGame);
     setGameSettings({ customGameConfig: parsedGameConfig });
     setUseHandicap(!!parsedGameConfig.needsHandicap);
+    // Pre-select any mini-games the LLM included in the config
+    if (parsedGameConfig.miniGames?.length > 0) {
+      const preSelected: Record<string, { enabled: boolean; value: number }> = {};
+      parsedGameConfig.miniGames.forEach((mg: any) => {
+        const id = mg.id || mg.name?.toLowerCase().replace(/\s+/g, "_");
+        if (id) {
+          preSelected[id] = { enabled: true, value: mg.value || 5 };
+        }
+      });
+      setSelectedMiniGames(prev => ({ ...preSelected, ...prev }));
+    }
     setStep("players");
   };
 
