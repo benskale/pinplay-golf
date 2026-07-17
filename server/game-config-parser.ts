@@ -252,6 +252,10 @@ async function callLLM(
   playerCount: number,
 ): Promise<ParseResult> {
   try {
+    // 30s timeout — Replit has known issues reaching z.ai (timeouts, 429s)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     const response = await fetch(`${ZAI_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
@@ -268,7 +272,10 @@ async function callLLM(
         max_tokens: 4096,
         response_format: { type: "json_object" },
       }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errText = await response.text();

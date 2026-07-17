@@ -817,8 +817,8 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                   <div className="pt-1.5 space-y-1">
                     {parsedGameConfig.miniGames.map((mg: any, i: number) => (
                       <div key={i} className="flex items-center justify-between text-[0.8125rem]">
-                        <span className="text-gray-600 dark:text-gray-400">{mg.name}</span>
-                        <span className="font-medium text-gray-900 dark:text-gray-50">${mg.value}/{mg.valueUnit.replace("per_", "")}</span>
+                        <span className="text-gray-600 dark:text-gray-400">{mg.name || mg.id}</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-50">${mg.value}{mg.valueUnit && mg.valueUnit !== "flat" ? `/${mg.valueUnit.replace("per_", "")}` : ""}</span>
                       </div>
                     ))}
                   </div>
