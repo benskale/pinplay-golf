@@ -12,6 +12,7 @@ import {
   Users, ChevronRight, ArrowLeft, Shuffle, UserCircle, Sparkles, DollarSign, Bookmark
 } from "lucide-react";
 import { getGamesForPlayerCount, getMiniGamesForSetup, isLowerBetter, type GameDef, type MiniGameDef } from "@/lib/game-logic";
+import { presetToConfig } from "@/lib/preset-mappings";
 import { trackGame } from "@/lib/game-recovery";
 import TeamSetup from "@/components/team-setup";
 
@@ -430,6 +431,13 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
     const finalHandicaps: Record<string, number> = {};
     finalPlayers.forEach(p => { finalHandicaps[p] = handicaps[p] || 0; });
 
+    // ── Generate GameConfig from preset ──
+    const gameConfig = presetToConfig({
+      gameType: selectedGame?.id || "wolf",
+      playerNames: finalPlayers,
+      teams: finalTeams,
+    });
+
     createGameMutation.mutate({
       gameType: selectedGame?.id || "wolf",
       players: finalPlayers,
@@ -441,6 +449,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
       strokeIndexes: useHandicap ? strokeIndexes : Array.from({ length: 18 }, (_, i) => i + 1),
       miniGames: selectedMiniGames,
       gameSettings: { ...gameSettings, useHandicap, ...(multiTeamNames.length > 0 ? { teamNames: multiTeamNames } : {}) },
+      gameConfig: gameConfig || {},
     });
   };
 

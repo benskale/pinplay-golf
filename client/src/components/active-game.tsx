@@ -17,6 +17,8 @@ import {
   calcHoleResult, getLeaderboard, getGameStatus, getCurrentRotatingPlayer,
   getTeams, getPressSides, GAME_DEFINITIONS, MINI_GAME_DEFINITIONS, isLowerBetter, getStrokesReceivedOnHole, getStrokeHoles
 } from "@/lib/game-logic";
+import { scoreHoleWithConfig } from "@/lib/config-scoring";
+import type { GameConfig } from "@shared/game-config";
 import type { Game } from "@shared/schema";
 import { trackGame, completeGame as untrackGame } from "@/lib/game-recovery";
 
@@ -195,7 +197,18 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     if (!allPlayersHaveStrokes) return null;
     if (isWolfGame && !wolfDecision) return null;
     // For BBB, calculation can proceed with partial info
-    const base = calcHoleResult(game, game.currentHole, currentPar, holeStrokes, extraMeta);
+    const base = (() => {
+      const cfg = game.gameConfig as GameConfig | undefined;
+      if (cfg && Object.keys(cfg).length > 0 && cfg.scoring) {
+        return scoreHoleWithConfig(game, cfg, {
+          hole: game.currentHole,
+          par: currentPar,
+          strokes: holeStrokes,
+          metadata: extraMeta,
+        });
+      }
+      return calcHoleResult(game, game.currentHole, currentPar, holeStrokes, extraMeta);
+    })();
     // Apply universal press multiplier
     if (pressMultiplier > 1) {
       base.pointDeltas = Object.fromEntries(
