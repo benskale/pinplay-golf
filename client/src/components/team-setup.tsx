@@ -2,7 +2,7 @@
  * Multi-Team Setup Component
  *
  * Replaces the hardcoded A/B team toggle with a flexible team assignment UI
- * that supports 2-8 teams for groups of any size (up to 20+ players).
+  * that supports 2+ teams for groups of any size.
  *
  * Features:
  * - Choose number of teams (auto-suggested based on player count)
@@ -123,7 +123,7 @@ export default function TeamSetup({ players, handicaps = {}, defaultNumTeams, on
     setAutoBalanced(false);
   };
 
-  const maxTeams = Math.min(8, Math.max(2, Math.floor(validPlayers.length / 1)));
+  const maxTeams = Math.min(Math.max(8, validPlayers.length), Math.max(2, validPlayers.length));
   const minTeams = 2;
   const teamCounts = Array.from({ length: maxTeams - minTeams + 1 }, (_, i) => minTeams + i);
 

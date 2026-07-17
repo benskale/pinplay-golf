@@ -533,9 +533,9 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                 <input
                   type="number"
                   min={6}
-                  max={20}
+                  max={144}
                   value={customPlayerCount}
-                  onChange={e => setCustomPlayerCount(Math.max(6, Math.min(20, parseInt(e.target.value) || 6)))}
+                  onChange={e => setCustomPlayerCount(Math.max(6, Math.min(144, parseInt(e.target.value) || 6)))}
                   className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-gray-50"
                 />
               </div>
