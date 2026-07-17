@@ -134,6 +134,8 @@ export function TournamentTeams({
   };
 
   const [assignTeamId, setAssignTeamId] = useState<number | null>(null);
+  const [addNameTeamId, setAddNameTeamId] = useState<number | null>(null);
+  const [newTeamPlayerName, setNewTeamPlayerName] = useState("");
 
   const handleAssignPlayer = async (teamId: number, playerName: string) => {
     setLoading(true);
@@ -145,15 +147,41 @@ export function TournamentTeams({
         body: JSON.stringify({ playerName }),
       });
       if (res.ok) {
-        toast({ title: `${playerName} assigned` });
+        toast({ title: `${playerName} added to team` });
         await loadTeams();
         onTeamsChange?.();
       } else {
         const data = await res.json();
-        toast({ title: data.message || "Failed to assign", variant: "destructive" });
+        toast({ title: data.message || "Failed to add", variant: "destructive" });
       }
     } catch {
-      toast({ title: "Failed to assign player", variant: "destructive" });
+      toast({ title: "Failed to add player", variant: "destructive" });
+    }
+    setLoading(false);
+  };
+
+  const handleAddPlayerByName = async (teamId: number) => {
+    const name = newTeamPlayerName.trim();
+    if (!name) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/teams/${teamId}/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerName: name }),
+      });
+      if (res.ok) {
+        toast({ title: `${name} added to team` });
+        setNewTeamPlayerName("");
+        setAddNameTeamId(null);
+        await loadTeams();
+        onTeamsChange?.();
+      } else {
+        const data = await res.json();
+        toast({ title: data.message || "Failed to add", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to add player", variant: "destructive" });
     }
     setLoading(false);
   };
@@ -342,56 +370,93 @@ export function TournamentTeams({
                   )}
                 </div>
 
-                {/* Creator: Add player dropdown */}
-                {isCreator && !isFull && unassignedPlayers.length > 0 && (
-                  <div className="relative mb-2">
-                    <button
-                      onClick={() => setAssignTeamId(assignTeamId === team.id ? null : team.id)}
-                      disabled={loading}
-                      className="text-xs px-3 py-1 border border-dashed border-[#D4D4D8] text-[#71717A] rounded-lg hover:border-[#18181B] hover:text-[#18181B] disabled:opacity-50 transition-colors font-medium w-full"
-                    >
-                      + Add Player
-                    </button>
-                    {assignTeamId === team.id && (
-                      <div className="absolute z-20 mt-1 w-full bg-white border border-[#E4E4E7] rounded-lg shadow-lg overflow-hidden">
-                        {unassignedPlayers.map(p => (
-                          <button
-                            key={p.id}
-                            onClick={() => handleAssignPlayer(team.id, p.playerName)}
-                            disabled={loading}
-                            className="w-full text-left px-3 py-2 text-xs hover:bg-[#F4F4F5] transition-colors font-medium text-[#18181B]"
-                          >
-                            {p.playerName}
-                          </button>
-                        ))}
+                {/* Creator: Add player — dropdown of existing + text input for new */}
+                {isCreator && !isFull && (
+                  <div className="mb-2 space-y-2">
+                    {unassignedPlayers.length > 0 && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setAssignTeamId(assignTeamId === team.id ? null : team.id)}
+                          disabled={loading}
+                          className="text-xs px-3 py-1 border border-dashed border-[#D4D4D8] text-[#71717A] rounded-lg hover:border-[#18181B] hover:text-[#18181B] disabled:opacity-50 transition-colors font-medium w-full"
+                        >
+                          + Add from Roster
+                        </button>
+                        {assignTeamId === team.id && (
+                          <div className="absolute z-20 mt-1 w-full bg-white border border-[#E4E4E7] rounded-lg shadow-lg overflow-hidden">
+                            {unassignedPlayers.map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => handleAssignPlayer(team.id, p.playerName)}
+                                disabled={loading}
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-[#F4F4F5] transition-colors font-medium text-[#18181B]"
+                              >
+                                {p.playerName}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
+                    <div className="flex gap-1.5">
+                      {addNameTeamId === team.id ? (
+                        <>
+                          <input
+                            type="text"
+                            value={newTeamPlayerName}
+                            onChange={(e) => setNewTeamPlayerName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") handleAddPlayerByName(team.id); }}
+                            placeholder="Type a name..."
+                            autoFocus
+                            maxLength={50}
+                            className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-[#E4E4E7] rounded-lg outline-none focus:border-[#18181B]"
+                          />
+                          <button
+                            onClick={() => handleAddPlayerByName(team.id)}
+                            disabled={loading || !newTeamPlayerName.trim()}
+                            className="px-2.5 py-1.5 text-xs font-medium bg-[#3DD68C] text-white rounded-lg hover:bg-[#2DBF78] disabled:opacity-50 transition-colors"
+                          >
+                            Add
+                          </button>
+                          <button
+                            onClick={() => { setAddNameTeamId(null); setNewTeamPlayerName(""); }}
+                            className="px-2 py-1.5 text-xs text-[#71717A] rounded-lg hover:bg-[#F4F4F5]"
+                          >
+                            X
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => { setAddNameTeamId(team.id); setNewTeamPlayerName(""); }}
+                          disabled={loading}
+                          className="text-xs px-3 py-1 border border-dashed border-[#D4D4D8] text-[#71717A] rounded-lg hover:border-[#18181B] hover:text-[#18181B] disabled:opacity-50 transition-colors font-medium w-full"
+                        >
+                          + Add by Name
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 
                 {/* Actions */}
                 <div className="flex gap-2">
-                  {!isCreator && (
-                    <>
-                      {isMyTeam ? (
-                        <button
-                          onClick={() => handleLeaveTeam(team.id)}
-                          disabled={loading}
-                          className="text-xs px-3 py-1 bg-[#F4F4F5] text-[#71717A] rounded-lg hover:bg-[#E4E4E7] disabled:opacity-50 transition-colors font-medium"
-                        >
-                          Leave Team
-                        </button>
-                      ) : !isFull ? (
-                        <button
-                          onClick={() => handleJoinTeam(team.id)}
-                          disabled={loading}
-                          className="text-xs px-3 py-1 bg-[#18181B] text-white rounded-lg hover:bg-[#27272A] disabled:opacity-50 transition-colors font-medium"
-                        >
-                          Join Team
-                        </button>
-                      ) : null}
-                    </>
-                  )}
+                  {!isMyTeam && !isFull ? (
+                    <button
+                      onClick={() => handleJoinTeam(team.id)}
+                      disabled={loading}
+                      className="text-xs px-3 py-1 bg-[#18181B] text-white rounded-lg hover:bg-[#27272A] disabled:opacity-50 transition-colors font-medium"
+                    >
+                      Join Team
+                    </button>
+                  ) : isMyTeam ? (
+                    <button
+                      onClick={() => handleLeaveTeam(team.id)}
+                      disabled={loading}
+                      className="text-xs px-3 py-1 bg-[#F4F4F5] text-[#71717A] rounded-lg hover:bg-[#E4E4E7] disabled:opacity-50 transition-colors font-medium"
+                    >
+                      Leave Team
+                    </button>
+                  ) : null}
                   {isCreator && (
                     <button
                       onClick={() => handleDeleteTeam(team.id)}

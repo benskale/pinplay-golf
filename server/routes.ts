@@ -964,9 +964,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tournament = await storage.getTournament(req.params.id);
       if (!tournament) return res.status(404).json({ message: "Tournament not found" });
 
-      // Must be registered for the tournament
+      // Must be registered for the tournament — auto-register if creator
       const players = await storage.getTournamentPlayers(req.params.id);
-      const playerRecord = players.find(p => p.userId === user.id);
+      let playerRecord = players.find(p => p.userId === user.id);
+      if (!playerRecord && tournament.creatorId === user.id) {
+        await storage.addTournamentPlayer(req.params.id, user.name, user.id);
+        playerRecord = (await storage.getTournamentPlayers(req.params.id)).find(p => p.userId === user.id) || undefined;
+      }
       if (!playerRecord) {
         return res.status(400).json({ message: "You must be registered for this tournament to join a team" });
       }
@@ -1036,6 +1040,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const { playerName } = req.body;
       if (!playerName) return res.status(400).json({ message: "playerName is required" });
+
+      // Auto-register the player if they don't exist yet
+      const existing = await storage.getTournamentPlayers(req.params.id);
+      const found = existing.find(p => p.playerName === playerName);
+      if (!found) {
+        // Check max players
+        if (tournament.maxPlayers && existing.length >= tournament.maxPlayers) {
+          return res.status(400).json({ message: "Tournament is full" });
+        }
+        await storage.addTournamentPlayer(req.params.id, playerName);
+      }
+
+      // Check team size limit
+      const teamSize = (tournament.settings as any)?.teamSize || 4;
+      const teams = await storage.getTournamentTeams(req.params.id);
+      const targetTeam = teams.find(t => t.id === parseInt(req.params.teamId));
+      if (!targetTeam) return res.status(404).json({ message: "Team not found" });
+      if (targetTeam.memberCount >= teamSize) {
+        return res.status(400).json({ message: `Team is full (max ${teamSize})` });
+      }
 
       await storage.assignPlayerToTeam(req.params.id, playerName, parseInt(req.params.teamId));
 
