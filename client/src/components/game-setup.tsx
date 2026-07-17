@@ -82,8 +82,8 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
   const [parsedGameConfig, setParsedGameConfig] = useState<any>(null);
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [clarifyQuestions, setClarifyQuestions] = useState<string[]>([]);
-  const [clarifyAnswers, setClarifyAnswers] = useState<Record<number, string>>({});
+  const [clarifyQuestions, setClarifyQuestions] = useState<{ id: string; question: string; options?: string[] }[]>([]);
+  const [clarifyAnswers, setClarifyAnswers] = useState<Record<string, string>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -375,20 +375,13 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
         playerCount,
         answers: Object.keys(clarifyAnswers).length > 0 ? clarifyAnswers : undefined,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        setParseError(err.message || "Failed to parse format");
-        setParsedGameConfig(null);
-        setClarifyQuestions([]);
+      const data = await res.json();
+      if (data.mode === "clarify" && data.questions?.length > 0) {
+        setClarifyQuestions(data.questions);
+        setClarifyAnswers({});
       } else {
-        const data = await res.json();
-        if (data.mode === "clarify" && data.questions?.length > 0) {
-          setClarifyQuestions(data.questions);
-          setClarifyAnswers({});
-        } else {
-          setParsedGameConfig(data.config);
-          setClarifyQuestions([]);
-        }
+        setParsedGameConfig(data.config);
+        setClarifyQuestions([]);
       }
     } catch (e: any) {
       setParseError(e?.message || "Network error");
@@ -413,7 +406,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
       customizable: false,
     };
     setSelectedGame(customGame);
-    setGameSettings({ customGameConfig: parsedGameConfig });
+    setGameSettings(prev => ({ ...prev, customGameConfig: parsedGameConfig }));
     setUseHandicap(!!parsedGameConfig.needsHandicap);
     // Pre-select any mini-games the LLM included in the config
     if (parsedGameConfig.miniGames?.length > 0) {
@@ -766,21 +759,39 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
             {clarifyQuestions.length > 0 && (
               <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 space-y-3">
                 <p className="text-[0.8125rem] font-semibold text-amber-800 dark:text-amber-200">A few questions to get this right:</p>
-                {clarifyQuestions.map((q: string, i: number) => (
-                  <div key={i} className="space-y-1.5">
-                    <label className="text-[0.8125rem] text-amber-700 dark:text-amber-300 font-medium">{q}</label>
-                    <input
-                      type="text"
-                      className="w-full p-2.5 bg-white dark:bg-gray-800 rounded-lg border border-amber-200 dark:border-amber-700 text-sm text-gray-900 dark:text-gray-50 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      placeholder="Your answer..."
-                      value={clarifyAnswers[i] || ""}
-                      onChange={(e) => setClarifyAnswers(prev => ({ ...prev, [i]: e.target.value }))}
-                    />
+                {clarifyQuestions.map((q) => (
+                  <div key={q.id} className="space-y-1.5">
+                    <label className="text-[0.8125rem] text-amber-700 dark:text-amber-300 font-medium">{q.question}</label>
+                    {q.options && q.options.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {q.options.map((opt) => (
+                          <button
+                            key={opt}
+                            className={`px-3 py-1.5 rounded-lg text-[0.8125rem] font-medium transition-all active:scale-95 ${
+                              clarifyAnswers[q.id] === opt
+                                ? "bg-amber-600 text-white"
+                                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-amber-200 dark:border-amber-700"
+                            }`}
+                            onClick={() => setClarifyAnswers(prev => ({ ...prev, [q.id]: opt }))}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        className="w-full p-2.5 bg-white dark:bg-gray-800 rounded-lg border border-amber-200 dark:border-amber-700 text-sm text-gray-900 dark:text-gray-50 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        placeholder="Your answer..."
+                        value={clarifyAnswers[q.id] || ""}
+                        onChange={(e) => setClarifyAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                      />
+                    )}
                   </div>
                 ))}
                 <button
                   className="w-full py-2.5 bg-amber-600 text-white font-semibold rounded-xl text-sm transition-all hover:bg-amber-700 active:scale-[0.98] disabled:opacity-50"
-                  disabled={parsing || clarifyQuestions.some((_, i) => !clarifyAnswers[i]?.trim())}
+                  disabled={parsing || clarifyQuestions.some(q => !clarifyAnswers[q.id]?.trim())}
                   onClick={handleParseCustomFormat}
                 >
                   {parsing ? "Creating..." : "Submit Answers"}
