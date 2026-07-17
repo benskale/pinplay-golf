@@ -239,6 +239,19 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
     description: "One rotating Banker plays three individual matches simultaneously. Win/loss against the Banker.",
     isTeamGame: false, needsHandicap: false, carryover: false,
   },
+  // ── MULTI-TEAM GAMES (6+ players) ─────────────────────────────────
+  team_best_ball: {
+    id: "team_best_ball", name: "Team Best Ball", playerCounts: [5],
+    description: "Multi-team best ball. Best net score per team counts. Lowest team score wins each hole.",
+    detailedDescription: "For groups of 6 or more. Split into 2-5 teams. Everyone plays their own ball. The best (lowest) net score from each team counts toward the team total. Lowest team score wins the hole. Handicap strokes apply per player.",
+    isTeamGame: true, needsHandicap: true, carryover: false,
+  },
+  team_scramble: {
+    id: "team_scramble", name: "Team Scramble", playerCounts: [5],
+    description: "Multi-team scramble. Best shot from each team counts. One team score per hole.",
+    detailedDescription: "For groups of 6 or more. Split into 2-5 teams. Everyone tees off, team picks the best shot, all play from there. Repeat until holed. Enter one team score per hole. Lowest team score wins.",
+    isTeamGame: true, needsHandicap: false, carryover: false,
+  },
 };
 
 export function getGamesForPlayerCount(count: number): GameDef[] {
@@ -250,7 +263,7 @@ export function getGamesForPlayerCount(count: number): GameDef[] {
 }
 
 export function isLowerBetter(gameType: string): boolean {
-  return ["stroke_play", "alternate_shot", "alternate_shot_4", "scramble", "shamble"].includes(gameType);
+  return ["stroke_play", "alternate_shot", "alternate_shot_4", "scramble", "shamble", "team_scramble"].includes(gameType);
 }
 
 // ─── Scoring Logic ────────────────────────────────────────────────────────────
@@ -674,6 +687,51 @@ export function calcHoleResult(
       return { pointDeltas: deltas, result, metadata: {} };
     }
 
+    // ── MULTI-TEAM BEST BALL (3-8 teams, 6+ players) ─────────────────
+    case "team_best_ball": {
+      const teamList = teams.length >= 2 ? teams : [players.slice(0, Math.ceil(players.length / 2)), players.slice(Math.ceil(players.length / 2))];
+      const teamBests = teamList.map(team => ({
+        team,
+        best: Math.min(...team.map(p => strokes[p] || 99)),
+      }));
+      const sorted = [...teamBests].sort((a, b) => a.best - b.best);
+      const winningBest = sorted[0].best;
+      const tied = sorted.filter(t => t.best === winningBest);
+      const fmt = (d: number) => d === 0 ? "E" : d > 0 ? `+${d}` : `${d}`;
+      if (tied.length > 1) {
+        const parts = teamBests.map(t => `${t.team.map(p => p.split(" ")[0]).join("+")} ${t.best}(${fmt(t.best - par)})`);
+        return { pointDeltas: deltas, result: `Tied at ${winningBest} — ${parts.join("  ·  ")}`, metadata: {} };
+      }
+      const winner = sorted[0];
+      winner.team.forEach(p => { deltas[p] = 1; });
+      const parts = teamBests.map(t => `${t.team.map(p => p.split(" ")[0]).join("+")} ${t.best}(${fmt(t.best - par)})`);
+      return { pointDeltas: deltas, result: `${winner.team.map(p => p.split(" ")[0]).join("+")} wins — ${parts.join("  ·  ")}`, metadata: {} };
+    }
+
+    // ── MULTI-TEAM SCRAMBLE (3-8 teams, 6+ players) ──────────────────
+    case "team_scramble": {
+      const teamList = teams.length >= 2 ? teams : [players.slice(0, Math.ceil(players.length / 2)), players.slice(Math.ceil(players.length / 2))];
+      const teamScores = teamList.map(team => ({
+        team,
+        score: strokes[team[0]] || 0,
+      }));
+      const sorted = [...teamScores].sort((a, b) => a.score - b.score);
+      const winningScore = sorted[0].score;
+      const tied = sorted.filter(t => t.score === winningScore);
+      const fmt = (d: number) => d === 0 ? "E" : d > 0 ? `+${d}` : `${d}`;
+      teamList.forEach(team => {
+        const teamScore = strokes[team[0]] || 0;
+        team.forEach(p => { deltas[p] = teamScore; });
+      });
+      if (tied.length > 1) {
+        const parts = teamScores.map(t => `${t.team.map(p => p.split(" ")[0]).join("+")} ${t.score}(${fmt(t.score - par)})`);
+        return { pointDeltas: deltas, result: `Tied at ${winningScore} — ${parts.join("  ·  ")}`, metadata: {} };
+      }
+      const winner = sorted[0];
+      const parts = teamScores.map(t => `${t.team.map(p => p.split(" ")[0]).join("+")} ${t.score}(${fmt(t.score - par)})`);
+      return { pointDeltas: deltas, result: `${winner.team.map(p => p.split(" ")[0]).join("+")} wins — ${parts.join("  ·  ")}`, metadata: {} };
+    }
+
     // ── VEGAS (2v2) ──────────────────────────────────────────────────
     case "vegas": {
       const [teamA, teamB] = teams.length === 2 ? teams : [[players[0], players[1]], [players[2], players[3]]];
@@ -843,6 +901,11 @@ export function getLeaderboard(game: Game): LeaderboardEntry[] {
       else displayScore = `${Math.abs(diff)} dn`;
     } else if (["best_ball_4", "nassau_4"].includes(gameType)) {
       displayScore = `${raw} holes`;
+    } else if (["team_best_ball"].includes(gameType)) {
+      displayScore = `${raw} hole${raw !== 1 ? "s" : ""}`;
+    } else if (["team_scramble"].includes(gameType)) {
+      const diff = raw - (game.pars.slice(0, holesPlayed).reduce((a, b) => a + b, 0));
+      displayScore = holesPlayed === 0 ? "E" : diff === 0 ? "E" : diff > 0 ? `+${diff}` : `${diff}`;
     } else if (["skins", "skins_3", "skins_4"].includes(gameType)) {
       displayScore = `${raw} skin${raw !== 1 ? "s" : ""}`;
     } else if (["hammer", "banker", "dots_junk", "nine_point"].includes(gameType)) {
@@ -885,6 +948,30 @@ export function getGameStatus(game: Game): string {
     const leader = scoreA > scoreB ? teamA : teamB;
     const up = Math.abs(scoreA - scoreB);
     return `${leader.map(p => p.split(" ")[0]).join("+")} ${up} UP · ${holesLeft} to play`;
+  }
+
+  if (gameType === "team_best_ball") {
+    const teamList = teams.length >= 2 ? teams : [players.slice(0, Math.ceil(players.length / 2)), players.slice(Math.ceil(players.length / 2))];
+    const teamTotals = teamList.map(team => ({
+      name: team.map(p => p.split(" ")[0]).join("+"),
+      holes: team.reduce((s, p) => s + (totalScores[p] || 0), 0),
+    }));
+    const sorted = [...teamTotals].sort((a, b) => b.holes - a.holes);
+    const leader = sorted[0];
+    const second = sorted[1];
+    if (leader.holes === second.holes) return `Tied at ${leader.holes} · ${holesLeft} to play`;
+    return `${leader.name} ${leader.holes - second.holes} UP · ${holesLeft} to play`;
+  }
+
+  if (gameType === "team_scramble") {
+    const teamList = teams.length >= 2 ? teams : [players.slice(0, Math.ceil(players.length / 2)), players.slice(Math.ceil(players.length / 2))];
+    const teamTotals = teamList.map(team => ({
+      name: team.map(p => p.split(" ")[0]).join("+"),
+      score: (totalScores[team[0]] || 0),
+    }));
+    const sorted = [...teamTotals].sort((a, b) => a.score - b.score);
+    const leader = sorted[0];
+    return `${leader.name} ${leader.score} strokes · ${holesLeft} to play`;
   }
 
   if (["skins", "skins_3", "skins_4"].includes(gameType)) {

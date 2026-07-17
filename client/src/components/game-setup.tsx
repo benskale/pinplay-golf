@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { getGamesForPlayerCount, getMiniGamesForSetup, isLowerBetter, type GameDef, type MiniGameDef } from "@/lib/game-logic";
 import { trackGame } from "@/lib/game-recovery";
+import TeamSetup from "@/components/team-setup";
 
 interface GameSetupProps {
   onGameCreated: (gameId: string) => void;
@@ -74,9 +76,11 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
   const [expandedGameInfo, setExpandedGameInfo] = useState<string | null>(null);
   const [gameSettings, setGameSettings] = useState<Record<string, any>>({});
   const [useHandicap, setUseHandicap] = useState(false);
+  const [multiTeamNames, setMultiTeamNames] = useState<string[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
 
   // Notify parent when step changes (so home page can hide sections during active setup)
   useEffect(() => {
@@ -404,13 +408,22 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
     // Build teams
     let finalTeams: string[][] = [];
     if (selectedGame?.isTeamGame) {
-      const teamA = finalPlayers.filter((p, i) => teamAssignment[`player_${players.indexOf(p)}`] === "A" || teamAssignment[`player_${i}`] === "A");
-      const teamB = finalPlayers.filter((p, i) => !teamA.includes(p));
-      // Fallback: first half vs second half
-      if (teamA.length === 0 || teamB.length === 0) {
-        finalTeams = [finalPlayers.slice(0, 2), finalPlayers.slice(2)];
+      if (["team_best_ball", "team_scramble"].includes(selectedGame.id)) {
+        // Multi-team games: use TeamSetup output
+        finalTeams = teams.filter(t => t.length > 0);
+        if (finalTeams.length < 2) {
+          toast({ title: "Assign teams", description: "Set up at least 2 teams before starting", variant: "destructive" });
+          return;
+        }
       } else {
-        finalTeams = [teamA, teamB];
+        const teamA = finalPlayers.filter((p, i) => teamAssignment[`player_${players.indexOf(p)}`] === "A" || teamAssignment[`player_${i}`] === "A");
+        const teamB = finalPlayers.filter((p, i) => !teamA.includes(p));
+        // Fallback: first half vs second half
+        if (teamA.length === 0 || teamB.length === 0) {
+          finalTeams = [finalPlayers.slice(0, 2), finalPlayers.slice(2)];
+        } else {
+          finalTeams = [teamA, teamB];
+        }
       }
     }
 
@@ -427,7 +440,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
       pars,
       strokeIndexes: useHandicap ? strokeIndexes : Array.from({ length: 18 }, (_, i) => i + 1),
       miniGames: selectedMiniGames,
-      gameSettings: { ...gameSettings, useHandicap },
+      gameSettings: { ...gameSettings, useHandicap, ...(multiTeamNames.length > 0 ? { teamNames: multiTeamNames } : {}) },
     });
   };
 
@@ -537,8 +550,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                   className="w-full py-3 bg-secondary-500 text-white rounded-xl font-semibold text-sm active:scale-[0.98]"
                   onClick={() => {
                     setShowGroupPrompt(false);
-                    toast({ title: "Tournament mode coming soon", description: "Group tournaments are being built. Using regular round for now." });
-                    handleConfirmLargeGroup(customPlayerCount);
+                    setLocation("/tournament/create");
                   }}
                 >
                   Set Up Group Tournament
@@ -688,6 +700,28 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
             {(!gameSettings.pointValue || gameSettings.pointValue === 0) && (
               <p className="text-[0.6875rem] text-muted-foreground mt-2">Points only, no money. Set a value to track winnings.</p>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Multi-team setup for team_best_ball / team_scramble */}
+      {selectedGame && ["team_best_ball", "team_scramble"].includes(selectedGame.id) && (
+        <Card className="border-primary-200 dark:border-primary-800">
+          <CardContent className="p-3.5 space-y-3">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary-500" />
+              <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">
+                {selectedGame.id === "team_scramble" ? "Scramble Teams" : "Best Ball Teams"}
+              </h3>
+            </div>
+            <TeamSetup
+              players={players.slice(0, playerCount).filter(p => p.trim() !== "")}
+              handicaps={useHandicap ? handicaps : undefined}
+              onTeamsChange={(newTeams, newNames) => {
+                setTeams(newTeams);
+                setMultiTeamNames(newNames);
+              }}
+            />
           </CardContent>
         </Card>
       )}
@@ -917,8 +951,8 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                         </div>
                       )}
                     </div>
-                    {/* Team toggle for team games */}
-                    {selectedGame?.isTeamGame && (
+                    {/* Team toggle for team games (not multi-team games) */}
+                    {selectedGame?.isTeamGame && !["team_best_ball", "team_scramble"].includes(selectedGame.id) && (
                       <button
                         className={`px-3 py-1.5 rounded-lg text-sm font-bold border-2 transition-colors ${
                           (teamAssignment[`player_${index}`] || (index < playerCount / 2 ? "A" : "B")) === "A"
