@@ -78,6 +78,10 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
   const [gameSettings, setGameSettings] = useState<Record<string, any>>({});
   const [useHandicap, setUseHandicap] = useState(false);
   const [multiTeamNames, setMultiTeamNames] = useState<string[]>([]);
+  const [customFormatText, setCustomFormatText] = useState("");
+  const [parsedGameConfig, setParsedGameConfig] = useState<any>(null);
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -357,6 +361,51 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
     setStep("game");
   };
 
+  // ── Custom format parsing ──
+  const handleParseCustomFormat = async () => {
+    if (!customFormatText.trim()) return;
+    setParsing(true);
+    setParseError(null);
+    try {
+      const res = await apiRequest("POST", "/api/game-config/parse", {
+        description: customFormatText.trim(),
+        playerCount,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setParseError(err.message || "Failed to parse format");
+        setParsedGameConfig(null);
+      } else {
+        const data = await res.json();
+        setParsedGameConfig(data.config);
+      }
+    } catch (e: any) {
+      setParseError(e?.message || "Network error");
+      setParsedGameConfig(null);
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const handleStartCustomGame = () => {
+    if (!parsedGameConfig) return;
+    // Create a pseudo GameDef from the parsed config
+    const customGame: GameDef = {
+      id: parsedGameConfig.id || "custom",
+      name: parsedGameConfig.name || "Custom Game",
+      description: parsedGameConfig.description || "Custom format",
+      playerCounts: [playerCount],
+      isTeamGame: parsedGameConfig.teamStructure?.type === "teams",
+      needsHandicap: !!parsedGameConfig.needsHandicap,
+      carryover: !!parsedGameConfig.carryover,
+      customizable: false,
+    };
+    setSelectedGame(customGame);
+    setGameSettings({ customGameConfig: parsedGameConfig });
+    setUseHandicap(!!parsedGameConfig.needsHandicap);
+    setStep("players");
+  };
+
   const handleSelectGame = (game: GameDef) => {
     setSelectedGame(game);
     setGameSettings({});
@@ -431,12 +480,16 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
     const finalHandicaps: Record<string, number> = {};
     finalPlayers.forEach(p => { finalHandicaps[p] = handicaps[p] || 0; });
 
-    // ── Generate GameConfig from preset ──
-    const gameConfig = presetToConfig({
-      gameType: selectedGame?.id || "wolf",
-      playerNames: finalPlayers,
-      teams: finalTeams,
-    });
+    // ── Generate GameConfig ──
+    // For custom LLM-parsed configs, use the parsed config directly
+    // For preset games, generate config via presetToConfig()
+    const gameConfig = gameSettings.customGameConfig
+      ? gameSettings.customGameConfig
+      : presetToConfig({
+          gameType: selectedGame?.id || "wolf",
+          playerNames: finalPlayers,
+          teams: finalTeams,
+        });
 
     createGameMutation.mutate({
       gameType: selectedGame?.id || "wolf",
@@ -642,6 +695,105 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
             )}
           </div>
         ))}
+
+        {/* ── Custom Format (LLM Parser) ── */}
+        <div className="pt-4">
+          <button
+            className="w-full flex items-center justify-between p-4 bg-secondary-50 dark:bg-gray-800/50 rounded-xl text-left transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98]"
+            onClick={() => {
+              const el = document.getElementById("custom-format-section");
+              el?.classList.toggle("hidden");
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center flex-shrink-0">
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900 dark:text-gray-50 text-[0.9375rem]">Custom Format</p>
+                <p className="text-[0.8125rem] text-muted-foreground mt-0.5 leading-snug">Describe any game in your own words</p>
+              </div>
+            </div>
+            <ChevronDown className="w-4 h-4 text-gray-400" />
+          </button>
+
+          <div id="custom-format-section" className="hidden mt-3 space-y-3">
+            <textarea
+              className="w-full p-3 bg-card rounded-xl border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-50 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+              rows={4}
+              placeholder={"e.g. 3 five-man teams, 2 best gross + 1 best net, $20 team match, skins $2/hole + $2/birdie"}
+              value={customFormatText}
+              onChange={(e) => {
+                setCustomFormatText(e.target.value);
+                setParsedGameConfig(null);
+                setParseError(null);
+              }}
+            />
+
+            <button
+              className="w-full py-2.5 bg-primary-600 text-white font-semibold rounded-xl text-sm transition-all hover:bg-primary-700 active:scale-[0.98] disabled:opacity-50"
+              disabled={!customFormatText.trim() || parsing}
+              onClick={handleParseCustomFormat}
+            >
+              {parsing ? "Parsing..." : "Parse Format"}
+            </button>
+
+            {parseError && (
+              <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                <p className="text-[0.8125rem] text-red-600 dark:text-red-400">{parseError}</p>
+              </div>
+            )}
+
+            {parsedGameConfig && (
+              <div className="p-4 bg-card rounded-xl border border-green-200 dark:border-green-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-gray-900 dark:text-gray-50 text-[0.9375rem]">{parsedGameConfig.name}</p>
+                  <span className="text-[0.6875rem] font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full">Parsed</span>
+                </div>
+                {parsedGameConfig.description && (
+                  <p className="text-[0.8125rem] text-muted-foreground leading-snug">{parsedGameConfig.description}</p>
+                )}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {parsedGameConfig.scoring?.format && (
+                    <span className="text-[0.6875rem] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 px-2 py-0.5 rounded-full border border-blue-100 dark:border-blue-800 capitalize">{parsedGameConfig.scoring.format.replace(/_/g, " ")}</span>
+                  )}
+                  {parsedGameConfig.teamStructure?.type === "teams" && (
+                    <span className="text-[0.6875rem] font-medium bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 px-2 py-0.5 rounded-full border border-purple-100 dark:border-purple-800">Teams</span>
+                  )}
+                  {parsedGameConfig.needsHandicap && (
+                    <span className="text-[0.6875rem] font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 px-2 py-0.5 rounded-full border border-amber-100 dark:border-amber-800">Handicap</span>
+                  )}
+                </div>
+                {parsedGameConfig.betPools?.length > 0 && (
+                  <div className="pt-1.5 space-y-1">
+                    {parsedGameConfig.betPools.map((pool: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between text-[0.8125rem]">
+                        <span className="text-gray-600 dark:text-gray-400">{pool.name}</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-50">${pool.value}{pool.valueUnit === "per_hole" ? "/hole" : pool.valueUnit === "per_round" ? "/round" : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {parsedGameConfig.miniGames?.length > 0 && (
+                  <div className="pt-1.5 space-y-1">
+                    {parsedGameConfig.miniGames.map((mg: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between text-[0.8125rem]">
+                        <span className="text-gray-600 dark:text-gray-400">{mg.name}</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-50">${mg.value}/{mg.valueUnit.replace("per_", "")}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  className="w-full mt-2 py-2.5 bg-green-600 text-white font-semibold rounded-xl text-sm transition-all hover:bg-green-700 active:scale-[0.98]"
+                  onClick={handleStartCustomGame}
+                >
+                  Use This Format
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     );
   }

@@ -8,6 +8,7 @@ import type { Game } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import * as schema from "@shared/schema";
+import { parseGameConfig } from "./game-config-parser";
 
 const gameConnections = new Map<string, Set<WebSocket>>();
 const tournamentConnections = new Map<string, Set<WebSocket>>();
@@ -1315,6 +1316,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Delete tournament round error:", error);
       res.status(500).json({ message: "Failed to delete tournament round" });
+    }
+  });
+
+  // ── Game Config Parser (LLM) ────────────────────────────────────────────────
+
+  // Parse a natural language game format description into a GameConfig
+  app.post("/api/game-config/parse", async (req, res) => {
+    try {
+      const { description, playerCount } = req.body;
+
+      if (!description || typeof description !== "string") {
+        return res.status(400).json({ message: "description is required" });
+      }
+      if (!playerCount || typeof playerCount !== "number" || playerCount < 2) {
+        return res.status(400).json({ message: "playerCount must be at least 2" });
+      }
+
+      const result = await parseGameConfig(description.trim(), playerCount);
+
+      if (result.error || !result.config) {
+        return res.status(422).json({
+          message: result.error || "Failed to parse game config",
+          raw: result.raw,
+        });
+      }
+
+      res.json({ config: result.config });
+    } catch (error: any) {
+      console.error("Game config parse error:", error);
+      res.status(500).json({ message: error?.message || "Failed to parse game config" });
     }
   });
 
