@@ -8,7 +8,7 @@ import type { Game } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import * as schema from "@shared/schema";
-import { parseGameConfig, parseGameConfigWithAnswers } from "./game-config-parser";
+import { parseGameConfig, parseGameConfigWithAnswers, PRESET_CATALOG } from "./game-config-parser";
 
 const gameConnections = new Map<string, Set<WebSocket>>();
 const tournamentConnections = new Map<string, Set<WebSocket>>();
@@ -1327,7 +1327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // a second request with them.
   app.post("/api/game-config/parse", async (req, res) => {
     try {
-      const { description, playerCount, answers } = req.body;
+      const { description, playerCount, answers, presetId } = req.body;
 
       if (!description || typeof description !== "string") {
         return res.status(400).json({ message: "description is required" });
@@ -1336,6 +1336,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "playerCount must be at least 2" });
       }
 
+      // Fetch global templates for LLM matching context
+      const globalTemplates = await storage.getGlobalGameTemplates();
+      const templateInfos = globalTemplates.map(t => ({
+        configId: t.configId,
+        name: t.name,
+        description: t.description,
+      }));
+
       // If answers are provided, this is a follow-up call — always generates
       let result;
       if (answers && typeof answers === "object" && Object.keys(answers).length > 0) {
@@ -1343,15 +1351,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description.trim(),
           playerCount,
           answers as Record<string, string>,
+          presetId,
+          templateInfos,
         );
       } else {
-        result = await parseGameConfig(description.trim(), playerCount);
+        result = await parseGameConfig(description.trim(), playerCount, templateInfos);
       }
 
-      // Clarification mode — return questions for the user to answer
+      // Preset mode (Tier 1) — exact preset match
+      if (result.mode === "preset" && result.presetId) {
+        const preset = PRESET_CATALOG.find(p => p.id === result.presetId);
+        return res.json({
+          mode: "preset",
+          presetId: result.presetId,
+          presetName: preset?.name || result.presetId,
+          presetDescription: preset?.description || "",
+        });
+      }
+
+      // Clarification mode (Tier 2) — return questions + presetId for the frontend
       if (result.mode === "clarify" && result.questions.length > 0) {
         return res.json({
           mode: "clarify",
+          presetId: result.presetId,
           questions: result.questions,
         });
       }
@@ -1365,10 +1387,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      res.json({ mode: "generate", config: result.config });
+      // Tier 3 success — auto-save as a global template (fire-and-forget, non-blocking)
+      const configId = result.config.id;
+      const templateName = result.suggestedTemplateName || result.config.name;
+      // Check if this configId already exists in global templates
+      const existing = globalTemplates.find(t => t.configId === configId);
+      if (!existing) {
+        storage.createGlobalGameTemplate(
+          configId,
+          templateName,
+          result.config.description || null,
+          result.config,
+          undefined, // createdBy — could be req.user?.id if auth is available
+        ).catch(err => console.error("Failed to save global template:", err));
+      }
+
+      res.json({
+        mode: "generate",
+        config: result.config,
+        suggestedTemplateName: result.suggestedTemplateName,
+        isGlobalTemplate: !existing, // true if this is newly saved
+      });
     } catch (error: any) {
       console.error("Game config parse error:", error);
       res.status(500).json({ message: error?.message || "Failed to parse game config" });
+    }
+  });
+
+  // ── Global Game Templates (community-shared custom games) ─────────────────────
+
+  app.get("/api/game-templates/global", async (_req, res) => {
+    try {
+      const templates = await storage.getGlobalGameTemplates();
+      res.json(templates);
+    } catch (error: any) {
+      console.error("Error fetching global templates:", error);
+      res.status(500).json({ message: "Failed to fetch global templates" });
     }
   });
 

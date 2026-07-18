@@ -392,6 +392,19 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
     setStep("players");
   };
 
+  // Handle preset selection from custom game modal (Tier 1 — exact preset match)
+  const handlePresetSelect = (presetId: string) => {
+    const gameDef = getGamesForPlayerCount(playerCount).find(g => g.id === presetId);
+    if (gameDef) {
+      handleSelectGame(gameDef);
+    } else {
+      // Preset may not exist for this player count — fall back to custom
+      const fallbackConfig = presetToConfig({ gameType: presetId, playerNames: players.map((p, i) => p || `Player ${i + 1}`), teams: [] });
+      handleStartCustomGame(fallbackConfig);
+    }
+    setShowCustomGameModal(false);
+  };
+
   const handleSelectGame = (game: GameDef) => {
     setSelectedGame(game);
     setGameSettings({});
@@ -707,6 +720,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
             playerCount={playerCount}
             onClose={() => setShowCustomGameModal(false)}
             onConfirm={handleStartCustomGame}
+            onPresetSelect={handlePresetSelect}
           />
         )}
       </div>

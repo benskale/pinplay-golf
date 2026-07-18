@@ -231,6 +231,23 @@ export const insertGameTemplateSchema = createInsertSchema(gameTemplates).omit({
 export type InsertGameTemplate = z.infer<typeof insertGameTemplateSchema>;
 export type GameTemplate = typeof gameTemplates.$inferSelect;
 
+// ── Global Game Templates (community-shared, grow over time) ──────────────────
+// When a user creates a novel game format (Tier 3), it gets auto-saved here.
+// Future descriptions get matched against presets AND these global templates.
+
+export const globalGameTemplates = pgTable("global_game_templates", {
+  id: serial("id").primaryKey(),
+  configId: text("config_id").notNull(),         // GameConfig.id (snake_case)
+  name: text("name").notNull(),
+  description: text("description"),
+  config: jsonb("config").notNull(),              // full GameConfig JSON
+  createdBy: integer("created_by"),               // user who first created it (nullable for seed data)
+  usageCount: integer("usage_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export type GlobalGameTemplate = typeof globalGameTemplates.$inferSelect;
+
 // ── Tournament Matches (Phase 5.2: Ryder Cup & match pairings) ────────────────
 
 export const tournamentMatches = pgTable("tournament_matches", {

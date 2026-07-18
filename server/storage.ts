@@ -1,7 +1,7 @@
 import { eq, desc, and, or, ilike, sql as sqlOp, count, asc } from "drizzle-orm";
 import { db, pool } from "./db";
-import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers, tournamentTeams, tournamentRounds, gameTemplates, tournamentMatches, sideBets } from "@shared/schema";
-import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite, Tournament, InsertTournament, TournamentPlayer, InsertTournamentPlayer, LeaderboardEntry, TournamentTeam, TournamentRound, InsertTournamentRound, GameTemplate, InsertGameTemplate, TournamentMatch, InsertTournamentMatch, SideBet, InsertSideBet } from "@shared/schema";
+import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers, tournamentTeams, tournamentRounds, gameTemplates, globalGameTemplates, tournamentMatches, sideBets } from "@shared/schema";
+import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite, Tournament, InsertTournament, TournamentPlayer, InsertTournamentPlayer, LeaderboardEntry, TournamentTeam, TournamentRound, InsertTournamentRound, GameTemplate, InsertGameTemplate, TournamentMatch, InsertTournamentMatch, SideBet, InsertSideBet, GlobalGameTemplate } from "@shared/schema";
 import { generateInviteCode } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
@@ -89,6 +89,11 @@ export interface IStorage {
   getGameTemplates(userId: number): Promise<GameTemplate[]>;
   createGameTemplate(insertTemplate: InsertGameTemplate): Promise<GameTemplate>;
   deleteGameTemplate(id: number, userId: number): Promise<void>;
+
+  // Global Game Templates (community-shared custom games)
+  getGlobalGameTemplates(): Promise<GlobalGameTemplate[]>;
+  createGlobalGameTemplate(configId: string, name: string, description: string | null, config: any, createdBy?: number): Promise<GlobalGameTemplate>;
+  incrementGlobalTemplateUsage(configId: string): Promise<void>;
 
   // Tournament Matches (Phase 5.2: Ryder Cup & pairings)
   getTournamentMatches(tournamentId: string): Promise<TournamentMatch[]>;
@@ -1259,6 +1264,30 @@ export class DatabaseStorage implements IStorage {
     await db.delete(gameTemplates).where(and(eq(gameTemplates.id, id), eq(gameTemplates.userId, userId)));
   }
 
+  // ── Global Game Templates (community-shared custom games) ────────────────────
+
+  async getGlobalGameTemplates(): Promise<GlobalGameTemplate[]> {
+    return db.select().from(globalGameTemplates)
+      .orderBy(desc(globalGameTemplates.usageCount), desc(globalGameTemplates.createdAt));
+  }
+
+  async createGlobalGameTemplate(configId: string, name: string, description: string | null, config: any, createdBy?: number): Promise<GlobalGameTemplate> {
+    const [template] = await db.insert(globalGameTemplates).values({
+      configId,
+      name,
+      description,
+      config,
+      createdBy: createdBy || null,
+    }).returning();
+    return template;
+  }
+
+  async incrementGlobalTemplateUsage(configId: string): Promise<void> {
+    await db.update(globalGameTemplates)
+      .set({ usageCount: sqlOp`${globalGameTemplates.usageCount} + 1` })
+      .where(eq(globalGameTemplates.configId, configId));
+  }
+
   // ── Tournament Matches (Phase 5.2: Ryder Cup & pairings) ─────────────────────
 
   async getTournamentMatches(tournamentId: string): Promise<TournamentMatch[]> {
@@ -1698,6 +1727,13 @@ export class MemStorage implements IStorage {
     throw new Error("Not implemented in MemStorage");
   }
   async deleteGameTemplate(_id: number, _userId: number): Promise<void> {}
+
+  // Global Game Templates stubs
+  async getGlobalGameTemplates(): Promise<GlobalGameTemplate[]> { return []; }
+  async createGlobalGameTemplate(_configId: string, _name: string, _description: string | null, _config: any, _createdBy?: number): Promise<GlobalGameTemplate> {
+    throw new Error("Not implemented in MemStorage");
+  }
+  async incrementGlobalTemplateUsage(_configId: string): Promise<void> {}
 
   // Phase 5 stubs
   async getTournamentMatches(_tournamentId: string): Promise<TournamentMatch[]> { return []; }

@@ -26,15 +26,18 @@ interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  type?: "text" | "questions" | "config";
+  type?: "text" | "questions" | "config" | "preset";
   questions?: Question[];
   config?: any;
+  presetId?: string;
+  presetName?: string;
 }
 
 interface CustomGameModalProps {
   playerCount: number;
   onClose: () => void;
   onConfirm: (config: any) => void;
+  onPresetSelect?: (presetId: string) => void;
 }
 
 let msgCounter = 0;
@@ -58,6 +61,7 @@ export default function CustomGameModal({
   playerCount,
   onClose,
   onConfirm,
+  onPresetSelect,
 }: CustomGameModalProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     makeMsg(
@@ -71,6 +75,8 @@ export default function CustomGameModal({
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [originalDescription, setOriginalDescription] = useState("");
   const [configReady, setConfigReady] = useState<any>(null);
+  const [presetReady, setPresetReady] = useState<{ presetId: string; presetName: string } | null>(null);
+  const [clarifyPresetId, setClarifyPresetId] = useState<string | undefined>(undefined);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +108,7 @@ export default function CustomGameModal({
         const res = await apiRequest("POST", "/api/game-config/parse", {
           description: description.trim(),
           playerCount,
+          presetId: collectedAnswers ? clarifyPresetId : undefined,
           answers:
             collectedAnswers && Object.keys(collectedAnswers).length > 0
               ? collectedAnswers
@@ -121,7 +128,17 @@ export default function CustomGameModal({
           return;
         }
 
-        if (data.mode === "clarify" && data.questions?.length > 0) {
+        if (data.mode === "preset" && data.presetId) {
+          // Tier 1 — exact preset match
+          setPresetReady({ presetId: data.presetId, presetName: data.presetName || data.presetId });
+          setConfigReady(null);
+          setMessages((prev) => [
+            ...prev,
+            makeMsg("assistant", `This matches our ${data.presetName || data.presetId} preset perfectly!\n\n${data.presetDescription || ""}`, { type: "preset", presetId: data.presetId, presetName: data.presetName }),
+          ]);
+        } else if (data.mode === "clarify" && data.questions?.length > 0) {
+          // Tier 2 — preset with tweaks (store presetId for follow-up)
+          if (data.presetId) setClarifyPresetId(data.presetId);
           const qs: Question[] = data.questions.map((q: any) => ({
             id: q.id,
             question: q.question,
@@ -132,13 +149,14 @@ export default function CustomGameModal({
           setAnswers({});
 
           // Build a natural-language summary of the questions
+          const presetHint = data.presetId ? `This looks like ${data.presetName || data.presetId} with some differences.\n\n` : "";
           const questionText = qs
             .map((q, i) => `${i + 1}. ${q.question}`)
             .join("\n");
 
           setMessages((prev) => [
             ...prev,
-            makeMsg("assistant", questionText, { type: "questions", questions: qs }),
+            makeMsg("assistant", `${presetHint}${questionText}`, { type: "questions", questions: qs }),
           ]);
         } else if (data.mode === "generate" && data.config) {
           const cfg = data.config;
@@ -174,9 +192,13 @@ export default function CustomGameModal({
             ? `${summaryParts.join(" — ")}\n${details.join(" · ")}`
             : summaryParts.join(" — ");
 
+          const templateNote = data.isGlobalTemplate
+            ? "\n\n(Saved to community library for future use)"
+            : "";
+
           setMessages((prev) => [
             ...prev,
-            makeMsg("assistant", summary, { type: "config", config: cfg }),
+            makeMsg("assistant", `${summary}${templateNote}`, { type: "config", config: cfg }),
           ]);
         }
       } catch (e: any) {
@@ -291,6 +313,8 @@ export default function CustomGameModal({
 
   const handleStartOver = useCallback(() => {
     setConfigReady(null);
+    setPresetReady(null);
+    setClarifyPresetId(undefined);
     setPendingQuestions([]);
     setAnswers({});
     setOriginalDescription("");
@@ -306,9 +330,12 @@ export default function CustomGameModal({
   // ── Confirm config ─────────────────────────────────────────────────────
 
   const handleConfirm = useCallback(() => {
-    if (!configReady) return;
-    onConfirm(configReady);
-  }, [configReady, onConfirm]);
+    if (configReady) {
+      onConfirm(configReady);
+    } else if (presetReady && onPresetSelect) {
+      onPresetSelect(presetReady.presetId);
+    }
+  }, [configReady, presetReady, onConfirm, onPresetSelect]);
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -497,6 +524,39 @@ export default function CustomGameModal({
                   </div>
                 </div>
               )}
+
+              {/* Preset match card with Start Game button (Tier 1) */}
+              {msg.type === "preset" && msg.presetId && (
+                <div className="mt-2 p-4 bg-white dark:bg-gray-800 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-sm space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                      <Check className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <p className="font-semibold text-[0.8125rem] text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                      Preset Match
+                    </p>
+                  </div>
+                  <p className="text-[0.875rem] text-gray-700 dark:text-gray-300 leading-relaxed">
+                    This is a known format: <strong>{msg.presetName}</strong>
+                  </p>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      className="flex-1 px-4 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold rounded-xl text-sm transition-all hover:opacity-90 active:scale-[0.98] flex items-center justify-center gap-1.5 shadow-sm"
+                      onClick={handleConfirm}
+                    >
+                      <Check className="w-4 h-4" />
+                      Start {msg.presetName}
+                    </button>
+                    <button
+                      className="px-4 py-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 font-medium rounded-xl text-sm transition-all hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-[0.98] flex items-center gap-1.5"
+                      onClick={handleStartOver}
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Redo
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 
@@ -528,7 +588,7 @@ export default function CustomGameModal({
               type="text"
               className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-gray-800 rounded-full border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-gray-50 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
               placeholder={
-                configReady
+                configReady || presetReady
                   ? "Describe a new game to start over..."
                   : hasUnansweredQuestions
                     ? "Type your answer..."
