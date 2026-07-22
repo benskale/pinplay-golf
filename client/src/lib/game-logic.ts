@@ -87,6 +87,12 @@ export const MINI_GAME_DEFINITIONS: Record<string, MiniGameDef> = {
     defaultValue: 0, valueLabel: "bragging rights", inputType: "winner",
     holeFilter: "par3",
   },
+  greenies: {
+    id: "greenies", name: "Greenies", playerCounts: [2, 3, 4, 5], gameTypes: null,
+    description: "Closest to the pin on par 3s, must be on the green in regulation. Winner takes the amount on each par 3.",
+    defaultValue: 2, valueLabel: "per par 3", inputType: "winner",
+    holeFilter: "par3",
+  },
 };
 
 export function getMiniGamesForSetup(playerCount: number, gameType: string): MiniGameDef[] {

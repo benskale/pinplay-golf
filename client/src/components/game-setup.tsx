@@ -44,6 +44,26 @@ interface CourseDetail {
 
 const DEFAULT_PARS = Array(18).fill(4);
 
+// ── Universal Customization Constants ─────────────────────────────────────────
+
+/** Games that support pressing (double-down mechanics) */
+const PRESS_ELIGIBLE_GAMES = [
+  "wolf", "wolf_3", "match_play", "nassau", "best_ball_2", "best_ball_4", "hammer", "vegas",
+];
+
+/** Games where carryover (tied holes push forward) is relevant */
+const CARRYOVER_GAMES = [
+  "skins", "wolf", "wolf_3", "match_play", "nassau", "best_ball_2", "best_ball_4",
+];
+
+/** Games that support net/gross toggle (play with or without handicaps) */
+const NET_GROSS_TOGGLE_GAMES = [
+  "skins", "match_play", "nassau", "best_ball_2", "best_ball_4", "stableford", "quota", "nine_point",
+];
+
+/** Games with multi-segment betting (Nassau-style front/back/overall) */
+const SEGMENT_GAMES = ["nassau", "match_play"];
+
 type Step = "count" | "game" | "players" | "minigames";
 
 const PLAYER_COUNT_OPTIONS = [
@@ -78,6 +98,12 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
   const [expandedGameInfo, setExpandedGameInfo] = useState<string | null>(null);
   const [gameSettings, setGameSettings] = useState<Record<string, any>>({});
   const [useHandicap, setUseHandicap] = useState(false);
+  const [pressSettings, setPressSettings] = useState({
+    enabled: false,
+    maxPerHole: 3,
+    whoCanPress: "anyone" as "anyone" | "losing_only",
+    autoPress: false,
+  });
   const [multiTeamNames, setMultiTeamNames] = useState<string[]>([]);
   const [showCustomGameModal, setShowCustomGameModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -491,7 +517,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
         });
 
     createGameMutation.mutate({
-      gameType: selectedGame?.id || "wolf",
+      gameType: selectedGame?.id || "custom",
       players: finalPlayers,
       teams: finalTeams,
       handicaps: finalHandicaps,
@@ -500,7 +526,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
       pars,
       strokeIndexes: useHandicap ? strokeIndexes : Array.from({ length: 18 }, (_, i) => i + 1),
       miniGames: selectedMiniGames,
-      gameSettings: { ...gameSettings, useHandicap, ...(multiTeamNames.length > 0 ? { teamNames: multiTeamNames } : {}) },
+      gameSettings: { ...gameSettings, useHandicap, ...(pressSettings.enabled ? { pressRules: pressSettings } : {}), ...(multiTeamNames.length > 0 ? { teamNames: multiTeamNames } : {}) },
       gameConfig: gameConfig || {},
     });
   };
@@ -750,8 +776,13 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
         <p className="text-[0.8125rem] text-primary-800 dark:text-primary-200 leading-relaxed">{selectedGame?.description}</p>
       </div>
 
-      {/* ── STAKES — Dollar value per point ── */}
-      {!isLowerBetter(selectedGame?.id || "stroke_play") && (
+      {/* ── STAKES — Dollar value per point / per hole ── */}
+      {(() => {
+        const gameId = selectedGame?.id || "stroke_play";
+        const isStrokeBased = gameId === "stroke_play";
+        const isHoleBased = ["skins", "match_play", "nassau"].includes(gameId);
+        const label = isHoleBased ? "per hole" : isStrokeBased ? "buy-in" : "per point";
+        return (
         <Card className="border-emerald-200 dark:border-emerald-800">
           <CardContent className="p-3.5">
             <div className="flex items-center gap-2 mb-2.5">
@@ -759,7 +790,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
               <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">
                 Stakes
               </h3>
-              <span className="text-[0.6875rem] text-muted-foreground ml-auto">per point</span>
+              <span className="text-[0.6875rem] text-muted-foreground ml-auto">{label}</span>
             </div>
             <div className="flex gap-2 flex-wrap">
               {[1, 2, 5, 10, 20].map(v => (
@@ -792,7 +823,8 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
             )}
           </CardContent>
         </Card>
-      )}
+        );
+      })()}
 
       {/* Multi-team setup for team_best_ball / team_scramble */}
       {selectedGame && ["team_best_ball", "team_scramble"].includes(selectedGame.id) && (
@@ -815,6 +847,8 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
           </CardContent>
         </Card>
       )}
+
+      {/* ── Game-Specific Settings ─────────────────────────────────────────── */}
 
       {/* Wolf customization settings */}
       {selectedGame?.customizable && (selectedGame.id === "wolf" || selectedGame.id === "wolf_3") && (
@@ -908,6 +942,325 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
             </button>
           </div>
         </div>
+      )}
+
+      {/* Nassau segment values */}
+      {selectedGame?.id === "nassau" && (
+        <div className="bg-card rounded-xl shadow-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Bookmark className="w-4 h-4 text-amber-500" />
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Nassau Segments</p>
+          </div>
+          <p className="text-[0.6875rem] text-gray-400">Set independent bet amounts for each segment of the round.</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Front 9</label>
+              <div className="flex items-center gap-1">
+                <span className="text-[0.75rem] text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  defaultValue={5}
+                  min={0}
+                  className="h-9 text-sm"
+                  onChange={(e) => setGameSettings(prev => ({ ...prev, nassauFront: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Back 9</label>
+              <div className="flex items-center gap-1">
+                <span className="text-[0.75rem] text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  defaultValue={5}
+                  min={0}
+                  className="h-9 text-sm"
+                  onChange={(e) => setGameSettings(prev => ({ ...prev, nassauBack: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Overall</label>
+              <div className="flex items-center gap-1">
+                <span className="text-[0.75rem] text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  defaultValue={10}
+                  min={0}
+                  className="h-9 text-sm"
+                  onChange={(e) => setGameSettings(prev => ({ ...prev, nassauTotal: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between pt-1">
+            <div>
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Auto-press at 2-down</p>
+              <p className="text-[0.6875rem] text-gray-400">Automatically starts a new bet when a side goes 2 down</p>
+            </div>
+            <button
+              onClick={() => setGameSettings(prev => ({ ...prev, autoPress: !prev.autoPress }))}
+              className={`relative w-10 h-6 rounded-full transition-colors ${gameSettings.autoPress ? "bg-primary-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${gameSettings.autoPress ? "translate-x-4" : ""}`} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Skins settings */}
+      {selectedGame?.id === "skins" && (
+        <div className="bg-card rounded-xl shadow-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Bookmark className="w-4 h-4 text-amber-500" />
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Skins Settings</p>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Carryover ties</p>
+              <p className="text-[0.6875rem] text-gray-400">Tied holes push the pot to the next hole</p>
+            </div>
+            <button
+              onClick={() => setGameSettings(prev => ({ ...prev, carryover: prev.carryover === false ? true : !prev.carryover }))}
+              className={`relative w-10 h-6 rounded-full transition-colors ${(gameSettings.carryover ?? true) ? "bg-primary-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${(gameSettings.carryover ?? true) ? "translate-x-4" : ""}`} />
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Net skins (handicap)</p>
+              <p className="text-[0.6875rem] text-gray-400">Use net scores instead of gross</p>
+            </div>
+            <button
+              onClick={() => setGameSettings(prev => ({ ...prev, netSkins: !prev.netSkins }))}
+              className={`relative w-10 h-6 rounded-full transition-colors ${gameSettings.netSkins ? "bg-primary-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${gameSettings.netSkins ? "translate-x-4" : ""}`} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Stableford / Quota scoring table */}
+      {(selectedGame?.id === "stableford" || selectedGame?.id === "quota") && (
+        <div className="bg-card rounded-xl shadow-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Bookmark className="w-4 h-4 text-amber-500" />
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Point Table</p>
+          </div>
+          <p className="text-[0.6875rem] text-gray-400">Points awarded based on score relative to par. Adjust to match your group's rules.</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { key: "dblbogey", label: "Double Bogey+", default: -3 },
+              { key: "bogey", label: "Bogey", default: 1 },
+              { key: "par", label: "Par", default: 2 },
+              { key: "birdie", label: "Birdie", default: 3 },
+              { key: "eagle", label: "Eagle", default: 4 },
+              { key: "dbeagle", label: "Double Eagle+", default: 5 },
+            ].map(pt => (
+              <div key={pt.key} className="flex items-center gap-2">
+                <span className="text-xs text-gray-600 dark:text-gray-400 flex-1">{pt.label}</span>
+                <Input
+                  type="number"
+                  defaultValue={pt.default}
+                  className="w-14 h-9 text-sm text-center"
+                  onChange={(e) => setGameSettings(prev => ({
+                    ...prev,
+                    pointTable: { ...(prev.pointTable || {}), [pt.key]: parseInt(e.target.value) || pt.default },
+                  }))}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 9-Point distribution */}
+      {selectedGame?.id === "nine_point" && (
+        <div className="bg-card rounded-xl shadow-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Bookmark className="w-4 h-4 text-amber-500" />
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Points Distribution</p>
+          </div>
+          <p className="text-[0.6875rem] text-gray-400">How the 9 points per hole are split by finishing position.</p>
+          <div className="flex gap-2">
+            {[
+              { label: "5 / 3 / 1", value: "531", desc: "Standard" },
+              { label: "6 / 2 / 1", value: "621", desc: "Top-heavy" },
+              { label: "4 / 3 / 2", value: "432", desc: "Balanced" },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setGameSettings(prev => ({ ...prev, ninePointDist: opt.value }))}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  (gameSettings.ninePointDist ?? "531") === opt.value
+                    ? "bg-primary-500 text-white"
+                    : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                }`}
+              >
+                <div className="font-semibold">{opt.label}</div>
+                <div className="text-[0.625rem] opacity-70 mt-0.5">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Best Ball counting scores */}
+      {(selectedGame?.id === "best_ball_2" || selectedGame?.id === "best_ball_4") && (
+        <div className="bg-card rounded-xl shadow-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Bookmark className="w-4 h-4 text-amber-500" />
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Counting Scores</p>
+          </div>
+          <p className="text-[0.6875rem] text-gray-400">Which scores count toward your team total each hole.</p>
+          <div className="flex gap-2 flex-wrap">
+            {[
+              { label: "1 Low Ball", value: "1low" },
+              { label: "2 Low Balls", value: "2low" },
+              { label: "1 Low Net + 1 Low Gross", value: "1net1gross" },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setGameSettings(prev => ({ ...prev, countingScores: opt.value }))}
+                className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  (gameSettings.countingScores ?? "1low") === opt.value
+                    ? "bg-primary-500 text-white"
+                    : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Vegas settings */}
+      {selectedGame?.id === "vegas" && (
+        <div className="bg-card rounded-xl shadow-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Bookmark className="w-4 h-4 text-amber-500" />
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Vegas Settings</p>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Flip rule (10+ flips digits)</p>
+              <p className="text-[0.6875rem] text-gray-400">If a player shoots 10+, the digits flip (4 and 10 = 104, not 410)</p>
+            </div>
+            <button
+              onClick={() => setGameSettings(prev => ({ ...prev, vegasFlip: !prev.vegasFlip }))}
+              className={`relative w-10 h-6 rounded-full transition-colors ${gameSettings.vegasFlip ? "bg-primary-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${gameSettings.vegasFlip ? "translate-x-4" : ""}`} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Match Play / Stroke Play / Hammer / Par-Birdie: carryover toggle */}
+      {["match_play", "hammer"].includes(selectedGame?.id || "") && (
+        <div className="bg-card rounded-xl shadow-card p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Carryover</p>
+              <p className="text-[0.6875rem] text-gray-400">Tied holes carry points forward to the next</p>
+            </div>
+            <button
+              onClick={() => setGameSettings(prev => ({ ...prev, carryover: !prev.carryover }))}
+              className={`relative w-10 h-6 rounded-full transition-colors ${gameSettings.carryover ? "bg-primary-500" : "bg-gray-300 dark:bg-gray-700"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${gameSettings.carryover ? "translate-x-4" : ""}`} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Universal Pressing Rules ── */}
+      {PRESS_ELIGIBLE_GAMES.includes(selectedGame?.id || "") && (
+        <Card className="border-violet-200 dark:border-violet-800">
+          <CardContent className="p-3.5 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-violet-500" />
+              <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">
+                Pressing Rules
+              </h3>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Allow pressing</p>
+                <p className="text-[0.6875rem] text-gray-400">Double down on a hole — opponent must accept or concede</p>
+              </div>
+              <button
+                onClick={() => setPressSettings(prev => ({ ...prev, enabled: !prev.enabled }))}
+                className={`relative w-10 h-6 rounded-full transition-colors ${pressSettings.enabled ? "bg-violet-500" : "bg-gray-300 dark:bg-gray-700"}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${pressSettings.enabled ? "translate-x-4" : ""}`} />
+              </button>
+            </div>
+            {pressSettings.enabled && (
+              <>
+                <div>
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Max presses per hole</p>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 99].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => setPressSettings(prev => ({ ...prev, maxPerHole: n }))}
+                        className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          pressSettings.maxPerHole === n
+                            ? "bg-violet-500 text-white"
+                            : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                        }`}
+                      >
+                        {n === 99 ? "Unlimited" : n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Who can press</p>
+                  <div className="flex gap-2">
+                    {[
+                      { label: "Anyone", value: "anyone" },
+                      { label: "Losing side only", value: "losing_only" },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setPressSettings(prev => ({ ...prev, whoCanPress: opt.value as "anyone" | "losing_only" }))}
+                        className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          pressSettings.whoCanPress === opt.value
+                            ? "bg-violet-500 text-white"
+                            : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {SEGMENT_GAMES.includes(selectedGame?.id || "") && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Auto-press at 2-down</p>
+                      <p className="text-[0.6875rem] text-gray-400">Start a new bet automatically when a side goes 2 down</p>
+                    </div>
+                    <button
+                      onClick={() => setPressSettings(prev => ({ ...prev, autoPress: !prev.autoPress }))}
+                      className={`relative w-10 h-6 rounded-full transition-colors ${pressSettings.autoPress ? "bg-violet-500" : "bg-gray-300 dark:bg-gray-700"}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${pressSettings.autoPress ? "translate-x-4" : ""}`} />
+                    </button>
+                  </div>
+                )}
+                <p className="text-[0.6875rem] text-violet-400">
+                  Multiplier: 2x per press (1 press = 2x, 2 presses = 4x, 3 presses = 8x)
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       <div className="bg-card rounded-xl shadow-card p-5 space-y-5">
