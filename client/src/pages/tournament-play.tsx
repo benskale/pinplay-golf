@@ -127,6 +127,8 @@ export default function TournamentPlayPage() {
     }
   }, [user, tournament?.players]);
 
+  const playerNames = Array.from(selectedPlayers);
+
   // Auto-select the game type from the tournament's configured format
   useEffect(() => {
     if (tournament?.format && playerNames.length >= 2) {
@@ -134,8 +136,6 @@ export default function TournamentPlayPage() {
       if (def) setSelectedGame(def);
     }
   }, [tournament?.format, playerNames.length]);
-
-  const playerNames = Array.from(selectedPlayers);
 
   const togglePlayer = (name: string) => {
     setSelectedPlayers(prev => {
