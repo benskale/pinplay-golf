@@ -6,11 +6,39 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { GAME_DEFINITIONS, getGamesForPlayerCount, type GameDef } from "@/lib/game-logic";
+import { GAME_DEFINITIONS, type GameDef } from "@/lib/game-logic";
 import { ArrowLeft, Users, CheckCircle, ChevronRight, Loader2, Trophy } from "lucide-react";
 
 const DEFAULT_PARS = Array(18).fill(4);
 const DEFAULT_SI = Array.from({ length: 18 }, (_, i) => i + 1);
+
+const FORMAT_DISPLAY: Record<string, string> = {
+  stroke_play: "Stroke Play",
+  stableford: "Stableford",
+  match_play: "Match Play",
+  skins: "Skins",
+  best_ball: "Best Ball",
+  scramble: "Scramble",
+  ryder_cup: "Ryder Cup",
+  ringer: "Ringer",
+  net_ringer: "Net Ringer",
+  custom: "Custom Game",
+};
+
+function getGameDefForTournament(format: string, playerCount: number): GameDef | null {
+  if (format === "custom") {
+    return { id: "custom", name: "Custom Game", description: "Custom tournament format", playerCounts: [2,3,4,5], isTeamGame: false, needsHandicap: false, carryover: false } as GameDef;
+  }
+  if (GAME_DEFINITIONS[format]) return GAME_DEFINITIONS[format];
+  let gameId = format;
+  if (format === "skins") gameId = playerCount === 3 ? "skins_3" : playerCount === 4 ? "skins_4" : "skins";
+  else if (format === "best_ball") gameId = playerCount <= 2 ? "best_ball_2" : playerCount <= 4 ? "best_ball_4" : "team_best_ball";
+  else if (format === "scramble") gameId = playerCount >= 6 ? "team_scramble" : "scramble";
+  else if (format === "ryder_cup") gameId = "match_play";
+  else if (format === "ringer") gameId = "stroke_play";
+  else if (format === "net_ringer") gameId = "stableford";
+  return GAME_DEFINITIONS[gameId] || GAME_DEFINITIONS["stroke_play"] || null;
+}
 
 interface TournamentPlayer {
   id: number;
@@ -99,8 +127,15 @@ export default function TournamentPlayPage() {
     }
   }, [user, tournament?.players]);
 
+  // Auto-select the game type from the tournament's configured format
+  useEffect(() => {
+    if (tournament?.format && playerNames.length >= 2) {
+      const def = getGameDefForTournament(tournament.format, playerNames.length);
+      if (def) setSelectedGame(def);
+    }
+  }, [tournament?.format, playerNames.length]);
+
   const playerNames = Array.from(selectedPlayers);
-  const availableGames = getGamesForPlayerCount(playerNames.length);
 
   const togglePlayer = (name: string) => {
     setSelectedPlayers(prev => {
@@ -109,11 +144,11 @@ export default function TournamentPlayPage() {
       else next.add(name);
       return next;
     });
-    setSelectedGame(null);
   };
 
   const createGameMutation = useMutation({
     mutationFn: async () => {
+      const settings = tournament?.settings || {};
       const payload: Record<string, any> = {
         gameType: selectedGame!.id,
         players: playerNames,
@@ -122,8 +157,13 @@ export default function TournamentPlayPage() {
         strokeIndexes,
         handicaps: {},
         teams: [] as string[][],
-        miniGames: {} as Record<string, any>,
-        gameSettings: {} as Record<string, any>,
+        miniGames: settings.miniGames || {} as Record<string, any>,
+        gameSettings: (() => {
+          const gs: Record<string, any> = {};
+          if (settings.customGameConfigs?.[0]) gs.customConfig = settings.customGameConfigs[0];
+          if (settings.sideGames) gs.sideGames = settings.sideGames;
+          return gs;
+        })(),
       };
       // For team-format tournaments, pass teamId for team-based game launch
       if (isTeamFormat && myTeamId) {
@@ -134,7 +174,7 @@ export default function TournamentPlayPage() {
     },
     onSuccess: (game) => {
       queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
-      toast({ title: "Round started!", description: `${selectedGame?.name} with ${playerNames.length} players` });
+      toast({ title: "Round started!", description: `${FORMAT_DISPLAY[tournament?.format || ""] || selectedGame?.name || "Tournament"} with ${playerNames.length} players` });
       setLocation(`/game/${game.id}`);
     },
     onError: (error: any) => {
@@ -225,9 +265,8 @@ export default function TournamentPlayPage() {
             <button
               onClick={() => {
                 setSelectedPlayers(new Set(myTeamMembers.map(p => p.playerName)));
-                // Default to stroke_play — tournament leaderboard computes team format from individual scores
-                const strokeGame = GAME_DEFINITIONS["stroke_play"];
-                if (strokeGame) setSelectedGame(strokeGame);
+                const def = getGameDefForTournament(tournament?.format || "stroke_play", myTeamMembers.length);
+                if (def) setSelectedGame(def);
               }}
               className="w-full py-2 text-xs font-semibold rounded-lg text-white transition-colors"
               style={{ backgroundColor: myTeam.teamColor }}
@@ -323,39 +362,28 @@ export default function TournamentPlayPage() {
           </CardContent>
         </Card>
 
-        {/* Step 2: Select Game Type */}
+        {/* Step 2: Game Format (locked from tournament setup) */}
         {playerNames.length >= 2 && playerNames.length <= 5 && (
           <Card>
             <CardContent className="pt-5">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
-                  2
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Trophy className="w-5 h-5 text-primary" />
                 </div>
-                <h2 className="font-semibold text-foreground">Choose Game Type</h2>
-              </div>
-
-              <div className="space-y-2">
-                {availableGames.map((game) => (
-                  <button
-                    key={game.id}
-                    onClick={() => setSelectedGame(game)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
-                      selectedGame?.id === game.id
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/40"
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">{game.name}</p>
-                      {game.needsHandicap && (
-                        <p className="text-xs text-muted-foreground">Supports handicaps</p>
-                      )}
-                    </div>
-                    {selectedGame?.id === game.id && (
-                      <CheckCircle className="w-5 h-5 text-primary flex-shrink-0" />
-                    )}
-                  </button>
-                ))}
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Game Format</p>
+                  <p className="font-semibold text-foreground">
+                    {FORMAT_DISPLAY[tournament?.format || ""] || "Tournament Format"}
+                  </p>
+                  {tournament?.format === "custom" && tournament?.settings?.customGameConfigs?.[0]?.name ? (
+                    <p className="text-xs text-muted-foreground">{tournament.settings.customGameConfigs[0].name}</p>
+                  ) : (
+                    selectedGame?.description && (
+                      <p className="text-xs text-muted-foreground">{selectedGame.description}</p>
+                    )
+                  )}
+                </div>
+                <CheckCircle className="w-5 h-5 text-primary ml-auto flex-shrink-0" />
               </div>
             </CardContent>
           </Card>
