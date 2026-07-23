@@ -136,6 +136,32 @@ export function TournamentTeams({
   const [assignTeamId, setAssignTeamId] = useState<number | null>(null);
   const [addNameTeamId, setAddNameTeamId] = useState<number | null>(null);
   const [newTeamPlayerName, setNewTeamPlayerName] = useState("");
+  const [showAutoSplit, setShowAutoSplit] = useState(false);
+  const [splitSize, setSplitSize] = useState(teamSize || 4);
+
+  const handleAutoSplit = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/teams/auto-split`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamSize: splitSize }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast({ title: data.message });
+        setShowAutoSplit(false);
+        await loadTeams();
+        onTeamsChange?.();
+      } else {
+        const data = await res.json();
+        toast({ title: data.message || "Failed to split teams", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to split teams", variant: "destructive" });
+    }
+    setLoading(false);
+  };
 
   const handleAssignPlayer = async (teamId: number, playerName: string) => {
     setLoading(true);
@@ -261,14 +287,55 @@ export function TournamentTeams({
             Max {teamSize} players per team
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(!showCreate)}
-          disabled={loading}
-          className="px-3 py-1.5 text-sm font-medium bg-[#18181B] text-white rounded-lg hover:bg-[#27272A] disabled:opacity-50 transition-colors"
-        >
-          {showCreate ? "Cancel" : "Create Team"}
-        </button>
+        <div className="flex items-center gap-2">
+          {isCreator && (
+            <button
+              onClick={() => setShowAutoSplit(!showAutoSplit)}
+              disabled={loading}
+              className="px-3 py-1.5 text-sm font-medium border border-[#18181B] text-[#18181B] rounded-lg hover:bg-[#F4F4F5] disabled:opacity-50 transition-colors"
+            >
+              {showAutoSplit ? "Cancel" : "Auto-Split"}
+            </button>
+          )}
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            disabled={loading}
+            className="px-3 py-1.5 text-sm font-medium bg-[#18181B] text-white rounded-lg hover:bg-[#27272A] disabled:opacity-50 transition-colors"
+          >
+            {showCreate ? "Cancel" : "Create Team"}
+          </button>
+        </div>
       </div>
+
+      {/* Auto-split form */}
+      {showAutoSplit && (
+        <div className="bg-[#F4F4F5] rounded-xl p-4 space-y-3">
+          <div>
+            <p className="text-xs text-[#71717A] mb-2">Split all {players.length} players into teams of:</p>
+            <div className="flex items-center gap-2">
+              {[2, 3, 4, 5].map(size => (
+                <button
+                  key={size}
+                  onClick={() => setSplitSize(size)}
+                  className={`w-10 h-10 rounded-lg font-semibold text-sm transition-all ${splitSize === size ? "bg-[#18181B] text-white" : "bg-white border border-[#E4E4E7] text-[#71717A] hover:border-[#18181B]"}`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-[#A1A1AA] mt-1.5">
+              Creates {Math.ceil(players.filter(p => true).length / splitSize)} teams. This replaces all existing teams.
+            </p>
+          </div>
+          <button
+            onClick={handleAutoSplit}
+            disabled={loading || players.length < 2}
+            className="w-full py-2 text-sm font-medium bg-[#3DD68C] text-white rounded-lg hover:bg-[#2DBF78] disabled:opacity-50 transition-colors"
+          >
+            Split into Teams
+          </button>
+        </div>
+      )}
 
       {/* Create team form */}
       {showCreate && (

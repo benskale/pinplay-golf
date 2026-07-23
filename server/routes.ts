@@ -955,6 +955,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Auto-split players into teams (creator only)
+  app.post("/api/tournaments/:id/teams/auto-split", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.creatorId !== user.id) {
+        return res.status(403).json({ message: "Only the tournament creator can auto-split teams" });
+      }
+
+      const teamSize = parseInt(req.body.teamSize) || 4;
+      if (teamSize < 2 || teamSize > 10) {
+        return res.status(400).json({ message: "Team size must be between 2 and 10" });
+      }
+
+      const players = await storage.getTournamentPlayers(req.params.id);
+      if (players.length < 2) {
+        return res.status(400).json({ message: "Need at least 2 players to create teams" });
+      }
+
+      // Clear existing teams first
+      const existingTeams = await storage.getTournamentTeams(req.params.id);
+      for (const t of existingTeams) {
+        await storage.deleteTournamentTeam(t.id);
+      }
+
+      // Shuffle players randomly
+      const shuffled = [...players].sort(() => Math.random() - 0.5);
+      const numTeams = Math.ceil(shuffled.length / teamSize);
+      const TEAM_NAMES = ["Team Alpha", "Team Bravo", "Team Charlie", "Team Delta", "Team Echo", "Team Foxtrot", "Team Golf", "Team Hotel", "Team India", "Team Juliet", "Team Kilo", "Team Lima"];
+      const TEAM_COLORS_SPLIT = ["#E5484D", "#3DD68C", "#0090FF", "#F5680A", "#7B61FF", "#EC4899", "#14B8A6", "#6366F1", "#F97316", "#FFC107", "#8B5CF6", "#06B6D4"];
+
+      for (let i = 0; i < numTeams; i++) {
+        const teamName = TEAM_NAMES[i] || `Team ${i + 1}`;
+        const teamColor = TEAM_COLORS_SPLIT[i % TEAM_COLORS_SPLIT.length];
+        const team = await storage.createTournamentTeam(req.params.id, teamName, teamColor);
+        const slice = shuffled.slice(i * teamSize, (i + 1) * teamSize);
+        for (const p of slice) {
+          await storage.assignPlayerToTeam(req.params.id, p.playerName, team.id);
+        }
+      }
+
+      const updatedTeams = await storage.getTournamentTeams(req.params.id);
+      const updatedPlayers = await storage.getTournamentPlayers(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { teams: updatedTeams, players: updatedPlayers },
+      });
+
+      res.json({ message: `Split ${players.length} players into ${numTeams} teams`, teams: updatedTeams });
+    } catch (error) {
+      console.error("Auto-split teams error:", error);
+      res.status(500).json({ message: "Failed to auto-split teams" });
+    }
+  });
+
   // Join a team (registered players only)
   app.post("/api/tournaments/:id/teams/:teamId/join", async (req, res) => {
     try {
