@@ -24,7 +24,7 @@ import type { GameConfig } from "@shared/game-config";
 
 const ZAI_API_KEY = process.env.ZAI_API_KEY || "e48aad66dd074ec8aa95f20d0e48ddc5.xKIrjTTHEMCt7vS0";
 const ZAI_BASE_URL = process.env.ZAI_BASE_URL || "https://api.z.ai/api/paas/v4";
-const ZAI_MODEL = process.env.ZAI_MODEL || "glm-4.7-flash";
+const ZAI_MODEL = process.env.ZAI_MODEL || "glm-4.6";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -217,7 +217,12 @@ Return:
   "suggestedTemplateName": "Custom 3-Team Best Ball"
 }
 
-IMPORTANT: Always try Tier 1 first, then Tier 2, then Tier 3. Most descriptions should be Tier 1 or Tier 2. Only use Tier 3 when the format is truly novel.`;
+IMPORTANT: Be precise about tier selection.
+- Tier 1 should ONLY be used when the description EXACTLY matches a preset's format with no structural differences. If the user mentions different team counts, different scoring rules, combined formats, or anything that doesn't exist in the preset catalog, do NOT use Tier 1.
+- Tier 2 is for descriptions that are clearly based on one preset but have specific structural differences (different team count, different counting scores, added bet pools that change the game).
+- Tier 3 should be used MORE liberally than you might think. Any description that combines multiple formats, uses non-standard team structures (e.g. 3+ teams), specifies custom counting scores, or describes rules not covered by any single preset should be Tier 3.
+- When in doubt between Tier 1 and Tier 3, prefer Tier 3 (generate). It is better to generate a custom config than to force-fit a description into a preset that doesn't actually match.
+- NEVER classify as Tier 1 preset "wolf" unless the user literally says "wolf" and describes the exact Wolf format (rotating picker, go alone or pick partner, best ball vs best ball).`;
 
 const CLARIFY_RULES = `WHEN TO CLARIFY (Tier 2 questions):
 - Team format mentioned but assignment method unclear (preset vs captain pick vs rotating)
@@ -382,6 +387,7 @@ async function callLLM(
         temperature: 0.1,
         max_tokens: 4096,
         response_format: { type: "json_object" },
+        thinking: { type: "disabled" },
       }),
       signal: controller.signal,
     });
