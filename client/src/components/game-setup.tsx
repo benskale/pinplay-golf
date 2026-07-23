@@ -15,7 +15,6 @@ import { getGamesForPlayerCount, getMiniGamesForSetup, isLowerBetter, type GameD
 import { presetToConfig } from "@/lib/preset-mappings";
 import { trackGame } from "@/lib/game-recovery";
 import TeamSetup from "@/components/team-setup";
-import CustomGameModal from "@/components/custom-game-modal";
 
 interface GameSetupProps {
   onGameCreated: (gameId: string) => void;
@@ -105,7 +104,6 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
     autoPress: false,
   });
   const [multiTeamNames, setMultiTeamNames] = useState<string[]>([]);
-  const [showCustomGameModal, setShowCustomGameModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -414,7 +412,6 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
       });
       setSelectedMiniGames(prev => ({ ...preSelected, ...prev }));
     }
-    setShowCustomGameModal(false);
     setStep("players");
   };
 
@@ -428,7 +425,6 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
       const fallbackConfig = presetToConfig({ gameType: presetId, playerNames: players.map((p, i) => p || `Player ${i + 1}`), teams: [] });
       handleStartCustomGame(fallbackConfig);
     }
-    setShowCustomGameModal(false);
   };
 
   const handleSelectGame = (game: GameDef) => {
@@ -721,34 +717,6 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
           </div>
         ))}
 
-        {/* ── Custom Game (Chat Modal) ── */}
-        <div className="pt-4">
-          <button
-            className="w-full flex items-center justify-between p-4 bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-900/20 dark:to-indigo-900/20 rounded-xl text-left transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] border border-violet-100 dark:border-violet-800/50"
-            onClick={() => setShowCustomGameModal(true)}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center flex-shrink-0">
-                <Sparkles className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-900 dark:text-gray-50 text-[0.9375rem]">Custom Game</p>
-                <p className="text-[0.8125rem] text-muted-foreground mt-0.5 leading-snug">Describe any format — AI builds it with you</p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-violet-400" />
-          </button>
-        </div>
-
-        {/* Custom Game Chat Modal */}
-        {showCustomGameModal && (
-          <CustomGameModal
-            playerCount={playerCount}
-            onClose={() => setShowCustomGameModal(false)}
-            onConfirm={handleStartCustomGame}
-            onPresetSelect={handlePresetSelect}
-          />
-        )}
       </div>
     );
   }

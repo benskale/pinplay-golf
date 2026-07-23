@@ -18,8 +18,9 @@ import {
 import {
   ArrowLeft, Trophy, Loader2, Calendar, MapPin, Search,
   CheckCircle, X, Share2, Copy, Users, ChevronRight,
-  ChevronLeft, Plus, DollarSign, Trash2,
+  ChevronLeft, Plus, DollarSign, Trash2, Sparkles,
 } from "lucide-react";
+import CustomGameModal from "@/components/custom-game-modal";
 
 interface CourseResult {
   id: string;
@@ -36,6 +37,7 @@ interface RoundConfig {
   courseName: string;
   format: string;
   teamSize: number;
+  customGameConfig?: any;
 }
 
 interface SideGameConfig {
@@ -53,6 +55,7 @@ const FORMAT_LABELS: Record<string, string> = {
   ryder_cup: "Ryder Cup (Team Matches)",
   ringer: "Ringer (Multi-Round)",
   net_ringer: "Net Ringer (Multi-Round)",
+  custom: "Custom Game",
 };
 
 const FORMAT_DESCRIPTIONS: Record<string, string> = {
@@ -193,6 +196,16 @@ export default function CreateTournamentPage() {
       }
       if (Object.keys(activeSideGames).length > 0) {
         settings.sideGames = activeSideGames;
+      }
+      // Pack custom game configs per round
+      const roundConfigs: Record<number, any> = {};
+      for (let i = 0; i < rounds.length; i++) {
+        if (rounds[i].customGameConfig) {
+          roundConfigs[i] = rounds[i].customGameConfig;
+        }
+      }
+      if (Object.keys(roundConfigs).length > 0) {
+        settings.customGameConfigs = roundConfigs;
       }
 
       const res = await apiRequest("POST", "/api/tournaments", {
@@ -428,6 +441,7 @@ export default function CreateTournamentPage() {
                 round={round}
                 onUpdate={(patch) => updateRound(idx, patch)}
                 isLast={idx === rounds.length - 1}
+                playerCount={players.length || 4}
               />
             ))}
           </div>
@@ -584,11 +598,12 @@ export default function CreateTournamentPage() {
                     </span>
                     <div className="text-right">
                       <span className="text-sm font-medium text-gray-700 dark:text-gray-300 block">
-                        {FORMAT_LABELS[r.format] || r.format}
+                        {r.customGameConfig ? (r.customGameConfig.name || "Custom Game") : (FORMAT_LABELS[r.format] || r.format)}
                       </span>
                       <span className="text-xs text-gray-400">
                         {r.courseName || "Course TBD"}
-                        {TEAM_FORMATS.includes(r.format) ? ` · ${r.teamSize}v${r.teamSize}` : ""}
+                        {r.customGameConfig && r.customGameConfig.description ? ` · ${r.customGameConfig.description.slice(0, 40)}` : ""}
+                        {!r.customGameConfig && TEAM_FORMATS.includes(r.format) ? ` · ${r.teamSize}v${r.teamSize}` : ""}
                       </span>
                     </div>
                   </div>
@@ -670,16 +685,19 @@ function CourseFormatCard({
   round,
   onUpdate,
   isLast,
+  playerCount,
 }: {
   index: number;
   round: RoundConfig;
   onUpdate: (patch: Partial<RoundConfig>) => void;
   isLast: boolean;
+  playerCount: number;
 }) {
   const { toast } = useToast();
   const [courseQuery, setCourseQuery] = useState(round.courseName || "");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showCustomGameModal, setShowCustomGameModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<CourseResult | null>(
     round.courseId ? { id: round.courseId, name: round.courseName, city: "", state: "", par: 0, holes: 18 } as CourseResult : null
   );
@@ -725,6 +743,23 @@ function CourseFormatCard({
     setSelectedCourse(null);
     setCourseQuery("");
     onUpdate({ courseId: null, courseName: "" });
+  };
+
+  const handleCustomGameConfirm = (config: any) => {
+    if (!config) return;
+    onUpdate({
+      format: "custom",
+      customGameConfig: config,
+      teamSize: config.teams?.[0]?.size || round.teamSize,
+    });
+    setShowCustomGameModal(false);
+    toast({ title: "Custom game set", description: config.name || "Custom format configured" });
+  };
+
+  const handlePresetSelect = (presetId: string) => {
+    onUpdate({ format: presetId, customGameConfig: undefined });
+    setShowCustomGameModal(false);
+    toast({ title: "Format selected", description: FORMAT_LABELS[presetId] || presetId });
   };
 
   const isTeamFormat = TEAM_FORMATS.includes(round.format);
@@ -808,18 +843,69 @@ function CourseFormatCard({
         {/* Format */}
         <div>
           <Label className="text-xs font-medium text-gray-500">Format</Label>
-          <Select value={round.format} onValueChange={(v) => onUpdate({ format: v })}>
-            <SelectTrigger className="mt-1 h-9 text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(FORMAT_LABELS).map(([val, label]) => (
-                <SelectItem key={val} value={val}>{label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-gray-400 mt-1">{FORMAT_DESCRIPTIONS[round.format]}</p>
+          {round.customGameConfig ? (
+            <div className="mt-1 p-3 rounded-xl border border-violet-200 dark:border-violet-800/50 bg-violet-50 dark:bg-violet-900/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-violet-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                      {round.customGameConfig.name || "Custom Game"}
+                    </p>
+                    {round.customGameConfig.description && (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {round.customGameConfig.description.slice(0, 60)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => setShowCustomGameModal(true)}
+                    className="text-xs font-medium text-violet-600 dark:text-violet-400 hover:underline px-2"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => onUpdate({ format: "stroke_play", customGameConfig: undefined })}
+                    className="text-xs font-medium text-gray-400 hover:text-red-500 px-2"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <Select value={round.format} onValueChange={(v) => {
+                if (v === "custom") {
+                  setShowCustomGameModal(true);
+                } else {
+                  onUpdate({ format: v, customGameConfig: undefined });
+                }
+              }}>
+                <SelectTrigger className="mt-1 h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(FORMAT_LABELS).filter(([val]) => val !== "custom").map(([val, label]) => (
+                    <SelectItem key={val} value={val}>{label}</SelectItem>
+                  ))}
+                  <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+                  <SelectItem value="custom">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                      Custom Game
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-400 mt-1">{round.format === "custom" ? "Describe any format in your own words" : (FORMAT_DESCRIPTIONS[round.format] || "")}</p>
+            </>
+          )}
         </div>
+
+        {/* Note: Custom Game is selectable from the format dropdown above, not a separate button */}
 
         {/* Team size */}
         {isTeamFormat && (
@@ -841,6 +927,16 @@ function CourseFormatCard({
           </div>
         )}
       </CardContent>
+
+      {/* Custom Game Chat Modal */}
+      {showCustomGameModal && (
+        <CustomGameModal
+          playerCount={playerCount}
+          onClose={() => setShowCustomGameModal(false)}
+          onConfirm={handleCustomGameConfirm}
+          onPresetSelect={handlePresetSelect}
+        />
+      )}
     </Card>
   );
 }

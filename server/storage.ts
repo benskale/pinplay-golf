@@ -170,6 +170,7 @@ export class DatabaseStorage implements IStorage {
       active: true,
       miniGames: (insertGame as any).miniGames ?? {},
       gameSettings: (insertGame as any).gameSettings ?? {},
+      gameConfig: (insertGame as any).gameConfig ?? {},
       tournamentId: (insertGame as any).tournamentId ?? null,
     }).returning();
 
@@ -1529,6 +1530,7 @@ export class MemStorage implements IStorage {
       scores, strokes, totalScores, wolfCounts, holeHistory: [], active: true,
       miniGames: (insertGame as any).miniGames ?? {},
       gameSettings: (insertGame as any).gameSettings ?? {},
+      gameConfig: (insertGame as any).gameConfig ?? {},
       tournamentId: (insertGame as any).tournamentId ?? null,
       tournamentRoundId: (insertGame as any).tournamentRoundId ?? null,
       createdAt: now, updatedAt: now,
