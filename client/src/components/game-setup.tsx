@@ -13,8 +13,10 @@ import {
 } from "lucide-react";
 import { getGamesForPlayerCount, getMiniGamesForSetup, isLowerBetter, type GameDef, type MiniGameDef } from "@/lib/game-logic";
 import { presetToConfig } from "@/lib/preset-mappings";
+import { validateGameConfig } from "@/lib/config-validator";
 import { trackGame } from "@/lib/game-recovery";
 import TeamSetup from "@/components/team-setup";
+import CustomGameModal from "@/components/custom-game-modal";
 
 interface GameSetupProps {
   onGameCreated: (gameId: string) => void;
@@ -93,6 +95,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
   const [loadingCourse, setLoadingCourse] = useState(false);
   const [showGroupPrompt, setShowGroupPrompt] = useState(false);
   const [customPlayerCount, setCustomPlayerCount] = useState(6);
+  const [showCustomGameModal, setShowCustomGameModal] = useState(false);
   const [selectedMiniGames, setSelectedMiniGames] = useState<Record<string, { enabled: boolean; value: number }>>({});
   const [expandedGameInfo, setExpandedGameInfo] = useState<string | null>(null);
   const [gameSettings, setGameSettings] = useState<Record<string, any>>({});
@@ -387,6 +390,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
   // Modal calls this with the confirmed config — never silently builds
   const handleStartCustomGame = (config: any) => {
     if (!config) return;
+    setShowCustomGameModal(false);
     // Create a pseudo GameDef from the parsed config
     const customGame: GameDef = {
       id: config.id || "custom",
@@ -417,6 +421,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
 
   // Handle preset selection from custom game modal (Tier 1 — exact preset match)
   const handlePresetSelect = (presetId: string) => {
+    setShowCustomGameModal(false);
     const gameDef = getGamesForPlayerCount(playerCount).find(g => g.id === presetId);
     if (gameDef) {
       handleSelectGame(gameDef);
@@ -511,6 +516,28 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
           playerNames: finalPlayers,
           teams: finalTeams,
         });
+
+    // ── Validate game config before starting ──
+    if (!gameConfig) {
+      toast({
+        title: "Invalid game config",
+        description: "Could not build a valid game configuration. Try selecting a different game type.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const validation = validateGameConfig(gameConfig);
+    if (!validation.valid) {
+      if (validation.warnings.length > 0) {
+        console.warn("Game config warnings:", validation.warnings);
+      }
+      toast({
+        title: "Game config has errors",
+        description: validation.errors.join(" · "),
+        variant: "destructive",
+      });
+      return;
+    }
 
     createGameMutation.mutate({
       gameType: selectedGame?.id || "custom",
@@ -716,6 +743,33 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
             )}
           </div>
         ))}
+
+        {/* Custom Game — AI-powered format builder */}
+        <button
+          onClick={() => setShowCustomGameModal(true)}
+          className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-card hover:shadow-card-hover"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="font-semibold text-white text-[0.9375rem]">Custom Game</p>
+              <p className="text-[0.8125rem] text-violet-100 mt-0.5 leading-snug">Describe any format — AI builds it for you</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-white/80 group-hover:text-white flex-shrink-0 transition-colors" />
+        </button>
+
+        {/* Custom Game Chat Modal */}
+        {showCustomGameModal && (
+          <CustomGameModal
+            playerCount={playerCount}
+            onClose={() => setShowCustomGameModal(false)}
+            onConfirm={handleStartCustomGame}
+            onPresetSelect={handlePresetSelect}
+          />
+        )}
 
       </div>
     );
