@@ -1,18 +1,18 @@
 /**
  * Config Engine Verification Script
  *
- * Runs both the existing calcHoleResult() switch statement and the new
- * config-driven scoreHoleWithConfig() engine against the same inputs
- * for every game type, then reports any mismatches.
+ * REAL A/B comparison: runs the original legacy calcHoleResult switch
+ * (from legacy-scoring.ts) against the new config-driven engine
+ * (scoreHoleWithConfig) for every game type, then reports any mismatches.
  *
  * Run: npx tsx scripts/verify-config-scoring.ts
  */
 
-import { calcHoleResult } from "../client/src/lib/game-logic";
+import { calcHoleResultLegacy } from "../client/src/lib/legacy-scoring";
 import { scoreHoleWithConfig } from "../client/src/lib/config-scoring";
 import { presetToConfig } from "../client/src/lib/preset-mappings";
 import type { Game } from "../shared/schema";
-import type { GameConfig, HoleScoreInput } from "../shared/game-config";
+import type { HoleScoreInput } from "../shared/game-config";
 
 // ── Mock game factory ────────────────────────────────────────────────────────
 
@@ -356,9 +356,57 @@ const testCases: TestCase[] = [
     strokes: { A: 4, B: 4, C: 5, D: 3 },
     options: { tieCarryover: true },
   },
+
+  // Team best ball (multi-team)
+  {
+    name: "team_best_ball team A wins",
+    gameType: "team_best_ball", players: ["A", "B", "C", "D"], hole: 1, par: 4,
+    strokes: { A: 4, B: 5, C: 3, D: 4 },
+    options: { teams: [["A", "B"], ["C", "D"]] },
+  },
+  {
+    name: "team_best_ball tie",
+    gameType: "team_best_ball", players: ["A", "B", "C", "D"], hole: 1, par: 4,
+    strokes: { A: 4, B: 5, C: 4, D: 5 },
+    options: { teams: [["A", "B"], ["C", "D"]] },
+  },
+
+  // Team scramble (multi-team)
+  {
+    name: "team_scramble team A wins",
+    gameType: "team_scramble", players: ["A", "B", "C", "D"], hole: 1, par: 4,
+    strokes: { A: 4, B: 0, C: 5, D: 0 },
+    options: { teams: [["A", "B"], ["C", "D"]] },
+  },
+  {
+    name: "team_scramble tie",
+    gameType: "team_scramble", players: ["A", "B", "C", "D"], hole: 1, par: 4,
+    strokes: { A: 4, B: 0, C: 4, D: 0 },
+    options: { teams: [["A", "B"], ["C", "D"]] },
+  },
+
+  // Handicap tests — ensure useHandicap gate matches between engines
+  {
+    name: "match_play with handicap on",
+    gameType: "match_play", players: ["Alice", "Bob"], hole: 1, par: 4,
+    strokes: { Alice: 5, Bob: 5 },
+    options: { handicaps: { Alice: 0, Bob: 10 }, gameSettings: { useHandicap: true } },
+  },
+  {
+    name: "nassau with handicap on (low hc player wins)",
+    gameType: "nassau", players: ["Alice", "Bob"], hole: 5, par: 4,
+    strokes: { Alice: 5, Bob: 5 },
+    options: { handicaps: { Alice: 0, Bob: 10 }, gameSettings: { useHandicap: true } },
+  },
+  {
+    name: "stableford with handicap on",
+    gameType: "stableford", players: ["A", "B"], hole: 1, par: 4,
+    strokes: { A: 5, B: 5 },
+    options: { handicaps: { A: 0, B: 12 }, gameSettings: { useHandicap: true } },
+  },
 ];
 
-// ── Run comparison ───────────────────────────────────────────────────────────
+// ── Run real A/B comparison ──────────────────────────────────────────────────
 
 let pass = 0;
 let fail = 0;
@@ -366,50 +414,51 @@ const failures: string[] = [];
 
 for (const tc of testCases) {
   const game = makeGame(tc.gameType, tc.players, tc.options);
+
+  // Legacy engine (original switch statement)
+  const legacy = calcHoleResultLegacy(game, tc.hole, tc.par, tc.strokes, tc.metadata || {});
+
+  // New config engine
+  const config = presetToConfig({ gameType: tc.gameType, playerNames: tc.players, teams: tc.options?.teams });
+  if (!config) {
+    failures.push(`[SKIP] ${tc.name}: no config for gameType "${tc.gameType}"`);
+    continue;
+  }
+
   const input: HoleScoreInput = {
     hole: tc.hole,
     par: tc.par,
     strokes: tc.strokes,
     metadata: tc.metadata || {},
   };
-
-  // Existing engine
-  const existing = calcHoleResult(game, tc.hole, tc.par, tc.strokes, tc.metadata || {});
-
-  // New config engine
-  const config = presetToConfig({ gameType: tc.gameType, playerNames: tc.players });
-  if (!config) {
-    failures.push(`[SKIP] ${tc.name}: no config for gameType "${tc.gameType}"`);
-    continue;
-  }
-
   const configResult = scoreHoleWithConfig(game, config, input);
 
   // Compare
-  const deltasMatch = JSON.stringify(existing.pointDeltas) === JSON.stringify(configResult.pointDeltas);
-  const resultMatch = existing.result === configResult.result;
-  const metaMatch = JSON.stringify(existing.metadata) === JSON.stringify(configResult.metadata);
+  const deltasMatch = JSON.stringify(legacy.pointDeltas) === JSON.stringify(configResult.pointDeltas);
+  const resultMatch = legacy.result === configResult.result;
+  const metaMatch = JSON.stringify(legacy.metadata) === JSON.stringify(configResult.metadata);
 
   if (deltasMatch && resultMatch && metaMatch) {
     pass++;
   } else {
     fail++;
     const diffs: string[] = [];
-    if (!deltasMatch) diffs.push(`deltas: old=${JSON.stringify(existing.pointDeltas)} new=${JSON.stringify(configResult.pointDeltas)}`);
-    if (!resultMatch) diffs.push(`result: old="${existing.result}" new="${configResult.result}"`);
-    if (!metaMatch) diffs.push(`metadata: old=${JSON.stringify(existing.metadata)} new=${JSON.stringify(configResult.metadata)}`);
+    if (!deltasMatch) diffs.push(`deltas: legacy=${JSON.stringify(legacy.pointDeltas)} config=${JSON.stringify(configResult.pointDeltas)}`);
+    if (!resultMatch) diffs.push(`result: legacy="${legacy.result}" config="${configResult.result}"`);
+    if (!metaMatch) diffs.push(`metadata: legacy=${JSON.stringify(legacy.metadata)} config=${JSON.stringify(configResult.metadata)}`);
     failures.push(`[FAIL] ${tc.name} (${tc.gameType}): ${diffs.join(" | ")}`);
   }
 }
 
 console.log("\n========================================");
 console.log("CONFIG SCORING VERIFICATION RESULTS");
+console.log("Legacy switch vs Config engine (A/B)");
 console.log("========================================");
 console.log(`Passed: ${pass}/${pass + fail}`);
 console.log(`Failed: ${fail}/${pass + fail}`);
 
 if (failures.length > 0) {
-  console.log("\n--- Failures ---");
+  console.log("\n--- Failures / Skips ---");
   failures.forEach(f => console.log(f));
 } else {
   console.log("\nAll test cases produce identical results.");

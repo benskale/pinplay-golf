@@ -10,8 +10,8 @@
  * this engine runs in parallel and is verified to match.
  *
  * Migration plan:
- * Phase 1 (this file): Engine built, runs in parallel, verified to match
- * Phase 2: game-logic.ts routes through this engine; switch statement removed
+ * Phase 1 (DONE): Engine built, runs in parallel, verified to match
+ * Phase 2 (DONE): game-logic.ts routes through this engine; switch statement removed
  */
 
 import type { GameConfig, HoleScoreInput, HoleScoreResult } from "@shared/game-config";
@@ -77,7 +77,7 @@ export function scoreHoleWithConfig(
   const deltas: Record<string, number> = {};
   players.forEach(p => { deltas[p] = 0; });
 
-  const useHandicap = settings.useHandicap === true || config.scoring.handicapBased;
+  const useHandicap = settings.useHandicap === true;
   const strokes: Record<string, number> = {};
   players.forEach(p => {
     const gross = inputStrokes[p] || 0;
@@ -163,6 +163,18 @@ export function scoreHoleWithConfig(
 
     case "banker": {
       return scoreBanker(game, players, strokes, deltas);
+    }
+
+    // ── Multi-team games (2-5 teams, 5+ players) ────────────────────
+    // Ported verbatim from the legacy switch so the config engine is a
+    // complete, behavior-identical replacement.
+
+    case "team_best_ball": {
+      return scoreMultiTeamBestBall(players, strokes, deltas, teams, par);
+    }
+
+    case "team_scramble": {
+      return scoreMultiTeamScramble(players, strokes, deltas, teams, par);
     }
 
     default:
@@ -617,6 +629,67 @@ function scoreDotsJunk(
   });
   const parts = players.map(p => `${p.split(" ")[0]}: ${deltas[p] > 0 ? "+" : ""}${deltas[p]}`);
   return { pointDeltas: deltas, result: parts.join("  \u00b7  "), metadata: { dots: dotAchievements } };
+}
+
+// ── Multi-team scorers (ported verbatim from legacy switch) ─────────────────
+
+function scoreMultiTeamBestBall(
+  players: string[],
+  strokes: Record<string, number>,
+  deltas: Record<string, number>,
+  teams: string[][],
+  par: number,
+): HoleScoreResult {
+  const teamList = teams.length >= 2
+    ? teams
+    : [players.slice(0, Math.ceil(players.length / 2)), players.slice(Math.ceil(players.length / 2))];
+  const teamBests = teamList.map(team => ({
+    team,
+    best: Math.min(...team.map(p => strokes[p] || 99)),
+  }));
+  const sorted = [...teamBests].sort((a, b) => a.best - b.best);
+  const winningBest = sorted[0].best;
+  const tied = sorted.filter(t => t.best === winningBest);
+  const fmt = (d: number) => d === 0 ? "E" : d > 0 ? `+${d}` : `${d}`;
+  if (tied.length > 1) {
+    const parts = teamBests.map(t => `${t.team.map(p => p.split(" ")[0]).join("+")} ${t.best}(${fmt(t.best - par)})`);
+    return { pointDeltas: deltas, result: `Tied at ${winningBest} \u2014 ${parts.join("  \u00b7  ")}`, metadata: {} };
+  }
+  const winner = sorted[0];
+  winner.team.forEach(p => { deltas[p] = 1; });
+  const parts = teamBests.map(t => `${t.team.map(p => p.split(" ")[0]).join("+")} ${t.best}(${fmt(t.best - par)})`);
+  return { pointDeltas: deltas, result: `${winner.team.map(p => p.split(" ")[0]).join("+")} wins \u2014 ${parts.join("  \u00b7  ")}`, metadata: {} };
+}
+
+function scoreMultiTeamScramble(
+  players: string[],
+  strokes: Record<string, number>,
+  deltas: Record<string, number>,
+  teams: string[][],
+  par: number,
+): HoleScoreResult {
+  const teamList = teams.length >= 2
+    ? teams
+    : [players.slice(0, Math.ceil(players.length / 2)), players.slice(Math.ceil(players.length / 2))];
+  const teamScores = teamList.map(team => ({
+    team,
+    score: strokes[team[0]] || 0,
+  }));
+  const sorted = [...teamScores].sort((a, b) => a.score - b.score);
+  const winningScore = sorted[0].score;
+  const tied = sorted.filter(t => t.score === winningScore);
+  const fmt = (d: number) => d === 0 ? "E" : d > 0 ? `+${d}` : `${d}`;
+  teamList.forEach(team => {
+    const teamScore = strokes[team[0]] || 0;
+    team.forEach(p => { deltas[p] = teamScore; });
+  });
+  if (tied.length > 1) {
+    const parts = teamScores.map(t => `${t.team.map(p => p.split(" ")[0]).join("+")} ${t.score}(${fmt(t.score - par)})`);
+    return { pointDeltas: deltas, result: `Tied at ${winningScore} \u2014 ${parts.join("  \u00b7  ")}`, metadata: {} };
+  }
+  const winner = sorted[0];
+  const parts = teamScores.map(t => `${t.team.map(p => p.split(" ")[0]).join("+")} ${t.score}(${fmt(t.score - par)})`);
+  return { pointDeltas: deltas, result: `${winner.team.map(p => p.split(" ")[0]).join("+")} wins \u2014 ${parts.join("  \u00b7  ")}`, metadata: {} };
 }
 
 function scoreBanker(

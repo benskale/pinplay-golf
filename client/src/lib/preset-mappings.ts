@@ -590,6 +590,46 @@ export function presetToConfig(params: PresetConfigParams): GameConfig | null {
         carryover: false,
       };
 
+    case "team_best_ball":
+      return {
+        id: "team_best_ball",
+        name: "Team Best Ball",
+        source: "preset",
+        description: "Multi-team best ball. Best net score per team counts.",
+        playerCount,
+        teamStructure: teams(teamIds),
+        scoring: {
+          format: "team_best_ball",
+          handicapBased: true,
+          carryover: false,
+        },
+        betPools: emptyBetPools,
+        miniGames: emptyMiniGames,
+        sideBets: [],
+        needsHandicap: true,
+        carryover: false,
+      };
+
+    case "team_scramble":
+      return {
+        id: "team_scramble",
+        name: "Team Scramble",
+        source: "preset",
+        description: "Multi-team scramble. Best shot from each team counts.",
+        playerCount,
+        teamStructure: teams(teamIds),
+        scoring: {
+          format: "team_scramble",
+          handicapBased: false,
+          carryover: false,
+        },
+        betPools: emptyBetPools,
+        miniGames: emptyMiniGames,
+        sideBets: [],
+        needsHandicap: false,
+        carryover: false,
+      };
+
     default:
       return null;
   }
@@ -605,6 +645,7 @@ export function getPresetsForPlayerCount(count: number): string[] {
     "wolf_3", "sixes", "skins_3", "split_sixes", "nine_point", "bingo_bango_bongo",
     "best_ball_4", "scramble", "alternate_shot_4", "shamble", "nassau_4", "skins_4",
     "wolf", "vegas", "hammer", "stableford", "dots_junk", "banker",
+    "team_best_ball", "team_scramble",
   ];
 
   return allPresets.filter(gt => {

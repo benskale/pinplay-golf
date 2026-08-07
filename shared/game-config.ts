@@ -144,6 +144,8 @@ export type ScoringFormat =
   | "alternate_shot"
   | "scramble"
   | "shamble"
+  | "team_best_ball"
+  | "team_scramble"
   | "custom";
 
 // ── Bet Pools ────────────────────────────────────────────────────────────────
