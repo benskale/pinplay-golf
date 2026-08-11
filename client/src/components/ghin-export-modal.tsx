@@ -121,8 +121,8 @@ export function GhinExportModal({ isOpen, onClose, game }: GhinExportModalProps)
             {/* Header */}
             <div className="px-4 py-3 text-white header-surface">
               <p className="font-bold text-sm">{selectedPlayer}</p>
-              {game.courseName && <p className="text-xs mt-0.5" style={{ color: "rgba(141,175,43,0.9)" }}>{game.courseName}</p>}
-              <p className="text-xs mt-0.5" style={{ color: "rgba(141,175,43,0.7)" }}>
+              {game.courseName && <p className="text-xs mt-0.5" style={{ color: "rgba(134,196,159,0.9)" }}>{game.courseName}</p>}
+              <p className="text-xs mt-0.5" style={{ color: "rgba(134,196,159,0.7)" }}>
                 {new Date(game.createdAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
                 {completedHoles < 18 && ` · ${completedHoles} holes`}
               </p>

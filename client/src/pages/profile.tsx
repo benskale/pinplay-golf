@@ -398,7 +398,7 @@ export default function ProfilePage() {
             </div>
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
             <h1 className="text-lg font-bold mt-2">{user.name}</h1>
-            <p className="text-xs mt-0.5" style={{ color: "rgba(141,175,43,0.8)" }}>
+            <p className="text-xs mt-0.5" style={{ color: "rgba(134,196,159,0.8)" }}>
               {user.email ?? user.phone ?? ""}
             </p>
           </div>

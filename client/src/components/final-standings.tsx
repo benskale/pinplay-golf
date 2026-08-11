@@ -162,7 +162,7 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
         <div className="max-w-md mx-auto px-4 py-6 text-center">
           <Trophy className="w-12 h-12 mx-auto mb-2 text-yellow-300" />
           <h1 className="text-2xl font-bold">Game Complete!</h1>
-          <p style={{ color: "rgba(141,175,43,0.85)" }}>{gameName} — Final Results</p>
+          <p style={{ color: "rgba(134,196,159,0.85)" }}>{gameName} — Final Results</p>
         </div>
       </header>
 

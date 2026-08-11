@@ -101,7 +101,7 @@ export default function AuthPage() {
         <div className="flex justify-center mb-3">
           <img src="/logo-dark.png" alt="PinPlay Golf" className="w-44 h-auto drop-shadow-2xl" />
         </div>
-        <p className="text-[0.875rem] font-medium mb-5" style={{ color: "rgba(141,175,43,0.85)" }}>
+        <p className="text-[0.875rem] font-medium mb-5" style={{ color: "rgba(134,196,159,0.85)" }}>
           Save your rounds. Track your handicap.
         </p>
         {!isNative() && (

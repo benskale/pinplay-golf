@@ -1,4 +1,4 @@
-const CACHE_NAME = "pinplay-v2";
+const CACHE_NAME = "pinplay-v3";
 
 // Install: skip pre-caching — let requests populate cache naturally
 self.addEventListener("install", (event) => {
