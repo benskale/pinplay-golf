@@ -357,8 +357,8 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
               <div className="min-w-0">
                 <h1 className="text-[1.0625rem] font-bold leading-tight tracking-tight truncate">{gameDef.name}</h1>
                 {game.courseName
-                  ? <p className="text-[0.75rem] leading-none mt-0.5" style={{ color: "rgba(134,196,159,0.85)" }}>{game.courseName}</p>
-                  : <p className="text-[0.75rem] leading-none mt-0.5" style={{ color: "rgba(134,196,159,0.7)" }}>{game.players.length} players</p>
+                  ? <p className="text-[0.75rem] leading-none mt-0.5" style={{ color: "rgba(141,175,43,0.85)" }}>{game.courseName}</p>
+                  : <p className="text-[0.75rem] leading-none mt-0.5" style={{ color: "rgba(141,175,43,0.7)" }}>{game.players.length} players</p>
                 }
               </div>
             </div>

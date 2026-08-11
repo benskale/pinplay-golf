@@ -5,8 +5,8 @@
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0d1f15",
-  "theme_color": "#1a3a2a",
+  "background_color": "#0B281E",
+  "theme_color": "#0B281E",
   "categories": ["sports", "lifestyle", "utilities"],
   "icons": [
     {

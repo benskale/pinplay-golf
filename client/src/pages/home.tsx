@@ -98,7 +98,7 @@ export default function Home() {
               data-testid="app-title"
             />
           </div>
-          <p className="text-[0.9375rem] font-medium" style={{ color: "rgba(134,196,159,0.85)" }}>
+          <p className="text-[0.9375rem] font-medium" style={{ color: "rgba(141,175,43,0.85)" }}>
             Score every format, every round
           </p>
         </div>
@@ -258,7 +258,7 @@ export default function Home() {
                   <p className="text-sm font-bold text-white">
                     Create a Free Account
                   </p>
-                  <p className="text-xs mt-0.5" style={{ color: "rgba(134,196,159,0.8)" }}>
+                  <p className="text-xs mt-0.5" style={{ color: "rgba(141,175,43,0.8)" }}>
                     Save your rounds and join group play
                   </p>
                 </div>

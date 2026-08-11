@@ -12,28 +12,28 @@
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(150 30% 8%);
 
-  /* ── Brand — deep forest green ── */
-  --primary: hsl(152 58% 18%);
+  /* ── Brand — deep forest green (logo: #0B281E) ── */
+  --primary: hsl(155 62% 11%);
   --primary-foreground: hsl(0 0% 100%);
-  --primary-50:  hsl(152 48% 95%);
-  --primary-100: hsl(152 38% 90%);
-  --primary-200: hsl(152 30% 82%);
-  --primary-300: hsl(152 28% 68%);
-  --primary-500: hsl(152 52% 30%);
-  --primary-600: hsl(152 56% 22%);
-  --primary-700: hsl(152 58% 18%);
-  --primary-800: hsl(152 63% 13%);
-  --primary-900: hsl(152 65% 9%);
-  --primary-950: hsl(152 68% 6%);
+  --primary-50:  hsl(155 35% 93%);
+  --primary-100: hsl(155 28% 88%);
+  --primary-200: hsl(155 22% 78%);
+  --primary-300: hsl(155 20% 62%);
+  --primary-500: hsl(155 48% 24%);
+  --primary-600: hsl(155 56% 18%);
+  --primary-700: hsl(155 60% 14%);
+  --primary-800: hsl(155 62% 11%);
+  --primary-900: hsl(155 65% 8%);
+  --primary-950: hsl(155 68% 5%);
 
-  /* ── Accent — warm golf gold ── */
-  --secondary: hsl(43 78% 50%);
-  --secondary-foreground: hsl(0 0% 100%);
-  --secondary-500: hsl(43 78% 50%);
-  --secondary-600: hsl(43 74% 43%);
+  /* ── Accent — olive/lime green (logo: #8DAF2B) ── */
+  --secondary: hsl(74 60% 43%);
+  --secondary-foreground: hsl(155 62% 11%);
+  --secondary-500: hsl(74 60% 43%);
+  --secondary-600: hsl(74 55% 37%);
 
-  --accent: hsl(43 78% 50%);
-  --accent-foreground: hsl(0 0% 100%);
+  --accent: hsl(74 60% 43%);
+  --accent-foreground: hsl(155 62% 11%);
 
   /* ── Wolf / Banker ── */
   --wolf: hsl(36 95% 52%);
@@ -54,10 +54,10 @@
   --font-sans: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-display: 'Playfair Display', Georgia, serif;
 
-  /* ── CTA — warm golf gold ── */
-  --cta: hsl(43 78% 50%);
-  --cta-hover: hsl(43 74% 43%);
-  --cta-foreground: hsl(0 0% 100%);
+  /* ── CTA — olive/lime green ── */
+  --cta: hsl(74 60% 43%);
+  --cta-hover: hsl(74 55% 37%);
+  --cta-foreground: hsl(155 62% 11%);
 
   /* ── Shape ── */
   --radius-sm: 0.5rem;
@@ -77,23 +77,23 @@
   --popover: hsl(152 18% 10%);
   --popover-foreground: hsl(152 10% 91%);
 
-  --primary: hsl(152 58% 18%);
+  --primary: hsl(155 62% 11%);
   --primary-foreground: hsl(0 0% 100%);
-  --primary-50:  hsl(152 28% 12%);
-  --primary-100: hsl(152 24% 16%);
-  --primary-200: hsl(152 20% 22%);
-  --primary-300: hsl(152 22% 34%);
-  --primary-500: hsl(152 48% 38%);
-  --primary-600: hsl(152 54% 26%);
-  --primary-700: hsl(152 58% 18%);
-  --primary-800: hsl(152 63% 13%);
-  --primary-900: hsl(152 65% 9%);
-  --primary-950: hsl(152 68% 6%);
+  --primary-50:  hsl(155 18% 12%);
+  --primary-100: hsl(155 16% 16%);
+  --primary-200: hsl(155 14% 22%);
+  --primary-300: hsl(155 16% 32%);
+  --primary-500: hsl(155 42% 36%);
+  --primary-600: hsl(155 52% 24%);
+  --primary-700: hsl(155 58% 16%);
+  --primary-800: hsl(155 62% 11%);
+  --primary-900: hsl(155 65% 8%);
+  --primary-950: hsl(155 68% 5%);
 
-  --secondary: hsl(43 78% 50%);
-  --secondary-foreground: hsl(0 0% 100%);
-  --secondary-500: hsl(43 78% 50%);
-  --secondary-600: hsl(43 74% 43%);
+  --secondary: hsl(74 60% 43%);
+  --secondary-foreground: hsl(155 62% 11%);
+  --secondary-500: hsl(74 60% 43%);
+  --secondary-600: hsl(74 55% 37%);
 
   --wolf: hsl(36 95% 52%);
   --wolf-500: hsl(36 95% 52%);
