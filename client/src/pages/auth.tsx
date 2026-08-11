@@ -154,10 +154,7 @@ export default function AuthPage() {
               onClick={async () => {
                 if (isNative()) {
                   try {
-                    const { SignInWithApple } = await import(
-                      /* @vite-ignore */
-                      "@capacitor-community/apple-sign-in"
-                    );
+                    const { SignInWithApple } = await import("@capacitor-community/apple-sign-in");
                     const result = await SignInWithApple.authorize({
                       clientId: "com.silverspringsventures.pinplay",
                       redirectURI: "https://pinplay.golf",
