@@ -25,6 +25,14 @@ const COURSE_OVERRIDES: Record<string, { name: string; par: number; pars: number
     pars: [4, 3, 5, 4, 4, 3, 5, 4, 4, 4, 4, 3, 5, 4, 5, 4, 3, 4],
     hcpRanks: [11, 17, 7, 9, 3, 13, 15, 1, 5, 8, 2, 10, 6, 4, 12, 18, 16, 14],
   },
+  // StoneTree Golf Club, Novato CA — not in OpenGolfAPI at all; comes through as an OSM result only.
+  // Data from the course's official scorecard, cross-verified greenskeeper.org + mscorecard.
+  "osm-way-688542342": {
+    name: "StoneTree Golf Club",
+    par: 72,
+    pars: [4, 4, 3, 4, 4, 5, 4, 3, 4, 3, 4, 5, 4, 5, 4, 5, 3, 4],
+    hcpRanks: [15, 11, 17, 5, 3, 9, 7, 13, 1, 18, 14, 8, 12, 10, 2, 6, 16, 4],
+  },
 };
 
 /**
@@ -349,8 +357,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Golf course detail
   app.get("/api/courses/:id", async (req, res) => {
-    // OSM courses (international) don't have scorecard data
+    // OSM courses have no upstream scorecard — serve override if we have one, else 404
     if (req.params.id.startsWith("osm-")) {
+      const osmOverride = COURSE_OVERRIDES[req.params.id];
+      if (osmOverride) {
+        return res.json({
+          id: req.params.id,
+          name: osmOverride.name,
+          city: "",
+          state: "",
+          par: osmOverride.par,
+          pars: osmOverride.pars,
+          hcpRanks: osmOverride.hcpRanks,
+          _overridden: true,
+        });
+      }
       return res.status(404).json({ message: "International course — no scorecard data available" });
     }
 
