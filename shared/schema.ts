@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, serial, real, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, json, jsonb, serial, real, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -437,3 +437,12 @@ export interface LeaderboardEntry {
   previousPosition?: number;            // position before latest update (for movement arrows)
   birdieStreak?: number;               // consecutive holes under par (for "on fire" indicator)
 }
+
+// ── Sessions (connect-pg-simple) ──────────────────────────────────────────────
+// Declared here so `npm run db:push` owns the table. Previously db:push saw it
+// as an extra table and offered to delete it, which dropped all logins.
+export const session = pgTable("session", {
+  sid: varchar("sid", { length: 255 }).primaryKey(),
+  sess: json("sess").notNull(),
+  expire: timestamp("expire").notNull(),
+});

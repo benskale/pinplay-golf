@@ -1,6 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
@@ -45,7 +45,7 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many requests. Please try again in a moment." },
-  keyGenerator: (req) => req.ip || "unknown",
+  keyGenerator: (req) => (req.ip ? ipKeyGenerator(req.ip) : "unknown"),
 });
 
 // Auth endpoints: stricter — 10 attempts per minute per IP
@@ -55,7 +55,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many login attempts. Please wait a minute." },
-  keyGenerator: (req) => req.ip || "unknown",
+  keyGenerator: (req) => (req.ip ? ipKeyGenerator(req.ip) : "unknown"),
 });
 
 // Game creation: 20 games per minute per IP
@@ -65,7 +65,7 @@ const gameCreateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many games created. Slow down." },
-  keyGenerator: (req) => req.ip || "unknown",
+  keyGenerator: (req) => (req.ip ? ipKeyGenerator(req.ip) : "unknown"),
 });
 
 // Apply general rate limiting to all API routes
