@@ -1,7 +1,7 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Strategy as GoogleOAuthStrategy } from "passport-google-oauth20";
-import { Express, type Request, type Response } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
