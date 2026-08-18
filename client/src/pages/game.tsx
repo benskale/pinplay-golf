@@ -10,7 +10,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle, Users } from "lucide-react";
 import PinPlayLogo from "@/components/logo";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import ShareRoundModal from "@/components/share-round-modal";
 import type { Game } from "@shared/schema";
 import { trackGame, completeGame as untrackGame } from "@/lib/game-recovery";
 
@@ -51,6 +53,24 @@ export default function Game() {
     gameId ? getStoredPlayer(gameId) : null
   );
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
+  const { user } = useAuth();
+  const [showShare, setShowShare] = useState(false);
+
+  const maybeShowShare = () => {
+    if (!gameId) return;
+    try {
+      if (!localStorage.getItem(`pinplay-share-seen-${gameId}`)) {
+        setShowShare(true);
+      }
+    } catch {}
+  };
+
+  const closeShare = () => {
+    setShowShare(false);
+    if (gameId) {
+      try { localStorage.setItem(`pinplay-share-seen-${gameId}`, "1"); } catch {}
+    }
+  };
 
   // Show player picker once game data is loaded and no player is selected
   useEffect(() => {
@@ -78,6 +98,12 @@ export default function Game() {
     setMyPlayer(name);
     if (gameId) storePlayer(gameId, name);
     setShowPlayerPicker(false);
+    maybeShowShare();
+    if (user && gameId) {
+      apiRequest("POST", `/api/games/${gameId}/join-as-player`, { playerName: name })
+        .then(() => queryClient.invalidateQueries({ queryKey: ["/api/auth/games"] }))
+        .catch(() => {});
+    }
   };
 
   const handleNewGame = () => {
@@ -185,13 +211,23 @@ export default function Game() {
             </div>
 
             <button
-              onClick={() => setShowPlayerPicker(false)}
+              onClick={() => { setShowPlayerPicker(false); maybeShowShare(); }}
               className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 py-2"
             >
               Skip — I'm just watching
             </button>
           </div>
         </div>
+      )}
+
+      {/* Share round modal */}
+      {showShare && (
+        <ShareRoundModal
+          gameId={gameId!}
+          courseName={currentGame.courseName}
+          playerCount={currentGame.players.length}
+          onClose={closeShare}
+        />
       )}
     </div>
   );

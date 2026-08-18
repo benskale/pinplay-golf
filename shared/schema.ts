@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, serial, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, serial, real, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -184,6 +184,20 @@ export const updateGameSchema = insertGameSchema.partial();
 export type InsertGame = z.infer<typeof insertGameSchema>;
 export type UpdateGame = z.infer<typeof updateGameSchema>;
 export type Game = typeof games.$inferSelect;
+
+// ── Game Participants (logged-in users linked to casual games) ───────────────
+
+export const gameParticipants = pgTable("game_participants", {
+  id: serial("id").primaryKey(),
+  gameId: varchar("game_id").notNull().references(() => games.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  playerName: text("player_name").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (t) => [
+  unique("game_participants_game_user_unique").on(t.gameId, t.userId),
+]);
+
+export type GameParticipant = typeof gameParticipants.$inferSelect;
 
 // ── Tournament Rounds (multi-day / multi-format) ──────────────────────────────
 

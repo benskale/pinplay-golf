@@ -1,6 +1,6 @@
 import { eq, desc, and, or, ilike, sql as sqlOp, count, asc } from "drizzle-orm";
 import { db, pool } from "./db";
-import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers, tournamentTeams, tournamentRounds, gameTemplates, globalGameTemplates, tournamentMatches, sideBets } from "@shared/schema";
+import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers, tournamentTeams, tournamentRounds, gameTemplates, globalGameTemplates, tournamentMatches, sideBets, gameParticipants } from "@shared/schema";
 import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite, Tournament, InsertTournament, TournamentPlayer, InsertTournamentPlayer, LeaderboardEntry, TournamentTeam, TournamentRound, InsertTournamentRound, GameTemplate, InsertGameTemplate, TournamentMatch, InsertTournamentMatch, SideBet, InsertSideBet, GlobalGameTemplate } from "@shared/schema";
 import { generateInviteCode } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -21,6 +21,8 @@ export interface IStorage {
   deleteGame(id: string): Promise<boolean>;
   getGamesByUser(userId: number): Promise<Game[]>;
   getGamesByPlayerName(name: string): Promise<Game[]>;
+  addGameParticipant(gameId: string, userId: number, playerName: string): Promise<void>;
+  getGamesByParticipant(userId: number): Promise<Game[]>;
   getGamesBySession(sessionId: string): Promise<Game[]>;
   getGamesByIds(ids: string[]): Promise<Game[]>;
   linkGamesToUser(sessionId: string, userId: number): Promise<number>;
@@ -206,6 +208,23 @@ export class DatabaseStorage implements IStorage {
       .from(games)
       .where(sqlOp`${games.players} @> ${JSON.stringify([name])}`)
       .orderBy(desc(games.createdAt));
+  }
+
+  async addGameParticipant(gameId: string, userId: number, playerName: string): Promise<void> {
+    await db.insert(gameParticipants)
+      .values({ gameId, userId, playerName })
+      .onConflictDoNothing({ target: [gameParticipants.gameId, gameParticipants.userId] });
+  }
+
+  async getGamesByParticipant(userId: number): Promise<Game[]> {
+    const rows = await db
+      .select({ game: games })
+      .from(gameParticipants)
+      .innerJoin(games, eq(gameParticipants.gameId, games.id))
+      .where(eq(gameParticipants.userId, userId))
+      .orderBy(desc(gameParticipants.createdAt))
+      .limit(200);
+    return rows.map(r => r.game);
   }
 
   async getGamesBySession(sessionId: string): Promise<Game[]> {
@@ -1474,6 +1493,7 @@ export class MemStorage implements IStorage {
   private tournamentMap: Map<string, Tournament> = new Map();
   private tournamentPlayerMap: Map<number, TournamentPlayer> = new Map();
   private teamMap: Map<number, TournamentTeam> = new Map();
+  private gameParticipantList: { gameId: string; userId: number; playerName: string; createdAt: Date }[] = [];
   private nextUserId = 1;
   private nextTournamentPlayerId = 1;
   private nextTeamId = 1;
@@ -1489,6 +1509,19 @@ export class MemStorage implements IStorage {
   }
   async getGamesByPlayerName(name: string) {
     return [...this.gameMap.values()].filter(g => (g.players as string[]).includes(name));
+  }
+  async addGameParticipant(gameId: string, userId: number, playerName: string) {
+    const exists = this.gameParticipantList.some(p => p.gameId === gameId && p.userId === userId);
+    if (!exists) {
+      this.gameParticipantList.push({ gameId, userId, playerName, createdAt: new Date() });
+    }
+  }
+  async getGamesByParticipant(userId: number) {
+    return this.gameParticipantList
+      .filter(p => p.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .map(p => this.gameMap.get(p.gameId))
+      .filter((g): g is Game => !!g);
   }
   async getGamesBySession(sessionId: string) {
     return [...this.gameMap.values()].filter(g => g.sessionId === sessionId);

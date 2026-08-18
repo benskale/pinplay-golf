@@ -491,13 +491,14 @@ export function setupAuth(app: Express) {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ message: "Not authenticated" });
     try {
       const user = req.user as User;
-      const [created, played] = await Promise.all([
+      const [created, played, participant] = await Promise.all([
         storage.getGamesByUser(user.id),
         storage.getGamesByPlayerName(user.name),
+        storage.getGamesByParticipant(user.id),
       ]);
       // Deduplicate by game id
       const seen = new Set<string>();
-      const all = [...created, ...played].filter(g => {
+      const all = [...created, ...played, ...participant].filter(g => {
         if (seen.has(g.id)) return false;
         seen.add(g.id);
         return true;

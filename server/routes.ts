@@ -508,6 +508,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Link logged-in user to a game as a player (so it shows in their app)
+  app.post("/api/games/:id/join-as-player", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) return res.status(401).json({ message: "Not authenticated" });
+      const game = await storage.getGame(req.params.id);
+      if (!game) return res.status(404).json({ message: "Game not found" });
+      const { playerName } = req.body as { playerName?: string };
+      if (!playerName || !game.players.includes(playerName)) {
+        return res.status(400).json({ message: "Player not in this game" });
+      }
+      await storage.addGameParticipant(req.params.id, (req.user as any).id, playerName);
+      res.json({ message: "Linked to game" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to link game" });
+    }
+  });
+
   // Update game
   app.patch("/api/games/:id", async (req, res) => {
     try {
