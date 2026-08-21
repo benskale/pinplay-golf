@@ -206,8 +206,9 @@ function scoreWolf(
   const isSolo = wolfDecision === "alone" || wolfDecision === "blind";
 
   // ── 5-player Wolf (wolf_5) ─────────────────────────────────────────
-  // Zero-sum per hole. Lone Wolf: +4/-1. Team hole 2v3: pair +1.5 each, trio +1 each.
-  // Best-ball ties push — no second-ball tiebreaker. Blind Wolf doubles: +8/-2.
+  // No negative points (rule change Aug 22, 2026): losing side scores 0.
+  // Lone Wolf: wolf +4 or others +1 each. Team hole 2v3: pair +1.5 each or trio +1 each.
+  // Best-ball ties push — no second-ball tiebreaker. Blind Wolf doubles.
   if (is5Player) {
     const mult = wolfDecision === "blind" ? 2 : 1;
     let result = "";
@@ -216,12 +217,10 @@ function scoreWolf(
       const bestOther = Math.min(...nonWolves.map(p => strokes[p]));
       if (wolfStr < bestOther) {
         deltas[wolfPlayer] = 4 * mult;
-        nonWolves.forEach(p => { deltas[p] = -1 * mult; });
         result = `${mult === 2 ? "BLIND " : ""}Lone Wolf wins +${4 * mult} (1v4)`;
       } else if (wolfStr > bestOther) {
-        deltas[wolfPlayer] = -4 * mult;
         nonWolves.forEach(p => { deltas[p] = 1 * mult; });
-        result = `${mult === 2 ? "BLIND " : ""}Lone Wolf loses -${4 * mult} (1v4)`;
+        result = `${mult === 2 ? "BLIND " : ""}Lone Wolf loses · others +${1 * mult} each`;
       } else {
         result = "Lone Wolf · best ball tied — push";
       }
@@ -233,12 +232,10 @@ function scoreWolf(
       const trioBest = Math.min(...trio.map(p => strokes[p]));
       if (pairBest < trioBest) {
         pair.forEach(p => { deltas[p] = 1.5 * mult; });
-        trio.forEach(p => { deltas[p] = -1 * mult; });
         result = `Wolf + ${partner} · pair wins +${1.5 * mult}`;
       } else if (trioBest < pairBest) {
         trio.forEach(p => { deltas[p] = 1 * mult; });
-        pair.forEach(p => { deltas[p] = -1.5 * mult; });
-        result = `Trio wins +${1 * mult} (Wolf + ${partner} -${1.5 * mult} each)`;
+        result = `Trio wins +${1 * mult} each`;
       } else {
         result = `Wolf + ${partner} · best balls tied — push`;
       }

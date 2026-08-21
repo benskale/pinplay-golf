@@ -59,6 +59,29 @@ function fixStrokes(game: Game): Game {
     }
   }
   game.strokes = fixed;
+  return fixWolf5Points(game);
+}
+
+/**
+ * Wolf 5-player rule change (Aug 22, 2026): no negative points — the losing
+ * side scores 0 for the hole. Applied on read so games created under the old
+ * zero-sum rule rescore automatically: per-hole points clamp at 0 and totals
+ * recompute from the clamped history. Raw DB values are never rewritten.
+ */
+function fixWolf5Points(game: Game): Game {
+  if (game.gameType !== "wolf_5" || !game.holeHistory || game.holeHistory.length === 0) return game;
+  const totals: Record<string, number> = {};
+  for (const player of game.players) totals[player] = 0;
+  for (const hole of game.holeHistory) {
+    if (hole.points) {
+      for (const player of game.players) {
+        const pts = Math.max(0, Number(hole.points[player]) || 0);
+        hole.points[player] = pts;
+        totals[player] = (totals[player] || 0) + pts;
+      }
+    }
+  }
+  game.totalScores = totals;
   return game;
 }
 
@@ -97,11 +120,13 @@ function recalculateHole(game: Game, holeNumber: number, newStrokes: Record<stri
   newHistory[holeIdx] = newEntry;
 
   // Recompute totalScores from scratch
+  // wolf_5 (Aug 22, 2026 rule): losing side scores 0 — clamp per-hole points at 0
   const totalScores: Record<string, number> = {};
   for (const player of game.players) totalScores[player] = 0;
   for (const hole of newHistory) {
     for (const [player, pts] of Object.entries(hole.points)) {
-      totalScores[player] = (totalScores[player] || 0) + (pts as number);
+      const val = game.gameType === "wolf_5" ? Math.max(0, pts as number) : (pts as number);
+      totalScores[player] = (totalScores[player] || 0) + val;
     }
   }
 
@@ -2022,6 +2047,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
               updatedStrokes[player][holeIndex] = score as number;
             }
             const isGameComplete = game.currentHole >= 18;
+            // Recompute totals under the no-negative rule: wolf_5 totals are
+            // the sum of per-hole points clamped at 0, so holes scored before
+            // the rule change stop dragging totals down.
+            let totalsAfterHole = newTotalScores;
+            if (game.gameType === "wolf_5") {
+              totalsAfterHole = {};
+              game.players.forEach(p => { totalsAfterHole[p] = 0; });
+              newHoleHistory.forEach(h => {
+                Object.entries(h.points || {}).forEach(([p, v]) => {
+                  totalsAfterHole[p] = (totalsAfterHole[p] || 0) + Math.max(0, Number(v) || 0);
+                });
+              });
+            }
             // Wolf rotation — wolf_5 uses a catch-up finish on holes 16-18
             let nextWolfIndex: number;
             let nextSettings = game.gameSettings;
@@ -2037,7 +2075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 let finale = (game.gameSettings as Record<string, any>)?.wolfFinale as string[] | undefined;
                 if (justCompleted === 15 || !finale || finale.length < 3) {
                   const ranked = players
-                    .map(p => ({ p, score: newTotalScores[p] || 0, r: Math.random() }))
+                    .map(p => ({ p, score: totalsAfterHole[p] || 0, r: Math.random() }))
                     .sort((a, b) => a.score - b.score || a.r - b.r)
                     .map(x => x.p);
                   finale = [ranked[2], ranked[1], ranked[0]]; // [hole 16, hole 17, hole 18]
@@ -2053,7 +2091,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               currentHole: isGameComplete ? 18 : game.currentHole + 1,
               currentWolfIndex: nextWolfIndex,
               ...(game.gameType === "wolf_5" ? { gameSettings: nextSettings } : {}),
-              totalScores: newTotalScores,
+              totalScores: totalsAfterHole,
               wolfCounts: newWolfCounts,
               holeHistory: newHoleHistory,
               strokes: updatedStrokes,
