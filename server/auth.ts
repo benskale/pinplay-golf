@@ -2,7 +2,7 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Strategy as GoogleOAuthStrategy } from "passport-google-oauth20";
 import express, { type Express, type Request, type Response } from "express";
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import { scrypt, randomBytes, timingSafeEqual, createHmac } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import type { User } from "@shared/schema";
@@ -68,9 +68,66 @@ export function sanitizeUser(user: User): Omit<User, "passwordHash"> {
   return safe;
 }
 
+// ── Bearer-token auth (native app webviews drop session cookies on cold start) ──
+// Stateless HMAC-signed token, sliding 12-hour expiry: every authenticated request
+// renews it, so active users stay signed in and idle users time out after 12h.
+const AUTH_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+
+function tokenSecret(): string {
+  return process.env.SESSION_SECRET || "fallback-dev-secret-key";
+}
+
+export function issueAuthToken(userId: number): string {
+  const exp = Date.now() + AUTH_TOKEN_TTL_MS;
+  const payload = `${userId}.${exp}`;
+  const sig = createHmac("sha256", tokenSecret()).update(`pinplay-bearer:${payload}`).digest("hex");
+  return `${payload}.${sig}`;
+}
+
+export function verifyAuthToken(token: string): number | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const userId = parseInt(parts[0], 10);
+  const exp = parseInt(parts[1], 10);
+  const sig = parts[2];
+  if (!Number.isFinite(userId) || !Number.isFinite(exp)) return null;
+  if (Date.now() >= exp) return null;
+  const expected = createHmac("sha256", tokenSecret()).update(`pinplay-bearer:${userId}.${exp}`).digest("hex");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  return userId;
+}
+
+/** Send a successful auth response with a fresh bearer token (for the native app). */
+function sendAuthUser(res: Response, user: User, status = 200) {
+  res.setHeader("X-Auth-Token", issueAuthToken(user.id));
+  res.status(status).json(sanitizeUser(user));
+}
+
 export function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
+
+  // Bearer-token auth: validate Authorization header, hydrate req.user, and slide
+  // the token forward via X-Auth-Token so the client can renew localStorage.
+  app.use(async (req: Request, res: Response, next) => {
+    const header = req.headers.authorization;
+    if (typeof header === "string" && header.startsWith("Bearer ")) {
+      const userId = verifyAuthToken(header.slice(7).trim());
+      if (userId !== null) {
+        const user = await storage.getUser(userId);
+        if (user) {
+          if (!req.isAuthenticated() || !req.user) {
+            (req as any).user = user;
+            (req as any).isAuthenticated = () => true;
+          }
+          res.setHeader("X-Auth-Token", issueAuthToken(userId));
+        }
+      }
+    }
+    next();
+  });
 
   passport.use(
     new LocalStrategy(
@@ -259,7 +316,7 @@ export function setupAuth(app: Express) {
       req.login(user, async (err) => {
         if (err) return res.status(500).json({ message: "Login failed after registration" });
         await linkSessionGames(req, user.id);
-        res.status(201).json(sanitizeUser(user));
+        sendAuthUser(res, user, 201);
       });
     } catch (err) {
       console.error("Register error:", err);
@@ -275,7 +332,7 @@ export function setupAuth(app: Express) {
       req.login(user, async (loginErr) => {
         if (loginErr) return next(loginErr);
         await linkSessionGames(req, user.id);
-        res.json(sanitizeUser(user));
+        sendAuthUser(res, user);
       });
     })(req, res, next);
   });
@@ -326,7 +383,7 @@ export function setupAuth(app: Express) {
       req.login(user, async (err) => {
         if (err) return res.status(500).json({ message: "Login failed" });
         await linkSessionGames(req, user!.id);
-        res.json(sanitizeUser(user!));
+        sendAuthUser(res, user!);
       });
     } catch (err) {
       console.error("Verify OTP error:", err);
@@ -429,7 +486,7 @@ export function setupAuth(app: Express) {
           req.login(user, async (loginErr) => {
             if (loginErr) return res.status(500).json({ message: "Login failed" });
             await linkSessionGames(req, user.id);
-            res.json(sanitizeUser(user));
+            sendAuthUser(res, user);
           });
           return;
         }
@@ -442,7 +499,7 @@ export function setupAuth(app: Express) {
           req.login(existingUser, async (loginErr) => {
             if (loginErr) return res.status(500).json({ message: "Login failed" });
             await linkSessionGames(req, existingUser.id);
-            res.json(sanitizeUser(existingUser));
+            sendAuthUser(res, existingUser);
           });
           return;
         }
@@ -459,7 +516,7 @@ export function setupAuth(app: Express) {
       req.login(newUser, async (loginErr) => {
         if (loginErr) return res.status(500).json({ message: "Login failed" });
         await linkSessionGames(req, newUser.id);
-        res.json(sanitizeUser(newUser));
+        sendAuthUser(res, newUser);
       });
     } catch (err) {
       console.error("Apple native sign in error:", err);

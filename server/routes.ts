@@ -554,6 +554,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Which player is the signed-in user in this game? (null if not linked)
+  app.get("/api/games/:id/my-player", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) return res.json({ playerName: null });
+      const game = await storage.getGame(req.params.id);
+      if (!game) return res.status(404).json({ message: "Game not found" });
+      const playerName = await storage.getGameParticipant(req.params.id, (req.user as any).id);
+      // Guard against stale links to renamed/removed players
+      if (!playerName || !game.players.includes(playerName)) return res.json({ playerName: null });
+      res.json({ playerName });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to look up player" });
+    }
+  });
+
   // Update game
   app.patch("/api/games/:id", async (req, res) => {
     try {

@@ -53,7 +53,8 @@ export default function Game() {
     gameId ? getStoredPlayer(gameId) : null
   );
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
-  const { user } = useAuth();
+  const [autoMatchTried, setAutoMatchTried] = useState(false);
+  const { user, isLoading: authLoading } = useAuth();
   const [showShare, setShowShare] = useState(false);
 
   const maybeShowShare = () => {
@@ -72,12 +73,60 @@ export default function Game() {
     }
   };
 
-  // Show player picker once game data is loaded and no player is selected
+  // Auto-match the signed-in profile to a player in this round before showing the picker
   useEffect(() => {
-    if (currentGame && !myPlayer) {
+    if (!currentGame || !gameId || myPlayer || autoMatchTried || authLoading) return;
+
+    const tryAutoMatch = async () => {
+      if (user) {
+        // 1) Previously linked player (server-side, survives reinstall/new device)
+        try {
+          const res = await apiRequest("GET", `/api/games/${gameId}/my-player`);
+          if (res.ok) {
+            const data = await res.json().catch(() => null);
+            if (data?.playerName && currentGame.players.includes(data.playerName)) {
+              setMyPlayer(data.playerName);
+              storePlayer(gameId, data.playerName);
+              setAutoMatchTried(true);
+              maybeShowShare();
+              return;
+            }
+          }
+        } catch {}
+
+        // 2) Match profile name to a player name (exact, or single-word first name)
+        const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+        const profileName = user.name?.trim();
+        if (profileName) {
+          const first = norm(profileName).split(" ")[0];
+          const matches = currentGame.players.filter((p) => {
+            const np = norm(p);
+            return np === norm(profileName) || (np.split(" ").length === 1 && np === first);
+          });
+          if (matches.length === 1) {
+            setMyPlayer(matches[0]);
+            storePlayer(gameId, matches[0]);
+            setAutoMatchTried(true);
+            maybeShowShare();
+            apiRequest("POST", `/api/games/${gameId}/join-as-player`, { playerName: matches[0] })
+              .then(() => queryClient.invalidateQueries({ queryKey: ["/api/auth/games"] }))
+              .catch(() => {});
+            return;
+          }
+        }
+      }
+      setAutoMatchTried(true);
+    };
+
+    tryAutoMatch();
+  }, [!!currentGame, !!user, authLoading, myPlayer, autoMatchTried, gameId]);
+
+  // Show player picker only once auto-match had its chance and found nothing
+  useEffect(() => {
+    if (currentGame && !myPlayer && autoMatchTried) {
       setShowPlayerPicker(true);
     }
-  }, [!!currentGame, myPlayer]);
+  }, [!!currentGame, myPlayer, autoMatchTried]);
 
   // Track game in localStorage for guest recovery
   useEffect(() => {

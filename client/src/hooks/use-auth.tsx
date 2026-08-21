@@ -142,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/auth/logout");
       if (!res.ok) throw new Error("Logout failed");
+      localStorage.removeItem("pinplay_auth_token");
     },
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/user"], null);
@@ -154,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     mutationFn: async () => {
       const res = await apiRequest("DELETE", "/api/auth/account");
       if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      localStorage.removeItem("pinplay_auth_token");
     },
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/user"], null);

@@ -216,6 +216,15 @@ export class DatabaseStorage implements IStorage {
       .onConflictDoNothing({ target: [gameParticipants.gameId, gameParticipants.userId] });
   }
 
+  async getGameParticipant(gameId: string, userId: number): Promise<string | null> {
+    const [row] = await db
+      .select({ playerName: gameParticipants.playerName })
+      .from(gameParticipants)
+      .where(and(eq(gameParticipants.gameId, gameId), eq(gameParticipants.userId, userId)))
+      .limit(1);
+    return row?.playerName ?? null;
+  }
+
   async getGamesByParticipant(userId: number): Promise<Game[]> {
     const rows = await db
       .select({ game: games })
