@@ -882,7 +882,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
           {selectedGame.id === "wolf_5" && (
             <div className="space-y-3">
               <p className="text-[0.6875rem] text-gray-400">
-                Fixed scoring: team hole +1.5/-1, Lone Wolf +8/-8, Blind Wolf +16/-4 (wolf alone vs all four, double points). Holes 1-15 rotate, 16-18 go to the three lowest — furthest back takes 18. Wolf always tees last. Set the per-point stake below.
+                Fixed scoring: team hole +1.5/-1, Lone Wolf +4/-1, Blind Wolf +8/-2 (wolf alone vs all four, double points). Holes 1-15 rotate, 16-18 go to the three lowest — furthest back takes 18. Wolf always tees last. Set the per-point stake below.
               </p>
             </div>
           )}

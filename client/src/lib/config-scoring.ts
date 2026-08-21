@@ -206,8 +206,8 @@ function scoreWolf(
   const isSolo = wolfDecision === "alone" || wolfDecision === "blind";
 
   // ── 5-player Wolf (wolf_5) ─────────────────────────────────────────
-  // Zero-sum per hole. Lone Wolf: +8/-2. Team hole 2v3: pair +1.5 each, trio +1 each.
-  // Best-ball ties push — no second-ball tiebreaker. Blind Wolf doubles: +16/-4.
+  // Zero-sum per hole. Lone Wolf: +4/-1. Team hole 2v3: pair +1.5 each, trio +1 each.
+  // Best-ball ties push — no second-ball tiebreaker. Blind Wolf doubles: +8/-2.
   if (is5Player) {
     const mult = wolfDecision === "blind" ? 2 : 1;
     let result = "";
@@ -215,13 +215,13 @@ function scoreWolf(
     if (isSolo) {
       const bestOther = Math.min(...nonWolves.map(p => strokes[p]));
       if (wolfStr < bestOther) {
-        deltas[wolfPlayer] = 8 * mult;
-        nonWolves.forEach(p => { deltas[p] = -2 * mult; });
-        result = `${mult === 2 ? "BLIND " : ""}Lone Wolf wins +${8 * mult} (1v4)`;
+        deltas[wolfPlayer] = 4 * mult;
+        nonWolves.forEach(p => { deltas[p] = -1 * mult; });
+        result = `${mult === 2 ? "BLIND " : ""}Lone Wolf wins +${4 * mult} (1v4)`;
       } else if (wolfStr > bestOther) {
-        deltas[wolfPlayer] = -8 * mult;
-        nonWolves.forEach(p => { deltas[p] = 2 * mult; });
-        result = `${mult === 2 ? "BLIND " : ""}Lone Wolf loses -${8 * mult} (1v4)`;
+        deltas[wolfPlayer] = -4 * mult;
+        nonWolves.forEach(p => { deltas[p] = 1 * mult; });
+        result = `${mult === 2 ? "BLIND " : ""}Lone Wolf loses -${4 * mult} (1v4)`;
       } else {
         result = "Lone Wolf · best ball tied — push";
       }
