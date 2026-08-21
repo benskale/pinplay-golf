@@ -431,6 +431,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.body.courseName = req.body.courseName.trim().replace(/[\x00-\x1F\x7F<>]/g, "").slice(0, 200);
       }
       const gameData = insertGameSchema.parse(req.body);
+      // 5-player Wolf: randomize the starting wolf
+      if (gameData.gameType === "wolf_5" && Array.isArray(gameData.players) && gameData.players.length === 5) {
+        (gameData as any).currentWolfIndex = Math.floor(Math.random() * 5);
+      }
       // Attach userId if logged in
       if (req.isAuthenticated?.() && req.user) {
         (gameData as any).userId = (req.user as any).id;
@@ -2018,9 +2022,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
               updatedStrokes[player][holeIndex] = score as number;
             }
             const isGameComplete = game.currentHole >= 18;
+            // Wolf rotation — wolf_5 uses a catch-up finish on holes 16-18
+            let nextWolfIndex: number;
+            let nextSettings = game.gameSettings;
+            if (game.gameType === "wolf_5" && Array.isArray(game.players) && game.players.length === 5 && !isGameComplete) {
+              const players: string[] = game.players;
+              const justCompleted = game.currentHole;
+              if (justCompleted < 15) {
+                // Straight rotation holes 1-15: everyone is wolf exactly 3 times
+                nextWolfIndex = (game.currentWolfIndex + 1) % players.length;
+              } else {
+                // Holes 16-18: the three players with the fewest wolf points,
+                // furthest behind takes 18. Ties for the cut coin-flipped.
+                let finale = (game.gameSettings as Record<string, any>)?.wolfFinale as string[] | undefined;
+                if (justCompleted === 15 || !finale || finale.length < 3) {
+                  const ranked = players
+                    .map(p => ({ p, score: newTotalScores[p] || 0, r: Math.random() }))
+                    .sort((a, b) => a.score - b.score || a.r - b.r)
+                    .map(x => x.p);
+                  finale = [ranked[2], ranked[1], ranked[0]]; // [hole 16, hole 17, hole 18]
+                  nextSettings = { ...(game.gameSettings as Record<string, any>), wolfFinale: finale };
+                }
+                const upcoming = justCompleted === 15 ? finale[0] : justCompleted === 16 ? finale[1] : finale[2];
+                nextWolfIndex = Math.max(0, players.indexOf(upcoming));
+              }
+            } else {
+              nextWolfIndex = (game.currentWolfIndex + 1) % game.players.length;
+            }
             const updateData: any = {
               currentHole: isGameComplete ? 18 : game.currentHole + 1,
-              currentWolfIndex: (game.currentWolfIndex + 1) % game.players.length,
+              currentWolfIndex: nextWolfIndex,
+              ...(game.gameType === "wolf_5" ? { gameSettings: nextSettings } : {}),
               totalScores: newTotalScores,
               wolfCounts: newWolfCounts,
               holeHistory: newHoleHistory,

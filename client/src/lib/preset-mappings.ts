@@ -461,6 +461,32 @@ export function presetToConfig(params: PresetConfigParams): GameConfig | null {
         carryover: false,
       };
 
+    case "wolf_5":
+      return {
+        id: "wolf_5",
+        name: "Wolf (5-Player)",
+        source: "preset",
+        description: "5-player Wolf. Pick a partner (2v3 best ball) or go Lone Wolf 1v4.",
+        playerCount,
+        teamStructure: {
+          type: "teams",
+          assignmentMode: "wolf_style",
+          rotationRules: { method: "wolf_pick", wolfOrder: "last" },
+        },
+        scoring: {
+          format: "wolf",
+          handicapBased: false,
+          carryover: false,
+          holeValue: 1,
+          holeValueUnit: "points",
+        },
+        betPools: emptyBetPools,
+        miniGames: emptyMiniGames,
+        sideBets: [],
+        needsHandicap: false,
+        carryover: false,
+      };
+
     case "wolf":
       return {
         id: "wolf",

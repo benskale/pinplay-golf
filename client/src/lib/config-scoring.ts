@@ -200,9 +200,53 @@ function scoreWolf(
   }
 
   const is3Player = players.length === 3;
+  const is5Player = players.length === 5;
   const wolfStr = strokes[wolfPlayer];
   const nonWolves = players.filter(p => p !== wolfPlayer);
   const isSolo = wolfDecision === "alone" || wolfDecision === "blind";
+
+  // ── 5-player Wolf (wolf_5) ─────────────────────────────────────────
+  // Zero-sum per hole. Lone Wolf: +8/-2. Team hole 2v3: pair +1.5 each, trio +1 each.
+  // Best-ball ties push — no second-ball tiebreaker. Gammens hole doubles everything.
+  if (is5Player) {
+    const gammensHole = Number(settings.gammensHole) || 0;
+    const mult = gammensHole > 0 && game.currentHole === gammensHole ? 2 : 1;
+    let result = "";
+
+    if (isSolo) {
+      const bestOther = Math.min(...nonWolves.map(p => strokes[p]));
+      if (wolfStr < bestOther) {
+        deltas[wolfPlayer] = 8 * mult;
+        nonWolves.forEach(p => { deltas[p] = -2 * mult; });
+        result = `Lone Wolf wins +${8 * mult} (1v4)`;
+      } else if (wolfStr > bestOther) {
+        deltas[wolfPlayer] = -8 * mult;
+        nonWolves.forEach(p => { deltas[p] = 2 * mult; });
+        result = `Lone Wolf loses -${8 * mult} (1v4)`;
+      } else {
+        result = "Lone Wolf · best ball tied — push";
+      }
+    } else {
+      const partner = wolfDecision;
+      const pair = [wolfPlayer, partner];
+      const trio = players.filter(p => !pair.includes(p));
+      const pairBest = Math.min(strokes[wolfPlayer], strokes[partner]);
+      const trioBest = Math.min(...trio.map(p => strokes[p]));
+      if (pairBest < trioBest) {
+        pair.forEach(p => { deltas[p] = 1.5 * mult; });
+        trio.forEach(p => { deltas[p] = -1 * mult; });
+        result = `Wolf + ${partner} · pair wins +${1.5 * mult}`;
+      } else if (trioBest < pairBest) {
+        trio.forEach(p => { deltas[p] = 1 * mult; });
+        pair.forEach(p => { deltas[p] = -1.5 * mult; });
+        result = `Trio wins +${1 * mult} (Wolf + ${partner} -${1.5 * mult} each)`;
+      } else {
+        result = `Wolf + ${partner} · best balls tied — push`;
+      }
+    }
+
+    return { pointDeltas: deltas, result, metadata: { wolfPlayer, wolfDecision } };
+  }
 
   if (isSolo) {
     const bestOther = Math.min(...nonWolves.map(p => strokes[p]));

@@ -124,8 +124,10 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   const currentPar = game.pars?.[game.currentHole - 1] ?? 4;
   const rotatingPlayer = getCurrentRotatingPlayer(game);
   const teams = getTeams(game);
-  const isWolfGame = game.gameType === "wolf" || game.gameType === "wolf_3";
+  const isWolfGame = game.gameType === "wolf" || game.gameType === "wolf_3" || game.gameType === "wolf_5";
   const wolfSettings = (game as any).gameSettings || {};
+  const gammensHole = Number(wolfSettings.gammensHole) || 0;
+  const gammensActive = game.gameType === "wolf_5" && gammensHole > 0 && game.currentHole === gammensHole;
   const wolfOrder = wolfSettings.wolfOrder ?? "last";
   const blindWolfEnabled = wolfSettings.blindWolf ?? false;
   const isTeamGame = gameDef.isTeamGame;
@@ -475,6 +477,9 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                 <Card className={wolfDecision ? "ring-2 ring-primary-400" : ""}>
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between mb-3">
+                      {gammensActive && (
+                        <span className="text-[0.625rem] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-0.5 rounded-full mr-2">GAMMENS ×2</span>
+                      )}
                       <div className="flex items-center space-x-2">
                         <div className="w-6 h-6 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold">1</div>
                         <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200">Wolf's Decision</h3>
@@ -564,7 +569,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                           onClick={() => setWolfDecision("alone")}>
                           <Swords className="w-4 h-4 mr-2" /> Go Alone
                         </Button>
-                        <div className={`grid grid-cols-${nonWolvesForDecision.length} gap-2 mt-2`}>
+                        <div className={`grid ${nonWolvesForDecision.length === 4 ? "grid-cols-2 sm:grid-cols-4" : nonWolvesForDecision.length === 3 ? "grid-cols-3" : "grid-cols-2"} gap-2 mt-2`}>
                           {nonWolvesForDecision.map(player => (
                             <Button key={player} variant="outline"
                               className="flex flex-col items-center py-3 h-auto border-2 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/40"
@@ -1220,7 +1225,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                           </div>
                           <div>
                             <p className="text-[0.875rem] font-semibold text-gray-800 dark:text-gray-200">{entry.player.split(" ")[0]}</p>
-                            {(game.gameType === "wolf" || game.gameType === "wolf_3") && (
+                            {(game.gameType === "wolf" || game.gameType === "wolf_3" || game.gameType === "wolf_5") && (
                               <p className="text-[0.6875rem] text-muted-foreground leading-none">Wolf {game.wolfCounts[entry.player] || 0}×</p>
                             )}
                             {showDollars && (
