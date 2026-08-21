@@ -216,8 +216,8 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   },
   wolf_5: {
     id: "wolf_5", name: "Wolf (5-Player)", playerCounts: [5],
-    description: "Wolf picks a partner (2v3) or goes Lone Wolf (1v4, double stakes).",
-    detailedDescription: "5-player Wolf. Wolf tees LAST — after watching all four drives, pick one partner (best ball 2v3) or go Lone Wolf against all four. Wolf rotates holes 1-15 so everyone is Wolf 3 times, then holes 16-18 go to the three players with the fewest wolf points (furthest behind takes 18). Team hole: pair +1.5 each vs trio +1 each. Lone Wolf: +8 vs -8. Ties on best ball push. Optional Gammens hole plays for double.",
+    description: "Wolf picks a partner (2v3) or goes Lone Wolf (1v4). Blind Wolf doubles.",
+    detailedDescription: "5-player Wolf. Wolf tees LAST — after watching all four drives, pick one partner (best ball 2v3) or go Lone Wolf against all four. Wolf rotates holes 1-15 so everyone is Wolf 3 times, then holes 16-18 go to the three players with the fewest wolf points (furthest behind takes 18). Team hole: pair +1.5 each vs trio +1 each. Lone Wolf: +8 vs -8. Blind Wolf: go solo for double points (+16, others -4 each). Ties on best ball push.",
     isTeamGame: false, needsHandicap: false, carryover: false, customizable: true,
   },
   wolf: {

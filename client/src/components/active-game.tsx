@@ -126,10 +126,8 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   const teams = getTeams(game);
   const isWolfGame = game.gameType === "wolf" || game.gameType === "wolf_3" || game.gameType === "wolf_5";
   const wolfSettings = (game as any).gameSettings || {};
-  const gammensHole = Number(wolfSettings.gammensHole) || 0;
-  const gammensActive = game.gameType === "wolf_5" && gammensHole > 0 && game.currentHole === gammensHole;
   const wolfOrder = wolfSettings.wolfOrder ?? "last";
-  const blindWolfEnabled = wolfSettings.blindWolf ?? false;
+  const blindWolfEnabled = game.gameType === "wolf_5" || (wolfSettings.blindWolf ?? false);
   const isTeamGame = gameDef.isTeamGame;
   const isBBB = game.gameType === "bingo_bango_bongo";
   const isHammer = game.gameType === "hammer";
@@ -477,9 +475,6 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                 <Card className={wolfDecision ? "ring-2 ring-primary-400" : ""}>
                   <CardContent className="p-5">
                     <div className="flex items-center justify-between mb-3">
-                      {gammensActive && (
-                        <span className="text-[0.625rem] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-0.5 rounded-full mr-2">GAMMENS ×2</span>
-                      )}
                       <div className="flex items-center space-x-2">
                         <div className="w-6 h-6 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold">1</div>
                         <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200">Wolf's Decision</h3>
@@ -504,7 +499,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                                 {rotatingPlayer.split(" ")[0]} goes {wolfDecision === "blind" ? "BLIND WOLF!" : "alone!"}
                               </p>
                               <p className={`text-xs ${wolfDecision === "blind" ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`}>
-                                {wolfDecision === "blind" ? "Declared before anyone teed off - max stakes! " : ""}vs {nonWolvesForDecision.map(p => p.split(" ")[0]).join(", ")}
+                                {wolfDecision === "blind" ? (game.gameType === "wolf_5" ? "Double points vs all four! " : "Declared before anyone teed off - max stakes! ") : ""}vs {nonWolvesForDecision.map(p => p.split(" ")[0]).join(", ")}
                               </p>
                             </div>
                           </div>
@@ -562,7 +557,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                         {blindWolfEnabled && (
                           <Button className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 mb-2"
                             onClick={() => setWolfDecision("blind")}>
-                            <span className="mr-1">🐺</span> Blind Wolf (Solo, Pre-Drive)
+                            <span className="mr-1">🐺</span> {game.gameType === "wolf_5" ? "Blind Wolf (Solo, Double Points)" : "Blind Wolf (Solo, Pre-Drive)"}
                           </Button>
                         )}
                         <Button className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3"

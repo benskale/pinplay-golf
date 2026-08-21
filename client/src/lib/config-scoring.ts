@@ -207,10 +207,9 @@ function scoreWolf(
 
   // ── 5-player Wolf (wolf_5) ─────────────────────────────────────────
   // Zero-sum per hole. Lone Wolf: +8/-2. Team hole 2v3: pair +1.5 each, trio +1 each.
-  // Best-ball ties push — no second-ball tiebreaker. Gammens hole doubles everything.
+  // Best-ball ties push — no second-ball tiebreaker. Blind Wolf doubles: +16/-4.
   if (is5Player) {
-    const gammensHole = Number(settings.gammensHole) || 0;
-    const mult = gammensHole > 0 && game.currentHole === gammensHole ? 2 : 1;
+    const mult = wolfDecision === "blind" ? 2 : 1;
     let result = "";
 
     if (isSolo) {
@@ -218,11 +217,11 @@ function scoreWolf(
       if (wolfStr < bestOther) {
         deltas[wolfPlayer] = 8 * mult;
         nonWolves.forEach(p => { deltas[p] = -2 * mult; });
-        result = `Lone Wolf wins +${8 * mult} (1v4)`;
+        result = `${mult === 2 ? "BLIND " : ""}Lone Wolf wins +${8 * mult} (1v4)`;
       } else if (wolfStr > bestOther) {
         deltas[wolfPlayer] = -8 * mult;
         nonWolves.forEach(p => { deltas[p] = 2 * mult; });
-        result = `Lone Wolf loses -${8 * mult} (1v4)`;
+        result = `${mult === 2 ? "BLIND " : ""}Lone Wolf loses -${8 * mult} (1v4)`;
       } else {
         result = "Lone Wolf · best ball tied — push";
       }

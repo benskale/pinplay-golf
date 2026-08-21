@@ -881,37 +881,8 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
           </div>
           {selectedGame.id === "wolf_5" && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">Gammens hole <span className="text-[0.6875rem] text-gray-400">(double points)</span></p>
-                  <p className="text-[0.6875rem] text-gray-400">Team hole worth 6, Lone Wolf worth 16</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setGameSettings(prev => ({ ...prev, gammensHole: prev.gammensHole ? 0 : 18 }))}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${gameSettings.gammensHole ? "bg-amber-500" : "bg-gray-300 dark:bg-gray-600"}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${gameSettings.gammensHole ? "translate-x-6" : "translate-x-1"}`} />
-                </button>
-              </div>
-              {gameSettings.gammensHole ? (
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-500 whitespace-nowrap">Gammens hole #</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={18}
-                    value={gameSettings.gammensHole}
-                    onChange={e => {
-                      const v = Math.min(18, Math.max(1, parseInt(e.target.value) || 1));
-                      setGameSettings(prev => ({ ...prev, gammensHole: v }));
-                    }}
-                    className="w-16 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-2 py-1 text-sm"
-                  />
-                </div>
-              ) : null}
               <p className="text-[0.6875rem] text-gray-400">
-                Fixed scoring: team hole +1.5/-1, Lone Wolf +8/-8. Holes 1-15 rotate, 16-18 go to the three lowest — furthest back takes 18. Wolf always tees last. Set the per-point stake below.
+                Fixed scoring: team hole +1.5/-1, Lone Wolf +8/-8, Blind Wolf +16/-4 (wolf alone vs all four, double points). Holes 1-15 rotate, 16-18 go to the three lowest — furthest back takes 18. Wolf always tees last. Set the per-point stake below.
               </p>
             </div>
           )}
