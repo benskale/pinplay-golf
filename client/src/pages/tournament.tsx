@@ -167,7 +167,7 @@ export default function TournamentPage() {
     },
     onError: (err: Error) => toast({ title: "Update failed", description: err.message, variant: "destructive" }),
   });
-  const handicapPlay = !!(tournament.settings as any)?.handicapPlay;
+  const handicapPlay = !!(tournament as any)?.settings?.handicapPlay;
 
   // Leave tournament mutation
   const leaveMutation = useMutation({
