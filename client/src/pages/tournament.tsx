@@ -639,6 +639,23 @@ export default function TournamentPage() {
           )}
         </div>
 
+        {/* Team sign-up nudge: registered player on a team-format tournament without a team */}
+        {isTeamFormat && tournament.isRegistered && user && !isCancelled && !isComplete &&
+          !(tournament.players || []).some(p => p.userId === user.id && p.teamId) && activeTab !== "teams" && (
+          <button
+            onClick={() => setActiveTab("teams")}
+            className="w-full mb-4 px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 flex items-center justify-between gap-3 text-left"
+          >
+            <div>
+              <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">You're not on a team yet</p>
+              <p className="text-xs text-blue-600/80 dark:text-blue-400/80">Tap to pick your team before the round starts</p>
+            </div>
+            <span className="text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 text-white flex-shrink-0">
+              Join a Team
+            </span>
+          </button>
+        )}
+
         {/* ── Tabs ── */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className={`w-full grid mb-4 ${

@@ -509,6 +509,7 @@ export class DatabaseStorage implements IStorage {
         playerName: tournamentPlayers.playerName,
         isGuest: tournamentPlayers.isGuest,
         status: tournamentPlayers.status,
+        teamId: tournamentPlayers.teamId,
         createdAt: tournamentPlayers.createdAt,
         avatarUrl: users.avatarUrl,
       })
