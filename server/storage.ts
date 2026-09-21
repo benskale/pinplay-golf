@@ -555,6 +555,25 @@ export class DatabaseStorage implements IStorage {
     return base + extra;
   }
 
+  // ── Per-player hole-indexed scores for tournament leaderboards ──
+  // The live score pipeline (update_strokes / complete_hole WS handlers)
+  // writes `strokes` and `holeHistory` but never the legacy `scores` field,
+  // so leaderboards must derive scores from holeHistory (the authoritative
+  // record — holes are replaced in place on edits). Legacy games that DO
+  // have `scores` populated keep using it.
+  private holeScoresFor(game: Game): Record<string, number[]> {
+    const legacy = (game.scores as Record<string, number[]>) || {};
+    if (Object.values(legacy).some(arr => (arr || []).length > 0)) return legacy;
+    const fixed: Record<string, number[]> = {};
+    for (const hole of (game.holeHistory as Array<{ hole: number; strokes: Record<string, number> }>) || []) {
+      for (const [player, score] of Object.entries(hole.strokes || {})) {
+        if (!fixed[player]) fixed[player] = [];
+        fixed[player][hole.hole - 1] = score as number;
+      }
+    }
+    return fixed;
+  }
+
   async getTournamentLeaderboard(tournamentId: string, view?: string): Promise<LeaderboardEntry[]> {
     const tournament = await this.getTournament(tournamentId);
     const format = tournament?.format ?? "stroke_play";
@@ -643,7 +662,7 @@ export class DatabaseStorage implements IStorage {
     }> = [];
 
     for (const game of tournamentGames) {
-      const scores = game.scores as Record<string, number[]>;
+      const scores = this.holeScoresFor(game);
       const handicaps = game.handicaps as Record<string, number>;
       const strokeIndexes = (game.strokeIndexes as number[]) || [];
       const holeHistory = game.holeHistory as Array<any>;
@@ -746,7 +765,7 @@ export class DatabaseStorage implements IStorage {
 
     for (const game of tournamentGames) {
       const players = game.players as string[];
-      const scores = game.scores as Record<string, number[]>;
+      const scores = this.holeScoresFor(game);
       const handicaps = game.handicaps as Record<string, number>;
       const strokeIndexes = (game.strokeIndexes as number[]) || [];
       const holeHistory = game.holeHistory as Array<any>;
@@ -867,7 +886,7 @@ export class DatabaseStorage implements IStorage {
     const entries: LeaderboardEntry[] = [];
 
     for (const game of tournamentGames) {
-      const scores = game.scores as Record<string, number[]>;
+      const scores = this.holeScoresFor(game);
       const handicaps = game.handicaps as Record<string, number>;
       const pars = (game.pars as number[]) || [];
       const strokeIndexes = (game.strokeIndexes as number[]) || [];
@@ -949,7 +968,7 @@ export class DatabaseStorage implements IStorage {
       const players = game.players as string[];
       if (players.length < 2) continue;
 
-      const scores = game.scores as Record<string, number[]>;
+      const scores = this.holeScoresFor(game);
       const handicaps = game.handicaps as Record<string, number>;
       const strokeIndexes = (game.strokeIndexes as number[]) || [];
       const holeHistory = game.holeHistory as Array<any>;
@@ -1042,7 +1061,7 @@ export class DatabaseStorage implements IStorage {
     }>();
 
     for (const game of tournamentGames) {
-      const scores = game.scores as Record<string, number[]>;
+      const scores = this.holeScoresFor(game);
       const handicaps = game.handicaps as Record<string, number>;
       const strokeIndexes = (game.strokeIndexes as number[]) || [];
       const holeHistory = game.holeHistory as Array<any>;
@@ -1444,7 +1463,7 @@ export class DatabaseStorage implements IStorage {
     for (const round of rounds) {
       const roundGames = gamesByRound.get(round.id) || [];
       for (const game of roundGames) {
-        const scores = game.scores as Record<string, number[]>;
+        const scores = this.holeScoresFor(game);
         const strokes = game.strokes as Record<string, number[]>;
         const handicaps = game.handicaps as Record<string, number>;
         const pars = game.pars as number[];
