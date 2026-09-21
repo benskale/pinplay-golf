@@ -1,9 +1,10 @@
 import { UserCircle, Play, CheckCircle } from "lucide-react";
-import type { TournamentPlayer } from "@shared/schema";
+import type { TournamentPlayer, TournamentTeam } from "@shared/schema";
 
 interface TournamentPlayerListProps {
   players: (TournamentPlayer & { avatarUrl: string | null })[];
   currentUserId?: number | null;
+  teams?: TournamentTeam[];
 }
 
 const statusConfig: Record<string, { label: string; color: string; icon: typeof Play }> = {
@@ -14,7 +15,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
   dnf: { label: "DNF", color: "text-red-500 dark:text-red-400", icon: UserCircle },
 };
 
-export default function TournamentPlayerList({ players, currentUserId }: TournamentPlayerListProps) {
+export default function TournamentPlayerList({ players, currentUserId, teams }: TournamentPlayerListProps) {
   if (players.length === 0) {
     return (
       <div className="text-center py-12">
@@ -33,6 +34,7 @@ export default function TournamentPlayerList({ players, currentUserId }: Tournam
         const status = statusConfig[player.status] || statusConfig.registered;
         const StatusIcon = status.icon;
         const isCurrentUser = currentUserId && player.userId === currentUserId;
+        const team = teams?.find(t => t.id === player.teamId);
 
         return (
           <div
@@ -76,6 +78,15 @@ export default function TournamentPlayerList({ players, currentUserId }: Tournam
               <div className={`flex items-center gap-1.5 mt-0.5 text-xs ${status.color}`}>
                 <StatusIcon className="w-3 h-3" />
                 <span>{status.label}</span>
+                {team && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[0.625rem] font-semibold"
+                    style={{ backgroundColor: `${team.teamColor}20`, color: team.teamColor }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: team.teamColor }} />
+                    {team.teamName}
+                  </span>
+                )}
               </div>
             </div>
 

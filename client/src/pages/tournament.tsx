@@ -697,6 +697,7 @@ export default function TournamentPage() {
                 <TournamentPlayerList
                   players={tournament.players || []}
                   currentUserId={user?.id}
+                  teams={tournament.teams || []}
                 />
               </CardContent>
             </Card>
