@@ -886,6 +886,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get tournament hole-by-hole detail (skins format: who won each skin)
+  app.get("/api/tournaments/:id/hole-detail", async (req, res) => {
+    try {
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+      if (tournament.format !== "skins") {
+        return res.json({ format: tournament.format, players: [], holes: [] });
+      }
+      const detail = await storage.getSkinsHoleDetail(req.params.id);
+      res.json(detail);
+    } catch (error) {
+      console.error("Get hole detail error:", error);
+      res.status(500).json({ message: "Failed to fetch hole detail" });
+    }
+  });
+
   // Complete tournament (creator only)
   app.post("/api/tournaments/:id/complete", async (req, res) => {
     try {

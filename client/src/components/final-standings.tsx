@@ -37,7 +37,23 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
 
   const gameDef = GAME_DEFINITIONS[game.gameType];
   const gameName = gameDef?.name ?? game.gameType;
-  const displayGame = updatedGame || game;
+  const savedGame = updatedGame || game;
+  // Tournament pod games: skins settle across the full field, not within the
+  // group — display the round as stroke play and zero the main-game money.
+  const isTournamentGame = !!game.tournamentId;
+  const displayGame: Game = isTournamentGame
+    ? {
+        ...savedGame,
+        gameType: "stroke_play",
+        totalScores: Object.fromEntries(
+          game.players.map(p => [
+            p,
+            savedGame.holeHistory.reduce((sum, h) => sum + (h.strokes?.[p] || 0), 0),
+          ])
+        ) as Record<string, number>,
+        gameSettings: { ...(savedGame.gameSettings as Record<string, any>), pointValue: 0 },
+      }
+    : savedGame;
 
   // Edit hole handler for completed games (uses REST PATCH)
   const handleEditHoleSave = async (holeNumber: number, newStrokes: Record<string, number>) => {
@@ -51,11 +67,11 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
       toast({ title: "Failed to update hole", variant: "destructive" });
     }
   };
-  const lower = isLowerBetter(game.gameType);
+  const lower = isLowerBetter(displayGame.gameType);
   const isWolfGame = game.gameType === "wolf" || game.gameType === "wolf_3";
 
   // Dollar value per point for the main game
-  const pointValue = (game.gameSettings as any)?.pointValue || 0;
+  const pointValue = isTournamentGame ? 0 : ((game.gameSettings as any)?.pointValue || 0);
 
   // Determine if this is the game creator (has userId match) or a visitor
   const isCreator = user && game.userId === user.id;
@@ -91,10 +107,18 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
     }
   }, [user, claimingPlayer, claimed, game.id]);
 
-  // Count hole wins per player
+  // Count hole wins per player (tournament games: lowest gross wins the hole)
   const holeWins: Record<string, number> = {};
   game.players.forEach(p => { holeWins[p] = 0; });
   displayGame.holeHistory.forEach(hole => {
+    if (isTournamentGame) {
+      const entries = Object.entries(hole.strokes || {}).filter(([, s]) => s > 0);
+      if (entries.length === 0) return;
+      const best = Math.min(...entries.map(([, s]) => s));
+      const winners = entries.filter(([, s]) => s === best);
+      if (winners.length === 1) holeWins[winners[0][0]]++;
+      return;
+    }
     const vals = Object.values(hole.points);
     const best = lower ? Math.min(...vals) : Math.max(...vals);
     if (lower ? best < 999 : best > 0) {
@@ -323,7 +347,9 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
               </p>
             )}
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-              Congratulations on a great round!
+              {isTournamentGame
+                ? "Skins settle across the full field — see the tournament leaderboard."
+                : "Congratulations on a great round!"}
             </p>
           </CardContent>
         </Card>

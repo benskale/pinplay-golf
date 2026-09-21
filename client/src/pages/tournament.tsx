@@ -20,6 +20,7 @@ import { TournamentTeams } from "@/components/tournament-teams";
 import { TournamentMatches } from "@/components/tournament-matches";
 import { SideBets } from "@/components/side-bets";
 import { MultiDayLeaderboard } from "@/components/multi-day-leaderboard";
+import TournamentHoleDetail from "@/components/tournament-hole-detail";
 
 interface TournamentTeam {
   id: number;
@@ -725,6 +726,12 @@ export default function TournamentPage() {
                 format={tournament?.format}
                 teams={tournament.teams}
               />
+              {tournament?.format === "skins" && (
+                <TournamentHoleDetail
+                  tournamentId={tournamentId!}
+                  refreshKey={wsLeaderboard}
+                />
+              )}
             </div>
           </TabsContent>
 

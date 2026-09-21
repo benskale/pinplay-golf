@@ -407,6 +407,29 @@ export type WSMessage = z.infer<typeof wsMessageSchema>;
 
 // ── Tournament leaderboard types ─────────────────────────────────────────────
 
+// Hole-by-hole detail (skins format) — who won each skin, with carryovers
+export interface HoleDetailResult {
+  playerName: string;
+  gross: number;
+  net: number;
+  strokesReceived: number;
+}
+
+export interface HoleDetail {
+  hole: number;
+  carryoverIn: number;    // skins carried into this hole from prior halves
+  results: HoleDetailResult[];
+  winner: string | null;  // null = halved, carries over
+  skinsAwarded: number;   // 1 + carryoverIn when won, else 0
+  carryoverOut: number;
+}
+
+export interface SkinsHoleDetail {
+  format: string;
+  players: Array<{ playerName: string; handicap: number; skinsWon: number }>;
+  holes: HoleDetail[];
+}
+
 export interface LeaderboardEntry {
   position: number;
   playerName: string;

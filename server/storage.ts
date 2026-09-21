@@ -1,7 +1,7 @@
 import { eq, desc, and, or, ilike, sql as sqlOp, count, asc } from "drizzle-orm";
 import { db, pool } from "./db";
 import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers, tournamentTeams, tournamentRounds, gameTemplates, globalGameTemplates, tournamentMatches, sideBets, gameParticipants } from "@shared/schema";
-import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite, Tournament, InsertTournament, TournamentPlayer, InsertTournamentPlayer, LeaderboardEntry, TournamentTeam, TournamentRound, InsertTournamentRound, GameTemplate, InsertGameTemplate, TournamentMatch, InsertTournamentMatch, SideBet, InsertSideBet, GlobalGameTemplate } from "@shared/schema";
+import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite, Tournament, InsertTournament, TournamentPlayer, InsertTournamentPlayer, LeaderboardEntry, HoleDetail, HoleDetailResult, SkinsHoleDetail, TournamentTeam, TournamentRound, InsertTournamentRound, GameTemplate, InsertGameTemplate, TournamentMatch, InsertTournamentMatch, SideBet, InsertSideBet, GlobalGameTemplate } from "@shared/schema";
 import { generateInviteCode } from "@shared/schema";
 import { randomUUID } from "crypto";
 import session from "express-session";
@@ -62,6 +62,7 @@ export interface IStorage {
   getTournamentPlayers(tournamentId: string): Promise<(TournamentPlayer & { avatarUrl: string | null })[]>;
   getTournamentGames(tournamentId: string): Promise<Game[]>;
   getTournamentLeaderboard(tournamentId: string, view?: string): Promise<LeaderboardEntry[]>;
+  getSkinsHoleDetail(tournamentId: string): Promise<SkinsHoleDetail>;
   updateTournamentStatus(tournamentId: string, status: string): Promise<Tournament | undefined>;
   getTournamentsByUser(userId: number): Promise<(Tournament & { playerCount: number })[]>;
   getTournamentsByCreator(userId: number): Promise<Tournament[]>;
@@ -644,7 +645,7 @@ export class DatabaseStorage implements IStorage {
   // ── Skins ──
   // Individual play. Each hole's lowest NET score wins a skin.
   // Ties carry over to the next hole.
-  private async getSkinsLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
+  private async computeSkinsField(tournamentId: string) {
     const tournamentGames = await this.getGamesByTournament(tournamentId);
     const tPlayers = await this.getTournamentPlayers(tournamentId);
 
@@ -688,13 +689,14 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Compute skins hole-by-hole
+    // Compute skins hole-by-hole (keeping per-hole outcomes for the detail view)
+    const holes: HoleDetail[] = [];
     const skinsWon = new Map<string, number>();
     let carryover = 0;
     const maxHoles = Math.max(...allPlayers.map(p => p.holeScores.length), 0);
 
     for (let holeIdx = 0; holeIdx < maxHoles; holeIdx++) {
-      const holeResults: Array<{ playerName: string; netScore: number }> = [];
+      const holeResults: HoleDetailResult[] = [];
 
       for (const player of allPlayers) {
         if (holeIdx >= player.holeScores.length) continue;
@@ -703,23 +705,34 @@ export class DatabaseStorage implements IStorage {
 
         const strokeIdx = player.strokeIndexes[holeIdx] ?? (holeIdx + 1);
         const hs = this.handicapStrokesForHole(player.handicap, strokeIdx);
-        holeResults.push({ playerName: player.playerName, netScore: gross - hs });
+        holeResults.push({ playerName: player.playerName, gross, net: gross - hs, strokesReceived: hs });
       }
 
       if (holeResults.length === 0) continue;
 
-      const minNet = Math.min(...holeResults.map(r => r.netScore));
-      const winners = holeResults.filter(r => r.netScore === minNet);
+      const minNet = Math.min(...holeResults.map(r => r.net));
+      const winners = holeResults.filter(r => r.net === minNet);
 
+      const carryoverIn = carryover;
+      let winner: string | null = null;
+      let skinsAwarded = 0;
       if (winners.length === 1) {
-        const total = 1 + carryover;
-        const name = winners[0].playerName;
-        skinsWon.set(name, (skinsWon.get(name) ?? 0) + total);
+        winner = winners[0].playerName;
+        skinsAwarded = 1 + carryover;
+        skinsWon.set(winner, (skinsWon.get(winner) ?? 0) + skinsAwarded);
         carryover = 0;
       } else {
         carryover += 1;
       }
+
+      holes.push({ hole: holeIdx + 1, carryoverIn, results: holeResults, winner, skinsAwarded, carryoverOut: carryover });
     }
+
+    return { allPlayers, skinsWon, holes };
+  }
+
+  private async getSkinsLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
+    const { allPlayers, skinsWon } = await this.computeSkinsField(tournamentId);
 
     // Build leaderboard entries ranked by skins won (desc)
     const entries: LeaderboardEntry[] = allPlayers.map(p => ({
@@ -753,6 +766,20 @@ export class DatabaseStorage implements IStorage {
     }
 
     return entries;
+  }
+
+  // Hole-by-hole skin outcomes for the tournament detail view
+  async getSkinsHoleDetail(tournamentId: string): Promise<SkinsHoleDetail> {
+    const { allPlayers, skinsWon, holes } = await this.computeSkinsField(tournamentId);
+    return {
+      format: "skins",
+      players: allPlayers.map(p => ({
+        playerName: p.playerName,
+        handicap: p.handicap,
+        skinsWon: skinsWon.get(p.playerName) ?? 0,
+      })),
+      holes,
+    };
   }
 
   // ── Best Ball ──

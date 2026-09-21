@@ -275,7 +275,12 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     setPendingPress(null);
     setPressLog([]);
 
-    toast({ title: `Hole ${game.currentHole} Complete!`, description: calculatedResult.result });
+    toast({
+      title: `Hole ${game.currentHole} Complete!`,
+      description: game.tournamentId
+        ? game.players.map(p => `${p.split(" ")[0]} ${(fullStrokes as Record<string, number>)[p] ?? "–"}`).join(" · ")
+        : calculatedResult.result,
+    });
   };
 
   // ── Press system handlers ──
@@ -327,7 +332,28 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     toast({ title: `Hole ${game.currentHole} — Press Dropped!`, description: result });
   };
 
-  const leaderboard = getLeaderboard(game);
+  // Tournament pod games: skins settle field-wide, so the in-game leaderboard
+  // shows strokes vs par instead of an intra-group skins tally
+  const leaderboard = (() => {
+    if (!game.tournamentId) return getLeaderboard(game);
+    const holesPlayed = game.holeHistory.length;
+    const parPlayed = game.pars.slice(0, holesPlayed).reduce((a, b) => a + b, 0);
+    const entries = game.players.map(p => {
+      const strokes = game.holeHistory.reduce((sum, h) => sum + (h.strokes?.[p] || 0), 0);
+      const diff = strokes - parPlayed;
+      return {
+        player: p,
+        score: -diff,
+        displayScore: holesPlayed === 0 ? "E" : diff === 0 ? "E" : diff > 0 ? `+${diff}` : `${diff}`,
+      };
+    });
+    entries.sort((a, b) => b.score - a.score);
+    let rank = 1;
+    return entries.map((e, i) => {
+      if (i > 0 && e.score < entries[i - 1].score) rank = i + 1;
+      return { ...e, rank };
+    });
+  })();
   const gameStatus = getGameStatus(game);
   const lower = isLowerBetter(game.gameType);
   const nonWolvesForDecision = game.players.filter(p => p !== rotatingPlayer);
@@ -622,7 +648,8 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
               )}
 
               {/* ── PRESS SYSTEM ── (universal, all game types except Hammer which has its own) */}
-              {!isHammer && (
+              {/* Tournament pod games have no intra-group presses — skins settle field-wide */}
+              {!isHammer && !game.tournamentId && (
                 <Card className="border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/40">
                   <CardContent className="p-3">
                     <div className="flex items-center justify-between mb-2">
@@ -1153,7 +1180,11 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                           );
                         })}
                       </div>
-                      <p className="text-xs text-center text-gray-500 dark:text-gray-400 italic">{calculatedResult.result}</p>
+                      <p className="text-xs text-center text-gray-500 dark:text-gray-400 italic">
+                        {game.tournamentId
+                          ? game.players.map(p => `${p.split(" ")[0]} ${holeStrokes[p] ?? "–"}`).join(" · ")
+                          : calculatedResult.result}
+                      </p>
                     </div>
                   ) : (
                     <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">

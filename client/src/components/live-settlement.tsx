@@ -9,6 +9,12 @@ interface LiveSettlementProps {
 }
 
 export default function LiveSettlement({ game }: LiveSettlementProps) {
+  // Tournament pod games: the main game settles field-wide on the tournament
+  // leaderboard, so intra-group main-game money is suppressed here. Side games
+  // (closest to pin, trash, etc.) still settle within the group.
+  const settlementGame = game.tournamentId
+    ? { ...game, gameSettings: { ...(game.gameSettings as Record<string, any>), pointValue: 0 } }
+    : game;
   const {
     netBalances,
     mainGameBalances,
@@ -18,7 +24,7 @@ export default function LiveSettlement({ game }: LiveSettlementProps) {
     pointValue,
     hasMainGame,
     hasMiniGames,
-  } = getLiveSettlement(game);
+  } = getLiveSettlement(settlementGame);
 
   // Don't render if nothing to show
   if (!hasMainGame && !hasMiniGames) return null;
