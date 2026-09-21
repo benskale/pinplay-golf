@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,7 @@ import LiveSettlement from "@/components/live-settlement";
 import GameSideBets from "@/components/game-side-bets";
 import {
   Share2, Crown, Minus, Plus, TableProperties, ClipboardList,
-  Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target, MoreVertical, Trash2, Flag, Sparkles, Flame
+  Swords, Users, CheckCircle2, RotateCcw, Trophy, Zap, Target, MoreVertical, Trash2, Flag, Sparkles, Flame, ArrowLeft
 } from "lucide-react";
 import PinPlayLogo from "@/components/logo";
 import { useToast } from "@/hooks/use-toast";
@@ -51,6 +52,7 @@ const STROKE_LABEL = (diff: number) =>
   diff <= -2 ? `${Math.abs(diff)} under` : diff === -1 ? "Birdie" : diff === 0 ? "Par" : diff === 1 ? "Bogey" : `${diff} over`;
 
 export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: ActiveGameProps) {
+  const [, setLocation] = useLocation();
   const [showShareModal, setShowShareModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [tab, setTab] = useState<Tab>("scoring");
@@ -352,7 +354,18 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
       <header className="text-white z-50 sticky top-0 hero-texture header-surface">
         <div className="max-w-md mx-auto px-4 pt-4 pb-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              {game.tournamentId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-8 h-8 p-0 rounded-full hover:bg-white/15 text-white -ml-2 flex-shrink-0"
+                  aria-label="Back to tournament"
+                  onClick={() => setLocation(`/tournament/${game.tournamentId}`)}
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+              )}
               <img src="/logo-dark.png" alt="PinPlay Golf" className="h-7 w-auto flex-shrink-0" />
               <div className="min-w-0">
                 <h1 className="text-[1.0625rem] font-bold leading-tight tracking-tight truncate">{gameDef.name}</h1>

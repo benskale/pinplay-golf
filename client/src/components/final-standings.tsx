@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trophy, Crown, Award, RotateCcw, TableProperties, ClipboardList, Save, UserPlus, CheckCircle2, HandMetal, Sparkles, DollarSign } from "lucide-react";
+import { Trophy, Crown, Award, RotateCcw, TableProperties, ClipboardList, Save, UserPlus, CheckCircle2, HandMetal, Sparkles, DollarSign, ArrowLeft } from "lucide-react";
 import { ShareModal } from "@/components/share-modal";
 import { GhinExportModal } from "@/components/ghin-export-modal";
 import RoundStats from "@/components/round-stats";
@@ -715,14 +715,25 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
             <ClipboardList className="w-4 h-4 mr-2" />
             Post to GHIN
           </Button>
-          <Button
-            variant="outline"
-            className="w-full border-gray-300 text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-800 py-3 rounded-xl"
-            onClick={onNewGame}
-          >
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Start New Game
-          </Button>
+          {game.tournamentId ? (
+            <Button
+              variant="outline"
+              className="w-full border-gray-300 text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-800 py-3 rounded-xl"
+              onClick={() => setLocation(`/tournament/${game.tournamentId}`)}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Tournament
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              className="w-full border-gray-300 text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-800 py-3 rounded-xl"
+              onClick={onNewGame}
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Start New Game
+            </Button>
+          )}
         </div>
       </main>
 
