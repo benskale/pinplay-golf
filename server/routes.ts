@@ -927,7 +927,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updated = await storage.updateTournamentStatus(req.params.id, "in_progress");
-      const players = await storage.getTournamentPlayers(req.params.id);
       broadcastToTournament(req.params.id, {
         type: "tournament_updated",
         tournament: { ...updated, players, status: "in_progress" },
