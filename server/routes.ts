@@ -915,6 +915,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Tournament must be in 'open' status to start" });
       }
 
+      // Handicap play gate: when net play is on, every player needs a handicap first
+      const players = await storage.getTournamentPlayers(req.params.id);
+      if ((tournament.settings as any)?.handicapPlay) {
+        const missing = players.filter(p => p.handicap == null).map(p => p.playerName);
+        if (missing.length > 0) {
+          return res.status(400).json({
+            message: `Handicap Play is on — enter handicaps for ${missing.map(n => n.split(" ")[0]).join(", ")} before starting`,
+          });
+        }
+      }
+
       const updated = await storage.updateTournamentStatus(req.params.id, "in_progress");
       const players = await storage.getTournamentPlayers(req.params.id);
       broadcastToTournament(req.params.id, {
@@ -1376,19 +1387,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       (gameData as any).sessionId = req.sessionID;
       (gameData as any).tournamentId = req.params.id;
 
-      // Inherit roster handicaps: any player in this game without a handicap
-      // gets the one stored on their tournament player record (net scoring)
-      const gamePlayerNames = (gameData.players as string[]) || [];
-      const roster = tPlayers;
-      const mergedHandicaps: Record<string, number> = { ...((gameData.handicaps as Record<string, number>) || {}) };
-      for (const name of gamePlayerNames) {
-        if (mergedHandicaps[name] == null || mergedHandicaps[name] === 0) {
-          const rp = roster.find(p => p.playerName === name);
-          if (rp?.handicap != null) mergedHandicaps[name] = rp.handicap;
+      // Inherit roster handicaps when the tournament plays net — any player in
+      // this game without a handicap gets the one from their roster entry
+      if ((tournament.settings as any)?.handicapPlay) {
+        const gamePlayerNames = (gameData.players as string[]) || [];
+        const mergedHandicaps: Record<string, number> = { ...((gameData.handicaps as Record<string, number>) || {}) };
+        for (const name of gamePlayerNames) {
+          if (mergedHandicaps[name] == null || mergedHandicaps[name] === 0) {
+            const rp = tPlayers.find(p => p.playerName === name);
+            if (rp?.handicap != null) mergedHandicaps[name] = rp.handicap;
+          }
         }
-      }
-      if (Object.keys(mergedHandicaps).length > 0) {
-        (gameData as any).handicaps = mergedHandicaps;
+        if (Object.keys(mergedHandicaps).length > 0) {
+          (gameData as any).handicaps = mergedHandicaps;
+        }
       }
       if (req.body.tournamentRoundId) {
         (gameData as any).tournamentRoundId = req.body.tournamentRoundId;

@@ -107,6 +107,7 @@ export default function CreateTournamentPage() {
 
   // Step 4: Side games
   const [sideGames, setSideGames] = useState<Record<string, SideGameConfig>>({});
+  const [handicapPlay, setHandicapPlay] = useState(false);
 
   // Success state
   const [createdTournament, setCreatedTournament] = useState<any>(null);
@@ -198,6 +199,7 @@ export default function CreateTournamentPage() {
       if (Object.keys(activeSideGames).length > 0) {
         settings.sideGames = activeSideGames;
       }
+      settings.handicapPlay = handicapPlay;
       // Pack custom game configs per round
       const roundConfigs: Record<number, any> = {};
       for (let i = 0; i < rounds.length; i++) {
@@ -552,6 +554,38 @@ export default function CreateTournamentPage() {
         {step === 3 && (
           <Card className="shadow-card">
             <CardContent className="p-5 space-y-4">
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Handicap Play</p>
+                <p className="text-xs text-gray-400">Net scoring — every player will need a handicap index in the lobby.</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setHandicapPlay(v => !v)}
+                className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all mb-4 text-left ${
+                  handicapPlay
+                    ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/30"
+                    : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800"
+                }`}
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Play with Handicaps</span>
+                    {handicapPlay && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 font-medium">ON</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {handicapPlay
+                      ? "Strokes awarded by handicap on the hardest holes. All players need an index before the round starts."
+                      : "Gross scoring — no handicap strokes. You can still enter handicaps later from the lobby."}
+                  </p>
+                </div>
+                <div className={`w-12 h-7 rounded-full transition-colors flex items-center ${handicapPlay ? "bg-blue-500 justify-end pr-1" : "bg-gray-300 dark:bg-gray-600 justify-start pl-1"}`}>
+                  <div className="w-5 h-5 rounded-full bg-white shadow-sm" />
+                </div>
+              </button>
+
               <div>
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Side Games & Bets</p>
                 <p className="text-xs text-gray-400">Optional. Set dollar values for extra action during the round.</p>

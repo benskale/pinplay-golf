@@ -156,6 +156,19 @@ export default function TournamentPage() {
     onError: (err: Error) => toast({ title: "Failed to join", description: err.message, variant: "destructive" }),
   });
 
+  // Tournament patch (settings: handicap play toggle etc.)
+  const patchMutation = useMutation({
+    mutationFn: async (updates: Record<string, any>) => {
+      const res = await apiRequest("PATCH", `/api/tournaments/${tournamentId}`, updates);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
+    },
+    onError: (err: Error) => toast({ title: "Update failed", description: err.message, variant: "destructive" }),
+  });
+  const handicapPlay = !!(tournament.settings as any)?.handicapPlay;
+
   // Leave tournament mutation
   const leaveMutation = useMutation({
     mutationFn: async () => {
@@ -694,12 +707,67 @@ export default function TournamentPage() {
           <TabsContent value="players">
             <Card className="border-0 shadow-card">
               <CardContent className="p-3">
+                {/* Handicap Play — creator toggle before start */}
+                {tournament.isCreator && isOpen && (
+                  <button
+                    onClick={() =>
+                      patchMutation.mutate({
+                        settings: { ...(tournament.settings || {}), handicapPlay: !handicapPlay },
+                      })
+                    }
+                    disabled={patchMutation.isPending}
+                    className={`w-full flex items-center justify-between p-3 rounded-xl border mb-3 text-left transition-colors ${
+                      handicapPlay
+                        ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/30"
+                        : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Handicap Play</span>
+                        {handicapPlay && (
+                          <span className="text-[0.625rem] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 font-semibold">NET</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {handicapPlay ? "Net scoring — every player needs a handicap" : "Gross scoring — handicap strokes off"}
+                      </p>
+                    </div>
+                    <div className={`w-11 h-6 rounded-full transition-colors flex items-center ${handicapPlay ? "bg-blue-500 justify-end pr-1" : "bg-gray-300 dark:bg-gray-600 justify-start pl-1"}`}>
+                      <div className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                    </div>
+                  </button>
+                )}
+
+                {/* Missing-handicap warning when net play is on */}
+                {handicapPlay && isOpen && (() => {
+                  const missing = (tournament.players || []).filter(p => p.handicap == null);
+                  if (missing.length === 0) {
+                    return (
+                      <div className="mb-3 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900">
+                        <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                          All handicaps set — net play ready
+                        </p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="mb-3 p-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900">
+                      <p className="text-xs text-red-700 dark:text-red-300 font-medium">
+                        {missing.length} player{missing.length > 1 ? "s" : ""} still need{missing.length === 1 ? "s" : ""} a handicap: {missing.map(p => p.playerName.split(" ")[0]).join(", ")}
+                      </p>
+                      <p className="text-xs text-red-500 mt-0.5">Round can't start until every handicap is entered.</p>
+                    </div>
+                  );
+                })()}
+
                 <TournamentPlayerList
                   players={tournament.players || []}
                   currentUserId={user?.id}
                   teams={tournament.teams || []}
                   isCreator={tournament.isCreator}
                   tournamentId={tournamentId!}
+                  handicapPlay={handicapPlay}
                 />
               </CardContent>
             </Card>

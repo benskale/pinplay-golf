@@ -10,6 +10,7 @@ interface TournamentPlayerListProps {
   teams?: TournamentTeam[];
   isCreator?: boolean;
   tournamentId?: string;
+  handicapPlay?: boolean;
 }
 
 const statusConfig: Record<string, { label: string; color: string; icon: typeof Play }> = {
@@ -20,7 +21,7 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
   dnf: { label: "DNF", color: "text-red-500 dark:text-red-400", icon: UserCircle },
 };
 
-export default function TournamentPlayerList({ players, currentUserId, teams, isCreator, tournamentId }: TournamentPlayerListProps) {
+export default function TournamentPlayerList({ players, currentUserId, teams, isCreator, tournamentId, handicapPlay }: TournamentPlayerListProps) {
   const queryClient = useQueryClient();
   const [editingHcp, setEditingHcp] = useState<string | null>(null);
 
@@ -137,10 +138,14 @@ export default function TournamentPlayerList({ players, currentUserId, teams, is
               ) : (
                 <button
                   onClick={() => setEditingHcp(player.playerName)}
-                  className="text-xs px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-semibold tabular-nums hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
+                  className={`text-xs px-2 py-1 rounded-lg font-semibold tabular-nums transition-colors flex-shrink-0 ${
+                    handicapPlay && player.handicap == null
+                      ? "bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-800"
+                      : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  }`}
                   title="Set handicap index"
                 >
-                  {player.handicap != null ? `Hcp ${player.handicap}` : "+ Hcp"}
+                  {player.handicap != null ? `Hcp ${player.handicap}` : handicapPlay ? "Hcp?" : "+ Hcp"}
                 </button>
               )
             ) : player.handicap != null ? (
