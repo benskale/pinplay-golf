@@ -103,6 +103,7 @@ export default function CreateTournamentPage() {
   const [players, setPlayers] = useState<string[]>([]);
   const [playerInput, setPlayerInput] = useState("");
   const [maxPlayers, setMaxPlayers] = useState("");
+  const [joinAsPlayer, setJoinAsPlayer] = useState(true);
 
   // Step 4: Side games
   const [sideGames, setSideGames] = useState<Record<string, SideGameConfig>>({});
@@ -216,6 +217,7 @@ export default function CreateTournamentPage() {
         format: primaryRound.format,
         maxPlayers: maxPlayers ? parseInt(maxPlayers) : null,
         settings,
+        joinAsPlayer,
       });
       const tournament = await res.json();
 
@@ -451,6 +453,39 @@ export default function CreateTournamentPage() {
           <Card className="shadow-card">
             <CardContent className="p-5 space-y-5">
               <div>
+                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Your Role</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setJoinAsPlayer(true)}
+                    className={`py-3 px-3 rounded-xl text-sm font-bold transition-all ${
+                      joinAsPlayer
+                        ? "bg-amber-500 text-black shadow-md"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    I'm Playing
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setJoinAsPlayer(false)}
+                    className={`py-3 px-3 rounded-xl text-sm font-bold transition-all ${
+                      !joinAsPlayer
+                        ? "bg-amber-500 text-black shadow-md"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    Organizer Only
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">
+                  {joinAsPlayer
+                    ? "You'll be on the roster and can enter scores like everyone else"
+                    : "You'll manage the tournament and watch live standings without taking a roster spot"}
+                </p>
+              </div>
+
+              <div>
                 <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Add Players</Label>
                 <div className="flex gap-2 mt-1.5">
                   <Input
@@ -617,6 +652,9 @@ export default function CreateTournamentPage() {
                   <div className="text-right">
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300 block">
                       {players.length > 0 ? `${players.length} added` : "Invite after creation"}
+                    </span>
+                    <span className="text-xs text-gray-400 block">
+                      You: {joinAsPlayer ? "Playing" : "Organizer only"}
                     </span>
                     {maxPlayers && <span className="text-xs text-gray-400">Max: {maxPlayers}</span>}
                   </div>

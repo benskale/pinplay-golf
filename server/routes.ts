@@ -622,7 +622,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Not authenticated" });
       }
       const user = req.user as any;
-      const { name, date, courseName, courseId, format, maxPlayers, settings } = req.body;
+      const { name, date, courseName, courseId, format, maxPlayers, settings, joinAsPlayer } = req.body;
 
       if (!name || typeof name !== "string" || name.trim().length < 1) {
         return res.status(400).json({ message: "Tournament name is required" });
@@ -643,10 +643,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "open",
       });
 
-      // Auto-join the creator
-      await storage.joinTournament(tournament.id, user.id, user.name);
+      // Auto-join the creator unless they chose to organize without playing.
+      // Default is true so existing clients keep the old behavior; an
+      // organizer-only creator can still join later via the invite link.
+      if (joinAsPlayer !== false) {
+        await storage.joinTournament(tournament.id, user.id, user.name);
+      }
 
-      // Return tournament with creator auto-joined
       const players = await storage.getTournamentPlayers(tournament.id);
       res.status(201).json({ ...tournament, players });
     } catch (error) {
