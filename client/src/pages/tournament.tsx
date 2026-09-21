@@ -698,6 +698,8 @@ export default function TournamentPage() {
                   players={tournament.players || []}
                   currentUserId={user?.id}
                   teams={tournament.teams || []}
+                  isCreator={tournament.isCreator}
+                  tournamentId={tournamentId!}
                 />
               </CardContent>
             </Card>

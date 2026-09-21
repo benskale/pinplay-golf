@@ -743,7 +743,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const tp = await storage.joinTournament(req.params.id, user.id, user.name);
+      const tp = await storage.joinTournament(req.params.id, user.id, user.name, false, user.handicapIndex ?? null);
       const updatedPlayers = await storage.getTournamentPlayers(req.params.id);
 
       // Broadcast tournament update
@@ -757,6 +757,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Join tournament error:", error);
       res.status(500).json({ message: "Failed to join tournament" });
+    }
+  });
+
+  // Set a tournament player's handicap (creator or the player themself)
+  app.patch("/api/tournaments/:id/players/handicap", async (req, res) => {
+    try {
+      if (!req.isAuthenticated?.() || !req.user) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      const user = req.user as any;
+      const tournament = await storage.getTournament(req.params.id);
+      if (!tournament) return res.status(404).json({ message: "Tournament not found" });
+
+      const { playerName, handicap } = req.body;
+      if (!playerName) return res.status(400).json({ message: "playerName is required" });
+
+      const players = await storage.getTournamentPlayers(req.params.id);
+      const target = players.find(p => p.playerName === playerName);
+      if (!target) return res.status(404).json({ message: "Player not in this tournament" });
+
+      const isCreator = tournament.creatorId === user.id;
+      const isSelf = target.userId === user.id;
+      if (!isCreator && !isSelf) {
+        return res.status(403).json({ message: "Only the creator or the player can edit this handicap" });
+      }
+
+      const parsed = handicap === null || handicap === "" ? null : Number(handicap);
+      if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0 || parsed > 54)) {
+        return res.status(400).json({ message: "Handicap must be between 0 and 54" });
+      }
+
+      await storage.setTournamentPlayerHandicap(req.params.id, playerName, parsed === null ? null : Math.round(parsed));
+
+      const updatedPlayers = await storage.getTournamentPlayers(req.params.id);
+      broadcastToTournament(req.params.id, {
+        type: "tournament_updated",
+        tournament: { players: updatedPlayers },
+      });
+
+      res.json({ message: "Handicap updated", players: updatedPlayers });
+    } catch (error) {
+      console.error("Set handicap error:", error);
+      res.status(500).json({ message: "Failed to update handicap" });
     }
   });
 
@@ -1332,6 +1375,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       (gameData as any).userId = user.id;
       (gameData as any).sessionId = req.sessionID;
       (gameData as any).tournamentId = req.params.id;
+
+      // Inherit roster handicaps: any player in this game without a handicap
+      // gets the one stored on their tournament player record (net scoring)
+      const gamePlayerNames = (gameData.players as string[]) || [];
+      const roster = tPlayers;
+      const mergedHandicaps: Record<string, number> = { ...((gameData.handicaps as Record<string, number>) || {}) };
+      for (const name of gamePlayerNames) {
+        if (mergedHandicaps[name] == null || mergedHandicaps[name] === 0) {
+          const rp = roster.find(p => p.playerName === name);
+          if (rp?.handicap != null) mergedHandicaps[name] = rp.handicap;
+        }
+      }
+      if (Object.keys(mergedHandicaps).length > 0) {
+        (gameData as any).handicaps = mergedHandicaps;
+      }
       if (req.body.tournamentRoundId) {
         (gameData as any).tournamentRoundId = req.body.tournamentRoundId;
       }

@@ -1,10 +1,15 @@
 import { UserCircle, Play, CheckCircle } from "lucide-react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
 import type { TournamentPlayer, TournamentTeam } from "@shared/schema";
 
 interface TournamentPlayerListProps {
   players: (TournamentPlayer & { avatarUrl: string | null })[];
   currentUserId?: number | null;
   teams?: TournamentTeam[];
+  isCreator?: boolean;
+  tournamentId?: string;
 }
 
 const statusConfig: Record<string, { label: string; color: string; icon: typeof Play }> = {
@@ -15,7 +20,32 @@ const statusConfig: Record<string, { label: string; color: string; icon: typeof 
   dnf: { label: "DNF", color: "text-red-500 dark:text-red-400", icon: UserCircle },
 };
 
-export default function TournamentPlayerList({ players, currentUserId, teams }: TournamentPlayerListProps) {
+export default function TournamentPlayerList({ players, currentUserId, teams, isCreator, tournamentId }: TournamentPlayerListProps) {
+  const queryClient = useQueryClient();
+  const [editingHcp, setEditingHcp] = useState<string | null>(null);
+
+  const saveHandicap = async (playerName: string, value: string) => {
+    setEditingHcp(null);
+    const trimmed = value.trim();
+    const parsed = trimmed === "" ? null : Number(trimmed);
+    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0 || parsed > 54)) return;
+    const rounded = parsed === null ? null : Math.round(parsed);
+    const player = players.find(p => p.playerName === playerName);
+    if (!player || player.handicap === rounded) return;
+    try {
+      const res = await fetch(`/api/tournaments/${tournamentId}/players/handicap`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ playerName, handicap: rounded }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
+      }
+    } catch {
+      // silent — list re-renders from server truth on next fetch
+    }
+  };
   if (players.length === 0) {
     return (
       <div className="text-center py-12">
@@ -89,6 +119,35 @@ export default function TournamentPlayerList({ players, currentUserId, teams }: 
                 )}
               </div>
             </div>
+
+            {/* Handicap — editable by creator or the player themself */}
+            {(isCreator || isCurrentUser) && tournamentId ? (
+              editingHcp === player.playerName ? (
+                <Input
+                  type="number"
+                  min={0}
+                  max={54}
+                  autoFocus
+                  defaultValue={player.handicap ?? ""}
+                  onBlur={(e) => saveHandicap(player.playerName, e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                  className="w-16 h-8 text-center text-sm"
+                  placeholder="—"
+                />
+              ) : (
+                <button
+                  onClick={() => setEditingHcp(player.playerName)}
+                  className="text-xs px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-semibold tabular-nums hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
+                  title="Set handicap index"
+                >
+                  {player.handicap != null ? `Hcp ${player.handicap}` : "+ Hcp"}
+                </button>
+              )
+            ) : player.handicap != null ? (
+              <span className="text-xs px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 font-semibold tabular-nums flex-shrink-0">
+                Hcp {player.handicap}
+              </span>
+            ) : null}
 
             {/* Position number */}
             <span className="text-xs font-bold text-gray-300 dark:text-gray-600">

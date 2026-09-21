@@ -123,6 +123,7 @@ export const tournamentPlayers = pgTable("tournament_players", {
   isGuest: boolean("is_guest").notNull().default(false),
   status: text("status").notNull().default("registered"),
   teamId: integer("team_id"), // references tournament_teams.id (null for non-team tournaments)
+  handicap: integer("handicap"), // player's course handicap for net scoring (null = gross)
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
