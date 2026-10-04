@@ -94,7 +94,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
   const [showSISetup, setShowSISetup] = useState(false);
   const [loadingCourse, setLoadingCourse] = useState(false);
   const [showGroupPrompt, setShowGroupPrompt] = useState(false);
-  const [customPlayerCount, setCustomPlayerCount] = useState(6);
+  const [customPlayerCount, setCustomPlayerCount] = useState<string>("6");
   const [showCustomGameModal, setShowCustomGameModal] = useState(false);
   const [selectedMiniGames, setSelectedMiniGames] = useState<Record<string, { enabled: boolean; value: number }>>({});
   const [expandedGameInfo, setExpandedGameInfo] = useState<string | null>(null);
@@ -645,16 +645,16 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                   min={6}
                   max={144}
                   value={customPlayerCount}
-                  onChange={e => setCustomPlayerCount(Math.max(6, Math.min(144, parseInt(e.target.value) || 6)))}
+                  onChange={e => setCustomPlayerCount(e.target.value)}
                   className="w-full mt-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-gray-900 dark:text-gray-50"
                 />
               </div>
               <div className="space-y-2">
                 <button
                   className="w-full py-3 bg-primary-600 text-white rounded-xl font-semibold text-sm active:scale-[0.98]"
-                  onClick={() => handleConfirmLargeGroup(customPlayerCount)}
+                  onClick={() => handleConfirmLargeGroup(Math.max(6, Math.min(144, parseInt(customPlayerCount) || 6)))}
                 >
-                  Continue as Regular Round ({customPlayerCount} players)
+                  Continue as Regular Round ({Math.max(6, Math.min(144, parseInt(customPlayerCount) || 6))} players)
                 </button>
                 <button
                   className="w-full py-3 bg-secondary-500 text-white rounded-xl font-semibold text-sm active:scale-[0.98]"
