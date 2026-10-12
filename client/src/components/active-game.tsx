@@ -122,7 +122,10 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
   }
 
   const gameDef = GAME_DEFINITIONS[game.gameType] || GAME_DEFINITIONS.wolf;
-  const strokesThisHole = (gameDef.needsHandicap || (game as any).gameSettings?.useHandicap) ? getStrokesReceivedOnHole(game, game.currentHole) : {};
+  // Explicit useHandicap:false (set at game creation) always wins — the format's
+  // needsHandicap flag only means the format SUPPORTS strokes, not that this game uses them
+  const handicapStrokesShown = ((game as any).gameSettings?.useHandicap ?? gameDef.needsHandicap) === true;
+  const strokesThisHole = handicapStrokesShown ? getStrokesReceivedOnHole(game, game.currentHole) : {};
   const currentPar = game.pars?.[game.currentHole - 1] ?? 4;
   const rotatingPlayer = getCurrentRotatingPlayer(game);
   const teams = getTeams(game);
@@ -740,7 +743,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
               )}
 
               {/* ── HANDICAP STROKE ALLOCATION SUMMARY ── */}
-              {(gameDef.needsHandicap || (game as any).gameSettings?.useHandicap) && (() => {
+              {handicapStrokesShown && (() => {
                 const playersWithStrokes = game.players.filter(p => getStrokeHoles(game, p).length > 0);
                 if (playersWithStrokes.length === 0) return null;
                 return (
