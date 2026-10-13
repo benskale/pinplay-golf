@@ -1428,16 +1428,19 @@ export class DatabaseStorage implements IStorage {
 
   async getRyderCupScore(tournamentId: string): Promise<{ team1Points: number; team2Points: number; matches: TournamentMatch[] }> {
     const matches = await this.getTournamentMatches(tournamentId);
+    const tournament = await this.getTournament(tournamentId);
+    const ryderSinglesDouble = ((tournament as any)?.settings as any)?.ryderSinglesDouble === true;
     let team1Points = 0;
     let team2Points = 0;
     for (const m of matches) {
       const r = m.result as any;
       if (!r || r.status !== "complete") continue;
-      // Session-aware point values (standard Ryder Cup): singles = 2 pts,
-      // foursomes/fourball = 1 pt. Halves split the value. A match's session
-      // may be stored as m.session or inside result; default to team session (1).
-      const sess = (m as any).session || (r as any).session || "foursomes";
-      const value = sess === "singles" ? 2 : 1;
+      // Traditional Ryder Cup scoring: every match is worth 1 point, halves
+      // split 0.5/0.5. (The full Ryder Cup plays 28 matches: 16 team + 12
+      // singles, all 1pt.) Leagues that want doubled singles can enable
+      // tournament setting ryderSinglesDouble — dry-run tested, default off.
+      const sess = (m as any).session || (r as any).session || "";
+      const value = sess === "singles" && ryderSinglesDouble ? 2 : 1;
       if (r.winner === "team1") team1Points += value;
       else if (r.winner === "team2") team2Points += value;
       else if (r.winner === "halved") { team1Points += value / 2; team2Points += value / 2; }
