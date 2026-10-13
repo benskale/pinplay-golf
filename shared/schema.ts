@@ -362,6 +362,13 @@ export function generateInviteCode(): string {
 export const wsMessageSchema = z.union([
   z.object({ type: z.literal("join_game"), gameId: z.string() }),
   z.object({
+    type: z.literal("press_call"),
+    gameId: z.string(),
+    side: z.enum(["A", "B"]),
+    calledBy: z.string(),
+    startHole: z.number(),
+  }),
+  z.object({
     type: z.literal("update_strokes"),
     gameId: z.string(),
     playerName: z.string(),
