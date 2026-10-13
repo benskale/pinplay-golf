@@ -47,5 +47,13 @@ export function useGame(
     [gameId, sendMessage],
   );
 
-  return { updateStrokes, completeHole, editHole };
+  const pressCall = useCallback(
+    (side: "A" | "B", calledBy: string, startHole: number) => {
+      if (!gameId) return;
+      sendMessage({ type: "press_call", gameId, side, calledBy, startHole });
+    },
+    [gameId, sendMessage],
+  );
+
+  return { updateStrokes, completeHole, editHole, pressCall };
 }

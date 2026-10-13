@@ -13,7 +13,7 @@ import { apiRequest } from "@/lib/queryClient";
 import type { Game } from "@shared/schema";
 import { GAME_DEFINITIONS, MINI_GAME_DEFINITIONS, isLowerBetter } from "@/lib/game-logic";
 import { useToast } from "@/hooks/use-toast";
-import { getLiveSettlement } from "@/lib/settlement";
+import { getLiveSettlement, getNassauSettlement } from "@/lib/settlement";
 import { ArrowRight } from "lucide-react";
 
 interface FinalStandingsProps {
@@ -640,6 +640,30 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
 
         {/* ── COMBINED TOTAL SETTLEMENT (main game + side games) ── */}
         {(() => {
+          {/* Nassau bet-by-bet card incl. presses */}
+          {displayGame.gameType === "nassau" && (() => {
+            const pv = (displayGame.gameSettings?.pointValue as number) ?? 5;
+            const nassau = getNassauSettlement(displayGame, pv);
+            if (nassau.lineItems.length === 0) return null;
+            return (
+              <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/30 p-3 mb-3">
+                <p className="text-xs font-semibold text-purple-800 dark:text-purple-300 mb-2">Nassau Bets & Presses</p>
+                <div className="space-y-1">
+                  {nassau.lineItems.map((li, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-700 dark:text-gray-300">{li.label}</span>
+                      <span className="font-medium">
+                        {li.winner
+                          ? <span className="text-emerald-700 dark:text-emerald-400">{li.winner.split(" ")[0]} +${li.amount}</span>
+                          : <span className="text-gray-400">{li.amount ? "push" : "—"}</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           const settlement = getLiveSettlement(displayGame);
           if (!settlement.hasMainGame && !settlement.hasMiniGames) return null;
           if (settlement.transactions.length === 0) return null;

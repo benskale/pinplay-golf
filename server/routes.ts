@@ -2221,6 +2221,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             break;
           }
+          case "press_call": {
+            // Correct press semantics (docs/PRESS-RULES.md): a press is a NEW side
+            // match starting on the current hole, persisted in gameSettings.pressBets.
+            if (!currentGameId) break;
+            const pGame = await storage.getGame(currentGameId);
+            if (!pGame) break;
+            const side = message.side === "A" ? "A" : "B";
+            const startHole = pGame.currentHole;
+            const segment = startHole <= 9 ? "front" : "overall";
+            const presses = ((pGame.gameSettings as any)?.pressBets as any[]) ?? [];
+            const unit = ((pGame.gameConfig as any)?.betPools?.[0]?.value as number) ?? 5;
+            const press = {
+              id: `press-${presses.length + 1}`,
+              side,
+              calledBy: String(message.calledBy ?? ""),
+              startHole,
+              segment,
+              amount: unit,
+              status: "live",
+            };
+            const newSettings = { ...(pGame.gameSettings as any), pressBets: [...presses, press] };
+            const updatedPressGame = await storage.updateGame(currentGameId, { gameSettings: newSettings } as any);
+            if (updatedPressGame) {
+              broadcastToGame(currentGameId, { type: "game_updated", game: fixStrokes(updatedPressGame) });
+            }
+            break;
+          }
+
           case "edit_hole": {
             if (!currentGameId) break;
             const game = await storage.getGame(currentGameId);

@@ -21,6 +21,62 @@ export interface LiveSettlement {
  * Compute running totals per mini-game from hole history.
  * Returns { [gameId]: { [player]: count } }
  */
+/**
+ * Nassau main-game settlement with correct press accounting.
+ * Returns per-bet line items (front / back / overall / presses) and player balances.
+ */
+export function getNassauSettlement(game: Game, pointValue: number): {
+  lineItems: Array<{ label: string; winner: string | null; amount: number; players: [string, string] }>;
+  balances: Record<string, number>;
+} {
+  const presses = ((game.gameSettings as any)?.pressBets as any[]) ?? [];
+  const [pA, pB] = game.players;
+  const hist = game.holeHistory;
+  const holeWinnerByHole: Record<number, "A" | "B" | null> = {};
+  hist.forEach(h => {
+    const winners = Object.entries(h.points || {}).filter(([, v]) => (v as number) > 0).map(([k]) => k);
+    holeWinnerByHole[h.hole] = winners.length === 1 ? (winners[0] === pA ? "A" : "B") : null;
+  });
+  const segState = (lo: number, hi: number, from = 1) => {
+    let diff = 0, played = 0;
+    for (let h = Math.max(lo, from); h <= hi; h++) {
+      const w = holeWinnerByHole[h];
+      if (w === undefined) continue;
+      played++;
+      if (w === "A") diff++; else if (w === "B") diff--;
+    }
+    const finished = hi - Math.max(lo, from) + 1 - played <= 0;
+    return { diff, finished };
+  };
+  const lineItems: Array<{ label: string; winner: string | null; amount: number; players: [string, string] }> = [];
+  const addLine = (label: string, diff: number, finished: boolean, amount: number) => {
+    const winner = !finished || diff === 0 ? null : diff > 0 ? pA : pB;
+    lineItems.push({ label, winner, amount, players: [pA, pB] });
+  };
+  const front = segState(1, 9);
+  addLine("Front 9", front.diff, front.finished, pointValue);
+  const back = segState(10, 18);
+  addLine("Back 9", back.diff, back.finished, pointValue);
+  const overall = segState(1, 18);
+  addLine("Overall 18", overall.diff, overall.finished, pointValue);
+  presses.forEach((p, i) => {
+    const [lo, hi] = p.segment === "front" ? [1, 9] : [10, 18];
+    const st = segState(p.segment === "front" ? 1 : 10, hi, p.startHole);
+    addLine(`Press #${i + 1} (${p.calledBy?.split(" ")[0] || p.side}, from ${p.startHole})`, st.diff, st.finished, p.amount || pointValue);
+  });
+  const balances: Record<string, number> = {};
+  game.players.forEach(p => { balances[p] = 0; });
+  lineItems.forEach(li => {
+    if (li.winner) {
+      const loser = li.winner === pA ? pB : pA;
+      balances[li.winner] += li.amount;
+      balances[loser] -= li.amount;
+    }
+  });
+  return { lineItems, balances };
+}
+
+
 export function computeMiniGameTotals(game: Game): Record<string, Record<string, number>> {
   const activeMiniGames =
     game.miniGames && typeof game.miniGames === "object"
