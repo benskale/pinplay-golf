@@ -232,6 +232,99 @@ export function calculatePairwiseDebts(
  * Compute live settlement for an active game.
  * Returns net dollar balances per player and pairwise "who owes whom" transactions.
  */
+/**
+ * Zero-sum main-game money by format. Replaces the old
+ * totalScores × pointValue math that created money from nowhere.
+ *
+ * Conventions:
+ *  - skins (any N): each skin is worth $v FROM EVERY OTHER player.
+ *    balance[p] = v × (N × skins[p] − totalSkins)  (exact, zero-sum)
+ *  - match-play 2p (match_play, nassau, best_ball_2): diff × $ transfers.
+ *  - 2-team match play (best_ball_4, nassau_4, team_best_ball):
+ *    team hole-diff × $ transfers between team members.
+ *  - vegas: team point-diff × $ transfers.
+ *  - stroke-count games (stroke_play, scramble, shamble, team_scramble,
+ *    alternate_shot*): strokes vs field mean, lower better.
+ *  - positive-point games (wolf*, sixes, nine_point, stableford, par_birdie,
+ *    bingo_bango_bongo, dots_junk): points vs field mean.
+ *  - already-zero-sum games (hammer, banker): raw points × $.
+ */
+export function computeMainGameBalances(
+  game: Game,
+  pointValue: number,
+): { balances: Record<string, number>; mode: string } {
+  const v = pointValue || 0;
+  const players = game.players;
+  const N = players.length;
+  const total = (p: string) => game.totalScores?.[p] ?? 0;
+
+  const vsMean = (lowerBetter = false) => {
+    const vals = players.map(total);
+    const mean = vals.reduce((a, b) => a + b, 0) / (N || 1);
+    const out: Record<string, number> = {};
+    players.forEach(p => {
+      const d = total(p) - mean;
+      out[p] = (lowerBetter ? -d : d) * v;
+    });
+    return out;
+  };
+
+  const t = game.gameType;
+
+  if (t === "skins" || t === "skins_3" || t === "skins_4") {
+    const totalSkins = players.reduce((s, p) => s + total(p), 0);
+    const out: Record<string, number> = {};
+    players.forEach(p => { out[p] = v * (N * total(p) - totalSkins); });
+    return { balances: out, mode: "per-skin from every opponent" };
+  }
+
+  if (t === "match_play" || t === "nassau" || t === "best_ball_2") {
+    const [a, b] = players;
+    const diff = total(a) - total(b);
+    return { balances: { [a]: diff * v, [b]: -diff * v }, mode: "match diff" };
+  }
+
+  if (t === "best_ball_4" || t === "nassau_4" || t === "team_best_ball") {
+    const teams = game.teams?.length === 2
+      ? game.teams
+      : [players.slice(0, Math.ceil(N / 2)), players.slice(Math.ceil(N / 2))];
+    const sumA = teams[0].reduce((s, p) => s + total(p), 0);
+    const sumB = teams[1].reduce((s, p) => s + total(p), 0);
+    const diff = sumA - sumB;
+    const out: Record<string, number> = {};
+    teams[0].forEach(p => { out[p] = (diff * v) / teams[0].length; });
+    teams[1].forEach(p => { out[p] = (-diff * v) / teams[1].length; });
+    return { balances: out, mode: "team match diff" };
+  }
+
+  if (t === "vegas") {
+    const teams = game.teams?.length === 2
+      ? game.teams
+      : [players.slice(0, 2), players.slice(2)];
+    const sumA = teams[0].reduce((s, p) => s + total(p), 0);
+    const sumB = teams[1].reduce((s, p) => s + total(p), 0);
+    const diff = (sumA - sumB) / 2; // each team member holds the full diff; team transfer = diff
+    const out: Record<string, number> = {};
+    teams[0].forEach(p => { out[p] = diff * v; });
+    teams[1].forEach(p => { out[p] = -diff * v; });
+    return { balances: out, mode: "vegas team diff" };
+  }
+
+  if (["stroke_play", "scramble", "shamble", "team_scramble", "alternate_shot", "alternate_shot_4"].includes(t)) {
+    return { balances: vsMean(true), mode: "strokes vs field" };
+  }
+
+  if (t === "hammer" || t === "banker") {
+    const out: Record<string, number> = {};
+    players.forEach(p => { out[p] = total(p) * v; });
+    return { balances: out, mode: "raw zero-sum points" };
+  }
+
+  // wolf*, sixes, nine_point, stableford, par_birdie, bingo_bango_bongo, dots_junk, custom
+  return { balances: vsMean(), mode: "points vs field" };
+}
+
+
 export function getLiveSettlement(game: Game): LiveSettlement {
   const pointValue = (game.gameSettings as Record<string, any>)?.pointValue || 0;
 
@@ -256,8 +349,9 @@ export function getLiveSettlement(game: Game): LiveSettlement {
   const mainGameBalances: Record<string, number> = {};
   const netBalances: Record<string, number> = {};
 
+  const { balances: mainBalances } = computeMainGameBalances(game, pointValue);
   game.players.forEach((p) => {
-    const main = hasMainGame ? (game.totalScores?.[p] ?? 0) * pointValue : 0;
+    const main = hasMainGame ? (mainBalances[p] ?? 0) : 0;
     const side = miniGameBalances[p] || 0;
     mainGameBalances[p] = main;
     netBalances[p] = main + side;

@@ -439,8 +439,14 @@ function scoreSkins(
     result = `${winners[0].split(" ")[0]} wins ${carry} skin${carry > 1 ? "s" : ""}!`;
     skinMeta = { skinCarried: false };
   } else {
-    result = `Tie — skin${carry > 1 ? "s carry" : " carries"} (${carry + 1} on next hole)`;
-    skinMeta = { skinCarried: true };
+    // Final hole: carried skins cannot carry forward — mark as pushed
+    if (holeHistory.length >= 17) {
+      result = `Tie on 18 — ${carry} skin${carry > 1 ? "s" : ""} pushed`;
+      skinMeta = { skinCarried: false, skinsPushed: carry };
+    } else {
+      result = `Tie — skin${carry > 1 ? "s carry" : " carries"} (${carry + 1} on next hole)`;
+      skinMeta = { skinCarried: true };
+    }
   }
   return { pointDeltas: deltas, result, metadata: skinMeta };
 }
