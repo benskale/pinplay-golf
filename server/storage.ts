@@ -880,11 +880,14 @@ export class DatabaseStorage implements IStorage {
       const firstPlayer = players[0];
       const teamGross = totalScores[firstPlayer] ?? 0;
 
-      // Team handicap: 25% of average individual handicap
-      const avgHandicap = players.length > 0
-        ? players.reduce((sum, p) => sum + (handicaps[p] ?? 0), 0) / players.length
-        : 0;
-      const teamHandicap = Math.round(avgHandicap * 0.25);
+      // Team handicap allowance (corrected Oct 2026):
+      //   2-man scramble: 25% of the SUM of handicaps
+      //   3-man scramble: 25% of the SUM (league convention)
+      //   4-man scramble: 20% of the SUM
+      // The old math (avg × 0.25) gave roughly HALF the standard allowance.
+      const handicapSum = players.reduce((sum, p) => sum + (handicaps[p] ?? 0), 0);
+      const allowancePct = players.length >= 4 ? 0.20 : 0.25;
+      const teamHandicap = Math.round(handicapSum * allowancePct);
       const teamNet = teamGross - teamHandicap;
 
       entries.push({
@@ -1087,7 +1090,7 @@ export class DatabaseStorage implements IStorage {
     const tPlayers = await this.getTournamentPlayers(tournamentId);
 
     const playerData = new Map<string, {
-      holeScores: number[]; holeCount: number; handicap: number;
+      holeScores: number[]; playedMask?: boolean[]; holeCount: number; handicap: number;
       userId: number | null; avatarUrl: string | null; gameId: string | null; totalGross: number;
     }>();
 
@@ -1107,17 +1110,25 @@ export class DatabaseStorage implements IStorage {
         const existing = playerData.get(playerName);
 
         if (!existing) {
-          const processed = rawScores.map((gross, i) => {
-            if (!gross || gross === 0) return 0;
+          // NOTE: net scores can legitimately be <= 0 (e.g. gross 3 with 3 strokes
+          // received). We track "played" via a separate mask so 0/nets are never
+          // mistaken for unplayed holes. Legacy games without the mask fall back
+          // to the old >0 heuristic for GROSS ringers only.
+          const processed: number[] = [];
+          const playedMask: boolean[] = [];
+          rawScores.forEach((gross, i) => {
+            if (!gross || gross === 0) { processed.push(0); playedMask.push(false); return; }
+            playedMask.push(true);
             if (useNet) {
               const strokeIdx = strokeIndexes[i] ?? (i + 1);
               const hs = this.handicapStrokesForHole(handicap, strokeIdx);
-              return gross - hs;
+              processed.push(gross - hs);
+            } else {
+              processed.push(gross);
             }
-            return gross;
           });
           playerData.set(playerName, {
-            holeScores: [...processed], holeCount: holeHistory.length, handicap,
+            holeScores: processed, playedMask, holeCount: holeHistory.length, handicap,
             userId: tp.userId, avatarUrl: tp.avatarUrl ?? null, gameId: game.id,
             totalGross: (game.totalScores as Record<string, number>)[playerName] ?? 0,
           });
@@ -1131,10 +1142,14 @@ export class DatabaseStorage implements IStorage {
               const hs = this.handicapStrokesForHole(handicap, strokeIdx);
               score = gross - hs;
             }
+            const played = existing.playedMask ? existing.playedMask[i] === true
+                          : existing.holeScores[i] > 0; // legacy gross fallback
             if (i >= existing.holeScores.length) {
               existing.holeScores[i] = score;
-            } else if (score < existing.holeScores[i] || existing.holeScores[i] === 0) {
+              if (existing.playedMask) existing.playedMask[i] = true;
+            } else if (!played || score < existing.holeScores[i]) {
               existing.holeScores[i] = score;
+              if (existing.playedMask) existing.playedMask[i] = true;
             }
           }
           existing.holeCount = Math.max(existing.holeCount, holeHistory.length);
@@ -1144,8 +1159,11 @@ export class DatabaseStorage implements IStorage {
 
     const entries: LeaderboardEntry[] = [];
     for (const [playerName, data] of Array.from(playerData.entries())) {
-      const ringerTotal = data.holeScores.reduce((sum: number, s: number) => sum + (s > 0 ? s : 0), 0);
-      const holesCompleted = data.holeScores.filter((s: number) => s > 0).length;
+      const mask = data.playedMask;
+      const ringerTotal = data.holeScores.reduce((sum: number, s: number, i: number) =>
+        sum + (mask ? (mask[i] ? s : 0) : (s > 0 ? s : 0)), 0);
+      const holesCompleted = data.holeScores.filter((s: number, i: number) =>
+        mask ? mask[i] === true : s > 0).length;
 
       entries.push({
         position: 0, playerName, userId: data.userId, avatarUrl: data.avatarUrl,
@@ -1415,9 +1433,14 @@ export class DatabaseStorage implements IStorage {
     for (const m of matches) {
       const r = m.result as any;
       if (!r || r.status !== "complete") continue;
-      if (r.winner === "team1") team1Points += 1;
-      else if (r.winner === "team2") team2Points += 1;
-      else if (r.winner === "halved") { team1Points += 0.5; team2Points += 0.5; }
+      // Session-aware point values (standard Ryder Cup): singles = 2 pts,
+      // foursomes/fourball = 1 pt. Halves split the value. A match's session
+      // may be stored as m.session or inside result; default to team session (1).
+      const sess = (m as any).session || (r as any).session || "foursomes";
+      const value = sess === "singles" ? 2 : 1;
+      if (r.winner === "team1") team1Points += value;
+      else if (r.winner === "team2") team2Points += value;
+      else if (r.winner === "halved") { team1Points += value / 2; team2Points += value / 2; }
     }
     return { team1Points, team2Points, matches };
   }
