@@ -86,11 +86,12 @@ function fixWolf5Points(game: Game): Game {
 }
 
 /**
- * Net strokes for wolf scoring — mirrors the client's diff-from-lowest
- * handicap model (config-scoring.ts configStrokesOnHole) exactly, so the
- * server and client always agree on who won the hole.
+ * Net strokes under the client's handicap model (config-scoring.ts
+ * configStrokesOnHole): diff-from-lowest, distributed across stroke
+ * indexes, gross when the game's handicap play is off. Used by every
+ * server-side scorer so the server and client always agree on results.
  */
-function wolfNetStrokes(game: Game, holeNumber: number, strokes: Record<string, number>): Record<string, number> {
+function netStrokesForGame(game: Game, holeNumber: number, strokes: Record<string, number>): Record<string, number> {
   const players: string[] = game.players;
   const settings = (game as any).gameSettings || {};
   if (settings.useHandicap !== true) {
@@ -130,7 +131,7 @@ function scoreWolfHole(
 ): { points: Record<string, number>; result: string } {
   const players: string[] = game.players;
   const settings = (game as any).gameSettings || {};
-  const s = wolfNetStrokes(game, holeNumber, strokes);
+  const s = netStrokesForGame(game, holeNumber, strokes);
   const deltas: Record<string, number> = {};
   players.forEach(p => { deltas[p] = 0; });
 
@@ -264,6 +265,28 @@ function isWolfGameType(gameType: string): boolean {
 }
 
 /**
+ * wolf_5 finale wolf selection (user rule, Aug 22): the player currently in
+ * LAST place by wolf points takes holes 16-18, re-evaluated before every
+ * hole. Ties for last alternate — fewest prior finale assignments wins, never
+ * the same player twice straight while another tied-last player is
+ * available, rotation order breaks any remaining tie.
+ */
+function selectFinaleWolf(players: string[], standings: Record<string, number>, priorFinale: string[]): string {
+  const minScore = Math.min(...players.map(p => standings[p] || 0));
+  const tiedForLast = players.filter(p => (standings[p] || 0) === minScore);
+  if (tiedForLast.length === 1) return tiedForLast[0];
+  const lastAssigned = priorFinale[priorFinale.length - 1];
+  let candidates = tiedForLast.filter(p => p !== lastAssigned);
+  if (candidates.length === 0) candidates = tiedForLast;
+  candidates = [...candidates].sort((a, b) => {
+    const ca = priorFinale.filter(x => x === a).length;
+    const cb = priorFinale.filter(x => x === b).length;
+    return ca !== cb ? ca - cb : players.indexOf(a) - players.indexOf(b);
+  });
+  return candidates[0];
+}
+
+/**
  * Recalculate a single hole after stroke edit.
  * Returns a partial update object for storage.updateGame().
  * - Replaces the holeHistory entry with new strokes
@@ -319,8 +342,12 @@ function recalculateHole(game: Game, holeNumber: number, newStrokes: Record<stri
  * Recalculate points for a single hole based on game type and new strokes.
  * Wolf games re-derive points from the stored wolf metadata (wolfPlayer,
  * wolfDecision) using the same scorer as live hole completion, so editing
- * strokes on a wolf hole keeps the wolf point structure. Other game types
- * fall back to generic winner-takes-all redistribution.
+ * strokes on a wolf hole keeps the wolf point structure. Every other
+ * format mirrors its client scorer (config-scoring.ts): match-play shapes
+ * award +1 to the winning side only (the old generic winner-takes-all
+ * redistribution produced ±N entries that never match real scoring and
+ * corrupted team games). Metadata-driven formats keep their original
+ * points — strokes alone cannot re-derive them.
  */
 function recalcHolePoints(
   game: Game,
@@ -332,59 +359,181 @@ function recalcHolePoints(
   if (isWolfGameType(game.gameType) && meta.wolfPlayer && meta.wolfDecision) {
     return scoreWolfHole(game, holeNumber, newStrokes, meta.wolfPlayer, meta.wolfDecision);
   }
-  const { gameType, players, handicaps, pars } = game;
-  const par = pars[holeNumber - 1] || 4;
-  const strokeIdx = game.strokeIndexes?.[holeNumber - 1] ?? holeNumber;
+  // Net strokes under the client's model: handicap strokes only when the
+  // game's useHandicap flag is on, diff-from-lowest across stroke indexes.
+  // (The old raw-handicap netting — 1 stroke whenever hc >= strokeIdx —
+  // over-awarded strokes and is gone.)
+  const s = netStrokesForGame(game, holeNumber, newStrokes);
+  const players: string[] = game.players;
+  const teams: string[][] = (game as any).teams || [];
+  const par = game.pars?.[holeNumber - 1] || 4;
+  const deltas: Record<string, number> = {};
+  players.forEach(p => { deltas[p] = 0; });
+  const first = (n: string) => n.split(" ")[0];
+  const twoTeams = teams.length >= 2
+    ? [teams[0], teams[1]]
+    : [players.slice(0, Math.ceil(players.length / 2)), players.slice(Math.ceil(players.length / 2))];
+  const preserve = () => ({ points: oldEntry.points, result: oldEntry.result });
 
-  // Net strokes for each player
-  const netStrokes: Record<string, number> = {};
-  for (const p of players) {
-    const gross = newStrokes[p] || 0;
-    const hc = handicaps[p] || 0;
-    const strokesReceived = hc >= strokeIdx ? 1 : 0;
-    netStrokes[p] = gross - strokesReceived;
-  }
-
-  // For most game types, points scale is determined by the old entry
-  // We preserve the point structure but adjust based on new winner/diff
-  const oldPoints = oldEntry.points;
-  const oldTotal = Object.values(oldPoints).reduce((a: number, b) => a + (b as number), 0);
-
-  // Determine winner(s) by net strokes
-  const sorted = players
-    .map(p => ({ player: p, net: netStrokes[p] || 0, gross: newStrokes[p] || 0 }))
-    .sort((a, b) => a.net - b.net);
-
-  const minNet = sorted[0]?.net ?? 0;
-  const winners = sorted.filter(s => s.net === minNet);
-  const isTie = winners.length > 1;
-
-  // Scale points: keep the same total magnitude, distribute to new winner
-  // For tied: split evenly (or carry over — keep original behavior)
-  const newPoints: Record<string, number> = {};
-  for (const p of players) newPoints[p] = 0;
-
-  if (isTie) {
-    // Tie — all zero (carryover handled externally)
-  } else {
-    const winner = winners[0].player;
-    // Preserve the absolute point total from the old entry
-    const absTotal = Object.values(oldPoints).reduce((a: number, b) => a + Math.abs(b as number), 0);
-    // Award to winner, deduct from others
-    if (players.length === 2) {
-      newPoints[winner] = Math.round(absTotal / 2) || 1;
-      const loser = players.find(p => p !== winner)!;
-      newPoints[loser] = -newPoints[winner];
-    } else {
-      // Multi-player: winner gets sum of deductions from others
-      const perPlayer = Math.round(absTotal / (players.length - 1)) || 1;
-      for (const p of players) {
-        newPoints[p] = p === winner ? perPlayer * (players.length - 1) : -perPlayer;
-      }
+  switch (game.gameType) {
+    // ── Individual match play: winner +1, loser 0, halved 0 ──────────────
+    case "match_play":
+    case "nassau":
+    case "best_ball_2": {
+      const [p1, p2] = players;
+      if (s[p1] < s[p2]) { deltas[p1] = 1; return { points: deltas, result: `${first(p1)} wins hole` }; }
+      if (s[p2] < s[p1]) { deltas[p2] = 1; return { points: deltas, result: `${first(p2)} wins hole` }; }
+      return { points: deltas, result: "Halved" };
     }
-  }
 
-  return { points: newPoints, result: oldEntry.result };
+    // ── Team match play (2v2 best ball): winning team +1 each, halved 0 ──
+    case "best_ball_4":
+    case "nassau_4": {
+      const bestA = Math.min(...twoTeams[0].map(p => s[p] ?? 99));
+      const bestB = Math.min(...twoTeams[1].map(p => s[p] ?? 99));
+      if (bestA < bestB) {
+        twoTeams[0].forEach(p => { deltas[p] = 1; });
+        return { points: deltas, result: `Team ${twoTeams[0].map(first).join("+")} wins hole` };
+      }
+      if (bestB < bestA) {
+        twoTeams[1].forEach(p => { deltas[p] = 1; });
+        return { points: deltas, result: `Team ${twoTeams[1].map(first).join("+")} wins hole` };
+      }
+      return { points: deltas, result: "Halved" };
+    }
+
+    // ── Multi-team best ball: sole-lowest team +1 each, ties 0 ───────────
+    case "team_best_ball": {
+      const teamList = teams.length >= 2 ? teams : twoTeams;
+      const bests = teamList.map(t => Math.min(...t.map(p => s[p] ?? 99)));
+      const best = Math.min(...bests);
+      const winningTeams = teamList.filter((t, i) => bests[i] === best);
+      if (winningTeams.length === 1) {
+        winningTeams[0].forEach(p => { deltas[p] = 1; });
+        return { points: deltas, result: `${winningTeams[0].map(first).join("+")} wins` };
+      }
+      return { points: deltas, result: `Tied at ${best}` };
+    }
+
+    // ── Skins: sole winner takes the originally-awarded amount; ties carry ─
+    case "skins":
+    case "skins_3":
+    case "skins_4": {
+      const minStr = Math.min(...players.map(p => s[p] ?? 99));
+      const winners = players.filter(p => s[p] === minStr);
+      if (winners.length === 1) {
+        // Keep the hole's original skin value (carry-ins included). If the
+        // original was a tie, fall back to 1 skin — re-chaining downstream
+        // carries is out of scope for a single-hole edit.
+        const oldAward = Object.entries(oldEntry.points || {})
+          .reduce((a, [, v]) => a + Math.max(0, Number(v) || 0), 0);
+        deltas[winners[0]] = Math.max(1, oldAward);
+        return { points: deltas, result: `${first(winners[0])} wins ${deltas[winners[0]]} skin${deltas[winners[0]] > 1 ? "s" : ""}` };
+      }
+      return { points: deltas, result: "Tie — skins carry" };
+    }
+
+    // ── Stroke play: points are (net) stroke counts ──────────────────────
+    case "stroke_play": {
+      players.forEach(p => { deltas[p] = s[p] ?? 0; });
+      return { points: deltas, result: players.map(p => `${first(p)}: ${deltas[p]}`).join(" · ") };
+    }
+
+    // ── Team stroke formats: every member carries the team score ────────
+    case "scramble":
+    case "shamble":
+    case "team_scramble":
+    case "alternate_shot_4": {
+      const teamList = teams.length >= 2 ? teams : twoTeams;
+      teamList.forEach(t => {
+        const teamScore = s[t[0]] ?? 0;
+        t.forEach(p => { deltas[p] = teamScore; });
+      });
+      return { points: deltas, result: teamList.map(t => `${t.map(first).join("+")} ${s[t[0]] ?? 0}`).join(" vs ") };
+    }
+    case "alternate_shot": {
+      players.forEach(p => { deltas[p] = s[p] ?? 0; });
+      return { points: deltas, result: players.map(p => `${first(p)}: ${deltas[p]}`).join(" | ") };
+    }
+
+    // ── Points tables on net-vs-par ────────────────────────────────────
+    case "par_birdie": {
+      players.forEach(p => {
+        const diff = (s[p] ?? par) - par;
+        deltas[p] = diff <= -2 ? 4 : diff === -1 ? 2 : diff === 0 ? 1 : 0;
+      });
+      return { points: deltas, result: players.map(p => `${first(p)}: ${deltas[p]}pt`).join(" · ") };
+    }
+    case "stableford": {
+      const table: Record<string, number> = { "-3": 6, "-2": 5, "-1": 4, "0": 3, "1": 2, "2": 1 };
+      players.forEach(p => { deltas[p] = table[String((s[p] ?? par) - par)] ?? 0; });
+      return { points: deltas, result: players.map(p => `${first(p)}: ${deltas[p]}pt`).join(" · ") };
+    }
+
+    // ── Hammer: winner +mult×losers, losers −mult; multiplier from meta ──
+    case "hammer": {
+      const mult = Number(meta.hammerValue) || 1;
+      const minStr = Math.min(...players.map(p => s[p] ?? 99));
+      const winners = players.filter(p => s[p] === minStr);
+      if (winners.length === 1) {
+        const losers = players.filter(p => p !== winners[0]);
+        deltas[winners[0]] = mult * losers.length;
+        losers.forEach(p => { deltas[p] = -mult; });
+        return { points: deltas, result: `${first(winners[0])} wins${mult > 1 ? ` (×${mult} Hammer)` : ""}` };
+      }
+      return { points: deltas, result: "Tie — no winner" };
+    }
+
+    // ── Sixes family (3 players): rotating 2v1 ──────────────────────────
+    case "sixes":
+    case "split_sixes": {
+      if (players.length !== 3) return preserve();
+      const seg = holeNumber <= 6 ? 0 : holeNumber <= 12 ? 1 : 2;
+      const teamPairs: [number, number][] = [[0, 1], [0, 2], [1, 2]];
+      const [t0, t1] = teamPairs[seg];
+      const loneSeg = [2, 1, 0][seg];
+      const team = [players[t0], players[t1]];
+      const lone = players[loneSeg];
+      const teamBest = Math.min(s[team[0]] ?? 99, s[team[1]] ?? 99);
+      const loneStr = s[lone] ?? 99;
+      if (teamBest < loneStr) {
+        team.forEach(p => { deltas[p] = 1; });
+        return { points: deltas, result: `${team.map(first).join("+")} win hole` };
+      }
+      if (loneStr < teamBest) {
+        deltas[lone] = 2;
+        return { points: deltas, result: `${first(lone)} wins hole (+2)` };
+      }
+      return { points: deltas, result: "Halved" };
+    }
+
+    // ── Nine-point (3 players): 5/3/1 with tie groups splitting ─────────
+    case "nine_point": {
+      const sorted = [...players].sort((a, b) => (s[a] ?? 99) - (s[b] ?? 99));
+      const base = [5, 3, 1];
+      const scored = sorted.map((p, i) => ({ name: p, strokes: s[p] ?? 99, base: base[i] }));
+      const groups: { players: string[]; total: number }[] = [];
+      let gi = 0;
+      while (gi < scored.length) {
+        const gp = [scored[gi].name];
+        let gj = gi + 1;
+        while (gj < scored.length && scored[gj].strokes === scored[gi].strokes) { gp.push(scored[gj].name); gj++; }
+        groups.push({ players: gp, total: scored.slice(gi, gj).reduce((a2, x) => a2 + x.base, 0) });
+        gi = gj;
+      }
+      groups.forEach(g => {
+        const share = g.total / g.players.length;
+        g.players.forEach(p => { deltas[p] = Math.round(share * 10) / 10; });
+      });
+      return { points: deltas, result: players.map(p => `${first(p)}: ${deltas[p]}pt`).join(" · ") };
+    }
+
+    // Metadata-driven formats (bingo-bango-bongo, dots/junk, banker,
+    // vegas) and unknown types: keep the original points — strokes alone
+    // cannot re-derive them, and redistribution would corrupt the entry.
+    default:
+      return preserve();
+  }
 }
 
 async function fetchGolfApi(path: string) {
@@ -2391,19 +2540,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 // Straight rotation holes 1-15: everyone is wolf exactly 3 times
                 nextWolfIndex = (game.currentWolfIndex + 1) % players.length;
               } else {
-                // Holes 16-18: the three players with the fewest wolf points,
-                // furthest behind takes 18. Ties for the cut coin-flipped.
-                let finale = (game.gameSettings as Record<string, any>)?.wolfFinale as string[] | undefined;
-                if (justCompleted === 15 || !finale || finale.length < 3) {
-                  const ranked = players
-                    .map(p => ({ p, score: totalsAfterHole[p] || 0, r: Math.random() }))
-                    .sort((a, b) => a.score - b.score || a.r - b.r)
-                    .map(x => x.p);
-                  finale = [ranked[2], ranked[1], ranked[0]]; // [hole 16, hole 17, hole 18]
-                  nextSettings = { ...(game.gameSettings as Record<string, any>), wolfFinale: finale };
-                }
-                const upcoming = justCompleted === 15 ? finale[0] : justCompleted === 16 ? finale[1] : finale[2];
-                nextWolfIndex = Math.max(0, players.indexOf(upcoming));
+                // Holes 16-18 (user rule, Aug 22): LAST-place player by wolf
+                // points is wolf, re-evaluated before EVERY hole — a wolf who
+                // wins +4 and jumps out of last hands the role to the new
+                // last-place player. Ties for last alternate. Supersedes the
+                // cached gameSettings.wolfFinale array (computed once at hole
+                // 15) — post-15 score edits now re-shape the finale.
+                const settingsIn = (game.gameSettings as Record<string, any>) || {};
+                const priorFinale = (Array.isArray(settingsIn.wolfFinaleAssignments)
+                  ? settingsIn.wolfFinaleAssignments : []) as string[];
+                const wolfPlayer = selectFinaleWolf(players, totalsAfterHole, priorFinale);
+                nextWolfIndex = Math.max(0, players.indexOf(wolfPlayer));
+                const { wolfFinale: _legacyCache, ...settingsWithoutLegacy } = settingsIn;
+                nextSettings = { ...settingsWithoutLegacy, wolfFinaleAssignments: [...priorFinale, wolfPlayer] };
               }
             } else {
               nextWolfIndex = (game.currentWolfIndex + 1) % game.players.length;
