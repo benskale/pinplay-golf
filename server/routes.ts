@@ -86,6 +86,184 @@ function fixWolf5Points(game: Game): Game {
 }
 
 /**
+ * Net strokes for wolf scoring — mirrors the client's diff-from-lowest
+ * handicap model (config-scoring.ts configStrokesOnHole) exactly, so the
+ * server and client always agree on who won the hole.
+ */
+function wolfNetStrokes(game: Game, holeNumber: number, strokes: Record<string, number>): Record<string, number> {
+  const players: string[] = game.players;
+  const settings = (game as any).gameSettings || {};
+  if (settings.useHandicap !== true) {
+    const gross: Record<string, number> = {};
+    players.forEach(p => { gross[p] = strokes[p] || 0; });
+    return gross;
+  }
+  const handicaps = game.handicaps || {};
+  const si = Array.isArray(game.strokeIndexes) && game.strokeIndexes.length === 18
+    ? game.strokeIndexes
+    : Array.from({ length: 18 }, (_, i) => i + 1);
+  const lowest = Math.min(...players.map(p => handicaps[p] || 0));
+  const net: Record<string, number> = {};
+  for (const p of players) {
+    const diff = Math.max(0, (handicaps[p] || 0) - lowest);
+    const rank = si[holeNumber - 1] ?? holeNumber;
+    const fullRounds = Math.floor(diff / 18);
+    const remainder = diff % 18;
+    const extra = remainder > 0 && rank <= remainder ? 1 : 0;
+    net[p] = (strokes[p] || 0) - (fullRounds + extra);
+  }
+  return net;
+}
+
+/**
+ * Server-side wolf hole scorer — exact port of the client's scoreWolf
+ * (config-scoring.ts). Used by BOTH the stroke-edit rescorer and the
+ * complete_hole handler so wolf points are computed by one implementation
+ * on the server instead of trusted from the client.
+ */
+function scoreWolfHole(
+  game: Game,
+  holeNumber: number,
+  strokes: Record<string, number>,
+  wolfPlayer: string,
+  wolfDecision: string,
+): { points: Record<string, number>; result: string } {
+  const players: string[] = game.players;
+  const settings = (game as any).gameSettings || {};
+  const s = wolfNetStrokes(game, holeNumber, strokes);
+  const deltas: Record<string, number> = {};
+  players.forEach(p => { deltas[p] = 0; });
+
+  const is3Player = players.length === 3;
+  const is5Player = players.length === 5;
+  const wolfStr = s[wolfPlayer] ?? 0;
+  const nonWolves = players.filter(p => p !== wolfPlayer);
+  const isSolo = wolfDecision === "alone" || wolfDecision === "blind";
+  let result = "";
+
+  if (is5Player) {
+    // 5-player Wolf (wolf_5): no negative points — losing side scores 0.
+    // Lone Wolf: wolf +4 or others +1 each. Team 2v3: pair +1.5 each or trio +1 each.
+    // Best-ball ties push. Blind Wolf doubles.
+    const mult = wolfDecision === "blind" ? 2 : 1;
+    if (isSolo) {
+      const bestOther = Math.min(...nonWolves.map(p => s[p] ?? 0));
+      if (wolfStr < bestOther) {
+        deltas[wolfPlayer] = 4 * mult;
+        result = `${mult === 2 ? "BLIND " : ""}Lone Wolf wins +${4 * mult} (1v4)`;
+      } else if (wolfStr > bestOther) {
+        nonWolves.forEach(p => { deltas[p] = 1 * mult; });
+        result = `${mult === 2 ? "BLIND " : ""}Lone Wolf loses · others +${1 * mult} each`;
+      } else {
+        result = "Lone Wolf · best ball tied — push";
+      }
+    } else {
+      const partner = wolfDecision;
+      const pair = [wolfPlayer, partner];
+      const trio = players.filter(p => !pair.includes(p));
+      const pairBest = Math.min(s[wolfPlayer] ?? 0, s[partner] ?? 0);
+      const trioBest = Math.min(...trio.map(p => s[p] ?? 0));
+      if (pairBest < trioBest) {
+        pair.forEach(p => { deltas[p] = 1.5 * mult; });
+        result = `Wolf + ${partner} · pair wins +${1.5 * mult}`;
+      } else if (trioBest < pairBest) {
+        trio.forEach(p => { deltas[p] = 1 * mult; });
+        result = `Trio wins +${1 * mult} each`;
+      } else {
+        result = `Wolf + ${partner} · best balls tied — push`;
+      }
+    }
+    return { points: deltas, result };
+  }
+
+  // 3/4-player Wolf (classic zero-sum rules)
+  if (isSolo) {
+    const bestOther = Math.min(...nonWolves.map(p => s[p] ?? 0));
+    const baseWinPts = settings.wolfWinAlone ?? (is3Player ? 2 : 3);
+    const baseLosePts = settings.wolfWinTeam ?? 1;
+    const winPts = wolfDecision === "blind" ? baseWinPts * 2 : baseWinPts;
+    const losePts = wolfDecision === "blind" ? baseLosePts * 2 : baseLosePts;
+    if (wolfStr < bestOther) {
+      deltas[wolfPlayer] = winPts;
+    } else if (wolfStr > bestOther) {
+      nonWolves.forEach(p => { deltas[p] = losePts; });
+    }
+  } else {
+    const partner = wolfDecision;
+    if (is3Player) {
+      const wolfTeamBest = Math.min(s[wolfPlayer] ?? 0, s[partner] ?? 0);
+      const lonePlayer = nonWolves.find(p => p !== partner)!;
+      const loneStr = s[lonePlayer] ?? 0;
+      const teamWinPts = settings.wolfWinTeam ?? 1;
+      const loneWinPts = settings.wolfWinAlone ?? 2;
+      if (wolfTeamBest < loneStr) {
+        deltas[wolfPlayer] = teamWinPts;
+        deltas[partner] = teamWinPts;
+      } else if (wolfTeamBest > loneStr) {
+        deltas[lonePlayer] = loneWinPts;
+      }
+    } else {
+      const wolfTeam = [wolfPlayer, partner];
+      const otherTeam = players.filter(p => !wolfTeam.includes(p));
+      const wolfBest = Math.min(...wolfTeam.map(p => s[p] ?? 0));
+      const otherBest = Math.min(...otherTeam.map(p => s[p] ?? 0));
+      const teamWinPts = settings.wolfWinTeam ?? 1;
+      if (wolfBest < otherBest) {
+        wolfTeam.forEach(p => { deltas[p] = teamWinPts; });
+      } else if (wolfBest > otherBest) {
+        otherTeam.forEach(p => { deltas[p] = teamWinPts; });
+      } else {
+        const wolfSecond = wolfTeam.find(p => (s[p] ?? 0) !== wolfBest) ?? wolfTeam[0];
+        const otherSecond = otherTeam.find(p => (s[p] ?? 0) !== otherBest) ?? otherTeam[0];
+        if ((s[wolfSecond] ?? 0) < (s[otherSecond] ?? 0)) {
+          wolfTeam.forEach(p => { deltas[p] = 1; });
+        } else if ((s[otherSecond] ?? 0) < (s[wolfSecond] ?? 0)) {
+          otherTeam.forEach(p => { deltas[p] = 1; });
+        }
+      }
+    }
+  }
+
+  const wolfPts = deltas[wolfPlayer];
+  const totalPts = Object.values(deltas).reduce((a: number, b: number) => a + b, 0);
+  if (is3Player) {
+    if (totalPts === 0) {
+      result = "Tie — no points";
+    } else if (isSolo) {
+      const multiplier3 = wolfDecision === "blind" ? 2 : 1;
+      result = wolfPts > 0
+        ? `Wolf ${wolfDecision === "blind" ? "BLIND " : ""}alone wins (+${(settings.wolfWinAlone ?? 2) * multiplier3})`
+        : `Team wins (+${(settings.wolfWinTeam ?? 1) * multiplier3} each)`;
+    } else {
+      result = wolfPts > 0
+        ? `Wolf + ${wolfDecision} win (+1 each)`
+        : `${nonWolves.find(p => p !== wolfDecision)} wins (+2)`;
+    }
+  } else {
+    if (totalPts === 0) {
+      result = isSolo
+        ? `Wolf ${wolfDecision === "blind" ? "BLIND " : ""}alone · Tie`
+        : `Wolf + ${wolfDecision} · Tie`;
+    } else if (isSolo) {
+      const multiplier = wolfDecision === "blind" ? 2 : 1;
+      result = wolfPts > 0
+        ? `Wolf ${wolfDecision === "blind" ? "BLIND " : ""}alone · Wolf wins (+${(settings.wolfWinAlone ?? 3) * multiplier})`
+        : `Wolf ${wolfDecision === "blind" ? "BLIND " : ""}alone · Team wins (+${(settings.wolfWinTeam ?? 1) * multiplier} each)`;
+    } else {
+      result = wolfPts > 0
+        ? `Wolf + ${wolfDecision} · Wolf's team wins (+1)`
+        : `Wolf + ${wolfDecision} · Opponents win (+1)`;
+    }
+  }
+
+  return { points: deltas, result };
+}
+
+function isWolfGameType(gameType: string): boolean {
+  return gameType === "wolf" || gameType === "wolf_3" || gameType === "wolf_5";
+}
+
+/**
  * Recalculate a single hole after stroke edit.
  * Returns a partial update object for storage.updateGame().
  * - Replaces the holeHistory entry with new strokes
@@ -107,12 +285,12 @@ function recalculateHole(game: Game, holeNumber: number, newStrokes: Record<stri
 
   // Recalculate points for this hole
   const oldEntry = game.holeHistory[holeIdx];
+  const scored = recalcHolePoints(game, holeNumber, newStrokes, oldEntry);
   const newEntry = {
     ...oldEntry,
     strokes: newStrokes,
-    // Points and result need recalculation — we re-derive from game type
-    points: recalcHolePoints(game, holeNumber, newStrokes, oldEntry),
-    result: oldEntry.result, // Keep original result text (descriptive)
+    points: scored.points,
+    result: scored.result,
   };
 
   // Replace the entry
@@ -139,14 +317,21 @@ function recalculateHole(game: Game, holeNumber: number, newStrokes: Record<stri
 
 /**
  * Recalculate points for a single hole based on game type and new strokes.
- * Uses the same logic as game-logic.ts calcHoleResult but server-side.
+ * Wolf games re-derive points from the stored wolf metadata (wolfPlayer,
+ * wolfDecision) using the same scorer as live hole completion, so editing
+ * strokes on a wolf hole keeps the wolf point structure. Other game types
+ * fall back to generic winner-takes-all redistribution.
  */
 function recalcHolePoints(
   game: Game,
   holeNumber: number,
   newStrokes: Record<string, number>,
   oldEntry: Game["holeHistory"][number],
-): Record<string, number> {
+): { points: Record<string, number>; result: string } {
+  const meta = (oldEntry as any).metadata || {};
+  if (isWolfGameType(game.gameType) && meta.wolfPlayer && meta.wolfDecision) {
+    return scoreWolfHole(game, holeNumber, newStrokes, meta.wolfPlayer, meta.wolfDecision);
+  }
   const { gameType, players, handicaps, pars } = game;
   const par = pars[holeNumber - 1] || 4;
   const strokeIdx = game.strokeIndexes?.[holeNumber - 1] ?? holeNumber;
@@ -199,7 +384,7 @@ function recalcHolePoints(
     }
   }
 
-  return newPoints;
+  return { points: newPoints, result: oldEntry.result };
 }
 
 async function fetchGolfApi(path: string) {
@@ -2127,20 +2312,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (!currentGameId) break;
             const game = await storage.getGame(currentGameId);
             if (!game) break;
-            const newTotalScores = { ...game.totalScores };
-            Object.entries(message.holeData.points).forEach(([player, points]) => {
-              newTotalScores[player] = (newTotalScores[player] || 0) + (points as number);
-            });
-            const newWolfCounts = { ...game.wolfCounts };
-            const wolfPlayer = message.holeData.metadata?.wolfPlayer as string | undefined;
-            if (wolfPlayer) newWolfCounts[wolfPlayer] = (newWolfCounts[wolfPlayer] || 0) + 1;
-            const newHoleHistory = [...game.holeHistory, {
+            // Wolf games: the server is authoritative — recompute points and
+            // result from strokes + wolf metadata instead of trusting the
+            // client's locally-computed values (guards against client scoring
+            // glitches and stale-state sends).
+            const inMeta = (message.holeData.metadata || {}) as Record<string, any>;
+            let finalPoints = message.holeData.points as Record<string, number>;
+            let finalResult = message.holeData.result as string;
+            if (isWolfGameType(game.gameType) && inMeta.wolfPlayer && inMeta.wolfDecision) {
+              const scored = scoreWolfHole(
+                game,
+                message.holeData.hole,
+                message.holeData.strokes,
+                inMeta.wolfPlayer,
+                inMeta.wolfDecision,
+              );
+              finalPoints = scored.points;
+              finalResult = scored.result;
+            }
+            // Idempotent completion: re-sending a hole that is already in
+            // history REPLACES it in place instead of appending a duplicate
+            // (double-tap / WS race could otherwise double-count the hole).
+            const incomingHole = {
               hole: message.holeData.hole,
               strokes: message.holeData.strokes,
-              points: message.holeData.points,
-              result: message.holeData.result,
+              points: finalPoints,
+              result: finalResult,
               metadata: message.holeData.metadata,
-            }];
+            };
+            const existingIdx = game.holeHistory.findIndex(h => h.hole === incomingHole.hole);
+            const isReplace = existingIdx !== -1;
+            const newHoleHistory = [...game.holeHistory];
+            if (isReplace) {
+              newHoleHistory[existingIdx] = incomingHole;
+            } else {
+              newHoleHistory.push(incomingHole);
+            }
+            const newTotalScores = { ...game.totalScores };
+            if (!isReplace) {
+              Object.entries(finalPoints).forEach(([player, points]) => {
+                newTotalScores[player] = (newTotalScores[player] || 0) + (points as number);
+              });
+            }
+            const newWolfCounts = { ...game.wolfCounts };
+            const wolfPlayer = inMeta.wolfPlayer as string | undefined;
+            if (wolfPlayer && !isReplace) newWolfCounts[wolfPlayer] = (newWolfCounts[wolfPlayer] || 0) + 1;
             // Update strokes array from hole data to prevent gaps
             const updatedStrokes = { ...game.strokes };
             const holeIndex = message.holeData.hole - 1;
@@ -2152,14 +2368,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const isGameComplete = game.currentHole >= 18;
             // Recompute totals under the no-negative rule: wolf_5 totals are
             // the sum of per-hole points clamped at 0, so holes scored before
-            // the rule change stop dragging totals down.
+            // the rule change stop dragging totals down. Regular wolf totals
+            // are also rebuilt from history when this was a hole replacement,
+            // so a replaced hole is not double-counted.
             let totalsAfterHole = newTotalScores;
-            if (game.gameType === "wolf_5") {
+            if (game.gameType === "wolf_5" || (isWolfGameType(game.gameType) && isReplace)) {
               totalsAfterHole = {};
               game.players.forEach(p => { totalsAfterHole[p] = 0; });
               newHoleHistory.forEach(h => {
                 Object.entries(h.points || {}).forEach(([p, v]) => {
-                  totalsAfterHole[p] = (totalsAfterHole[p] || 0) + Math.max(0, Number(v) || 0);
+                  totalsAfterHole[p] = (totalsAfterHole[p] || 0) + (game.gameType === "wolf_5" ? Math.max(0, Number(v) || 0) : (Number(v) || 0));
                 });
               });
             }
