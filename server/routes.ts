@@ -33,6 +33,24 @@ const COURSE_OVERRIDES: Record<string, { name: string; par: number; pars: number
     pars: [4, 4, 3, 4, 4, 5, 4, 3, 4, 3, 4, 5, 4, 5, 4, 5, 3, 4],
     hcpRanks: [15, 11, 17, 5, 3, 9, 7, 13, 1, 18, 14, 8, 12, 10, 2, 6, 16, 4],
   },
+  // Peacock Gap Golf Club, San Rafael CA — OpenGolfAPI has pars but NO handicap row, so
+  // handicap games fell back to sequential stroke indexes. Data from the course's printed
+  // scorecard (read off the physical card on-site Oct 30, 2026); cross-checked against
+  // flashcaddie.com and 18birdies.com, which agree on 16/18 holes but swap holes 6/9 vs
+  // the printed card. Pars independently confirmed by flashcaddie + 18birdies + golflink.
+  "f21695c0-00f3-414a-966b-0365e36b22ba": {
+    name: "Peacock Gap Golf Club",
+    par: 71,
+    pars: [4, 4, 3, 5, 4, 3, 4, 5, 4, 3, 4, 5, 3, 5, 4, 3, 4, 4],
+    hcpRanks: [7, 3, 9, 13, 1, 11, 15, 17, 5, 18, 2, 8, 6, 16, 12, 10, 14, 4],
+  },
+  // OSM duplicate of Peacock Gap that surfaces in course search with par 0 — same scorecard
+  "osm-way-232461613": {
+    name: "Peacock Gap Golf Club",
+    par: 71,
+    pars: [4, 4, 3, 5, 4, 3, 4, 5, 4, 3, 4, 5, 3, 5, 4, 3, 4, 4],
+    hcpRanks: [7, 3, 9, 13, 1, 11, 15, 17, 5, 18, 2, 8, 6, 16, 12, 10, 14, 4],
+  },
 };
 
 /**
