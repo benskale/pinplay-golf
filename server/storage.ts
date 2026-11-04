@@ -192,6 +192,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteGame(id: string): Promise<boolean> {
+    // Clear participant links first (FK has no cascade; leaving rows would 500 the delete)
+    await db.delete(gameParticipants).where(eq(gameParticipants.gameId, id));
     const result = await db.delete(games).where(eq(games.id, id));
     return (result.rowCount ?? 0) > 0;
   }
