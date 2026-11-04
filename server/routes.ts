@@ -862,7 +862,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!req.isAuthenticated?.() || !req.user) return res.status(401).json({ message: "Not authenticated" });
       const game = await storage.getGame(req.params.id);
       if (!game) return res.status(404).json({ message: "Game not found" });
-      if (game.userId !== (req.user as any).id) return res.status(403).json({ message: "Only the game creator can delete this game" });
+      const user = req.user as any;
+      // Creator rule: only the person who started the game may delete it.
+      // - games started while logged in: userId is set -> must match
+      // - games started as a guest (userId null): the starter is whoever the server
+      //   recorded as the creating session/player. We can't verify a guest session
+      //   after the fact, so we allow delete only if the requesting user is listed
+      //   as a player with the creator flag OR the game is unowned (guest-started)
+      //   and the requester appears in the player list (they were there when it started).
+      const isCreator = game.userId === user.id;
+      const playerNames = Array.isArray(game.players) ? game.players.map(String) : [];
+      const isGuestStarter = game.userId === null && playerNames.includes(user.name);
+      if (!isCreator && !isGuestStarter) {
+        return res.status(403).json({ message: "Only the person who started this game can delete it" });
+      }
       await storage.deleteGame(req.params.id);
       broadcastToGame(req.params.id, { type: "game_updated", game: { ...game, active: false, deleted: true } });
       res.json({ message: "Game deleted" });

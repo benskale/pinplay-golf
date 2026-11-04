@@ -1,6 +1,7 @@
 import { useLocation, useSearch } from "wouter";
 import GameSetup from "@/components/game-setup";
 import Onboarding from "@/components/onboarding";
+import DeleteGameButton from "@/components/delete-game-button";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { User, Play, ChevronRight, Trophy, ArrowRight, Clock } from "lucide-react";
@@ -160,28 +161,30 @@ export default function Home() {
                 const gameDef = GAME_DEFINITIONS[game.gameType];
                 const holesPlayed = game.holeHistory?.length ?? 0;
                 return (
-                  <button
-                    key={game.id}
-                    onClick={() => setLocation(`/game/${game.id}`)}
-                    className="w-full flex items-center justify-between p-3.5 bg-card rounded-xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-card hover:shadow-card-hover border border-green-200/50 dark:border-green-800/30"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
-                        <Play className="w-4 h-4 text-green-600 dark:text-green-400" />
+                  <div key={game.id} className="flex items-center gap-2">
+                    <button
+                      onClick={() => setLocation(`/game/${game.id}`)}
+                      className="flex-1 flex items-center justify-between p-3.5 bg-card rounded-xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-card hover:shadow-card-hover border border-green-200/50 dark:border-green-800/30"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+                          <Play className="w-4 h-4 text-green-600 dark:text-green-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 dark:text-gray-50 text-sm truncate">
+                            {gameDef?.name ?? game.gameType}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {game.courseName ? `${game.courseName} · ` : ""}
+                            Hole {game.currentHole}
+                            {holesPlayed > 0 ? ` (${holesPlayed} played)` : ""}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-gray-900 dark:text-gray-50 text-sm truncate">
-                          {gameDef?.name ?? game.gameType}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {game.courseName ? `${game.courseName} · ` : ""}
-                          Hole {game.currentHole}
-                          {holesPlayed > 0 ? ` (${holesPlayed} played)` : ""}
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-                  </button>
+                      <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+                    </button>
+                    <DeleteGameButton game={game} />
+                  </div>
                 );
               })}
             </div>
