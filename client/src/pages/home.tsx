@@ -118,10 +118,10 @@ export default function Home() {
         {!setupActive && (mostRecentActive || guestMostRecent) && (() => {
           const game = mostRecentActive || guestMostRecent!;
           return (
-          <div className="mb-5 -mt-1">
+          <div className="mb-5 -mt-1 flex items-stretch gap-2">
             <button
               onClick={() => setLocation(`/game/${game.id}`)}
-              className="w-full p-4 rounded-2xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg border-2 border-green-400/50 dark:border-green-600/40 header-surface"
+              className="flex-1 p-4 rounded-2xl text-left group transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] shadow-lg border-2 border-green-400/50 dark:border-green-600/40 header-surface"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
@@ -143,6 +143,7 @@ export default function Home() {
                 <ArrowRight className="w-5 h-5 text-green-300 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
               </div>
             </button>
+            <DeleteGameButton game={game} />
           </div>
           );
         })()}
