@@ -2783,5 +2783,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // ── Demo outreach mailer (internal; token-authed) ─────────────────────────
+  // Sends via Resend from the PinPlay domain. Used for course outreach emails.
+  // Secured with OUTREACH_MAIL_TOKEN; no auth session, no user data touched.
+  app.post("/api/outreach/send", async (req, res) => {
+    const token = process.env.OUTREACH_MAIL_TOKEN;
+    if (!token || req.headers.authorization !== `Bearer ${token}`) {
+      return res.status(401).json({ message: "unauthorized" });
+    }
+    try {
+      const key = process.env.RESEND_API_KEY;
+      if (!key) return res.status(500).json({ message: "RESEND_API_KEY not configured" });
+      const { from, to, subject, html, text, reply_to } = req.body;
+      if (!to || !subject || (!html && !text)) {
+        return res.status(400).json({ message: "to, subject, and html or text required" });
+      }
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: from || "PinPlay <ben@pinplay.golf>", to, subject, html, text, reply_to }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return res.status(r.status).json({ message: "Send failed", detail: data });
+      res.json({ id: data.id });
+    } catch (e) {
+      res.status(500).json({ message: String(e) });
+    }
+  });
+
   return httpServer;
 }
