@@ -32,7 +32,7 @@ export interface GameConfig {
   /** Money that flows through the game */
   betPools: BetPool[];
 
-  /** Press rules (double-down mechanics) */
+  /** Press rules (new side bet from the next tee) */
   pressRules?: PressRules;
 
   /** Auto-tracked mini-games (birdies, sandies, etc.) */

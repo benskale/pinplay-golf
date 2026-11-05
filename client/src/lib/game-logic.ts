@@ -70,7 +70,7 @@ export const MINI_GAME_DEFINITIONS: Record<string, MiniGameDef> = {
   },
   press: {
     id: "press", name: "Press", playerCounts: [2], gameTypes: ["match_play", "nassau", "best_ball_2"],
-    description: "Double the bet on remaining holes. Can be pressed by either side at any time.",
+    description: "A new side bet that restarts the match from all-square for the remaining holes. Called by the trailing side.",
     defaultValue: 5, valueLabel: "base bet", inputType: "winner",
   },
   trash: {
@@ -123,7 +123,7 @@ export const GAME_DEFINITIONS: Record<string, GameDef> = {
   nassau: {
     id: "nassau", name: "Nassau", playerCounts: [2],
     description: "Three separate match-play bets: front 9, back 9, and total 18.",
-    detailedDescription: "Three bets in one round: (1) Front 9 match play, (2) Back 9 match play, (3) Overall 18 match play. Each is a separate contest worth 1 unit. The 'press' is a common Nassau side bet that starts a new bet when one player is dormie or loses. Track all three bets simultaneously.",
+    detailedDescription: "Three bets in one round: (1) Front 9 match play, (2) Back 9 match play, (3) Overall 18 match play. Each is a separate contest worth 1 unit. A 'press' is a new side bet called by the trailing side: it starts on the next tee, restarts from all-square, and runs to the end of the current nine. Track all three bets simultaneously.",
     isTeamGame: false, needsHandicap: true, carryover: false,
   },
   skins: {

@@ -47,7 +47,7 @@ const DEFAULT_PARS = Array(18).fill(4);
 
 // ── Universal Customization Constants ─────────────────────────────────────────
 
-/** Games that support pressing (double-down mechanics) */
+/** Games that support pressing (new side bet from the next tee) */
 const PRESS_ELIGIBLE_GAMES = [
   "wolf", "wolf_3", "match_play", "nassau", "best_ball_2", "best_ball_4", "hammer", "vegas",
 ];
