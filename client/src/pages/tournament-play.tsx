@@ -169,7 +169,12 @@ export default function TournamentPlayPage() {
         pars,
         strokeIndexes,
         handicaps: {},
-        teams: [] as string[][],
+        // For team formats, send the roster split so multi-team games score per team
+        teams: (tournament?.format === "scramble" || tournament?.format === "best_ball") && (tournament?.teams?.length ?? 0) > 0
+          ? Array.from(selectedTeams)
+              .map(tid_ => (tournament?.players || []).filter(p => p.teamId === tid_).map(p => p.playerName))
+              .filter(roster => roster.length > 0)
+          : ([] as string[][]),
         miniGames: settings.miniGames || {} as Record<string, any>,
         gameSettings: (() => {
           const gs: Record<string, any> = {};

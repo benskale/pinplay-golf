@@ -25,7 +25,7 @@ export default function TournamentLeaderboard({
   teams,
 }: TournamentLeaderboardProps) {
   const { user } = useAuth();
-  const [view, setView] = useState<"team" | "individual">("team");
+  const view: "team" = "team"; // team formats are team-scored only; individual view removed
 
   const isTeam = format === "best_ball" || format === "scramble";
   const isSkins = format === "skins";
@@ -39,7 +39,7 @@ export default function TournamentLeaderboard({
     enabled: !!tournamentId && !leaderboardData,
     staleTime: 10_000,
     queryFn: async () => {
-      const params = isTeam && view === "individual" ? "?view=individual" : "";
+      const params = "";
       const res = await fetch(`/api/tournaments/${tournamentId}/leaderboard${params}`);
       if (!res.ok) return [];
       return res.json();
@@ -55,7 +55,7 @@ export default function TournamentLeaderboard({
   }
 
   // For team format individual view, group entries by team
-  const showTeamGroups = isTeam && view === "individual" && teams && teams.length > 0;
+  const showTeamGroups = false; // individual view removed for team formats
 
   // Column layout varies by format
   // Skins:      Pos | Player | Thru | Net | Skins
@@ -205,32 +205,7 @@ export default function TournamentLeaderboard({
 
   return (
     <div className="space-y-3">
-      {/* Toggle for team formats */}
-      {isTeam && (
-        <div className="flex gap-2">
-          <button
-            onClick={() => setView("team")}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors ${
-              view === "team"
-                ? "bg-[#18181B] text-white"
-                : "bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            <Users className="w-3 h-3 inline mr-1" />
-            Team Standings
-          </button>
-          <button
-            onClick={() => setView("individual")}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors ${
-              view === "individual"
-                ? "bg-[#18181B] text-white"
-                : "bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            Individual
-          </button>
-        </div>
-      )}
+      {/* Team formats (scramble / best ball) are team-scored only — no individual view */}
 
       {/* Leaderboard table */}
       <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">

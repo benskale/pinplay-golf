@@ -907,48 +907,72 @@ export class DatabaseStorage implements IStorage {
   // Team handicap = 25% of average player handicap.
   private async getScrambleLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
     const tournamentGames = await this.getGamesByTournament(tournamentId);
+    const tPlayers = await this.getTournamentPlayers(tournamentId);
+    const tTeams = await this.getTournamentTeams(tournamentId);
     const entries: LeaderboardEntry[] = [];
     let teamNum = 0;
 
     for (const game of tournamentGames) {
       const players = game.players as string[];
-      const totalScores = game.totalScores as Record<string, number>;
-      const handicaps = game.handicaps as Record<string, number>;
-      const holeHistory = game.holeHistory as Array<any>;
+      const handicaps = (game.handicaps as Record<string, number>) || {};
+      const holeHistory = (game.holeHistory as Array<any>) || [];
+      const pars = (game.pars as number[]) || [];
+      const holeScores = this.holeScoresFor(game);
+
+      // A game can contain MULTIPLE teams going off together (e.g. two 2-man
+      // teams in one foursome). game.teams (array of rosters) holds the split;
+      // fall back to a single team = the whole game.
+      const gameTeams: string[][] = Array.isArray(game.teams) && game.teams.length > 0
+        ? (game.teams as string[][])
+        : [players];
+
+      // Par of the holes played (same for every team in this game)
+      const parPlayed = holeHistory.reduce((sum, h) => sum + (pars[h.hole - 1] ?? 4), 0);
       const holesCompleted = holeHistory.length;
 
-      teamNum++;
-      const teamName = `Team ${teamNum}`;
+      for (const roster of gameTeams) {
+        const rosterPlayers = roster.filter(p => players.includes(p));
+        if (rosterPlayers.length === 0) continue;
+        teamNum++;
+        // Prefer the real team name/color from the tournament roster
+        const tTeam = tTeams.find(t =>
+          rosterPlayers.every(p => (tPlayers.find(tp => tp.playerName === p)?.teamId ?? null) === t.id) ||
+          rosterPlayers.some(p => (tPlayers.find(tp => tp.playerName === p)?.teamId ?? null) === t.id)
+        );
+        const teamName = tTeam?.teamName ?? `Team ${teamNum}`;
 
-      // In scramble, all team members share the same score per hole.
-      // Use the first player's total as the team total.
-      const firstPlayer = players[0];
-      const teamGross = totalScores[firstPlayer] ?? 0;
+        // Scramble gross: members share one score per hole; use the first member
+        // with recorded scores. Ground truth = hole history.
+        let teamGross = 0;
+        const firstWithScores = rosterPlayers.find(p => (holeScores[p] || []).some(s => s > 0));
+        if (firstWithScores) {
+          teamGross = (holeScores[firstWithScores] || []).reduce((a, b) => a + (Number(b) || 0), 0);
+        }
 
-      // Team handicap allowance (corrected Oct 2026):
-      //   2-man scramble: 25% of the SUM of handicaps
-      //   3-man scramble: 25% of the SUM (league convention)
-      //   4-man scramble: 20% of the SUM
-      // The old math (avg × 0.25) gave roughly HALF the standard allowance.
-      const handicapSum = players.reduce((sum, p) => sum + (handicaps[p] ?? 0), 0);
-      const allowancePct = players.length >= 4 ? 0.20 : 0.25;
-      const teamHandicap = Math.round(handicapSum * allowancePct);
-      const teamNet = teamGross - teamHandicap;
+        // Team handicap allowance (corrected Oct 2026):
+        //   2/3-man scramble: 25% of the SUM of handicaps
+        //   4-man scramble: 20% of the SUM
+        const handicapSum = rosterPlayers.reduce((sum, p) => sum + (handicaps[p] ?? 0), 0);
+        const allowancePct = rosterPlayers.length >= 4 ? 0.20 : 0.25;
+        const teamHandicap = Math.round(handicapSum * allowancePct);
+        // Net relative to par through the holes played
+        const teamNet = teamGross - parPlayed - teamHandicap;
 
-      entries.push({
-        position: 0,
-        playerName: teamName,
-        userId: null,
-        totalStrokes: teamGross,
-        netStrokes: teamNet,
-        handicap: teamHandicap,
-        holesCompleted,
-        complete: !game.active && holesCompleted > 0,
-        gameId: game.id,
-        teamName,
-        teamPlayers: players,
-        format: "scramble",
-      });
+        entries.push({
+          position: 0,
+          playerName: teamName,
+          userId: null,
+          totalStrokes: teamGross,
+          netStrokes: teamNet,
+          handicap: teamHandicap,
+          holesCompleted,
+          complete: !game.active && holesCompleted > 0,
+          gameId: game.id,
+          teamName,
+          teamPlayers: rosterPlayers,
+          format: "scramble",
+        });
+      }
     }
 
     return this.assignPositions(entries);
