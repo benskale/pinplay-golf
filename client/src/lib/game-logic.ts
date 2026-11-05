@@ -489,8 +489,19 @@ export function getGameStatus(game: Game): string {
     return `${leader.map(p => p.split(" ")[0]).join("+")} ${up} UP · ${holesLeft} to play`;
   }
 
+  if (gameType === "best_ball_4" && ((game as any).gameSettings?.bestBallMode === "match")) {
+    // Explicit match-play mode — holes-up status.
+    const [teamA, teamB] = teams.length === 2 ? teams : [[players[0], players[1]], [players[2], players[3]]];
+    const scoreA = teamA.reduce((s, p) => s + (totalScores[p] || 0), 0);
+    const scoreB = teamB.reduce((s, p) => s + (totalScores[p] || 0), 0);
+    if (scoreA === scoreB) return `All Square · ${holesLeft} to play`;
+    const leader = scoreA > scoreB ? teamA : teamB;
+    const up = Math.abs(scoreA - scoreB);
+    return `${leader.map(p => p.split(" ")[0]).join("+")} ${up} UP · ${holesLeft} to play`;
+  }
+
   if (gameType === "best_ball_4") {
-    // Best ball is a STROKE game — the status shows the leading team's best-ball
+    // Default: STROKE game — the status shows the leading team's best-ball
     // total vs par, not a match-play "UP" count.
     const [teamA, teamB] = teams.length === 2 ? teams : [[players[0], players[1]], [players[2], players[3]]];
     const bestBallTotal = (team: string[]) => {

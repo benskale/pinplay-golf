@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { Tournament, TournamentPlayer, Game, LeaderboardEntry, WSMessage } from "@shared/schema";
 import TournamentLeaderboard from "@/components/tournament-leaderboard";
+import TeamScorecard from "@/components/team-scorecard";
 import TournamentPlayerList from "@/components/tournament-player-list";
 import { TournamentTeams } from "@/components/tournament-teams";
 import { TournamentMatches } from "@/components/tournament-matches";
@@ -850,6 +851,13 @@ export default function TournamentPage() {
 
           <TabsContent value="leaderboard">
             <div className="space-y-3">
+              {(tournament?.format === "best_ball" || tournament?.format === "scramble") && tournament?.games && (
+                <TeamScorecard
+                  games={tournament.games}
+                  teams={tournament.teams || []}
+                  players={tournament.players || []}
+                />
+              )}
               <MultiDayLeaderboard tournamentId={tournamentId!} />
               <TournamentLeaderboard
                 tournamentId={tournamentId!}

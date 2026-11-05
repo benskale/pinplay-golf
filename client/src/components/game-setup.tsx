@@ -1158,6 +1158,36 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
         </div>
       )}
 
+      {/* Best Ball (2v2) scoring mode: match play or low stroke */}
+      {selectedGame?.id === "best_ball_4" && (
+        <div className="bg-card rounded-xl shadow-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Bookmark className="w-4 h-4 text-amber-500" />
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Scoring</p>
+          </div>
+          <p className="text-[0.6875rem] text-gray-400">Match play wins holes; low stroke totals the best-ball score for the round.</p>
+          <div className="flex gap-2">
+            {[
+              { v: "stroke", l: "Low Stroke", d: "Total best-ball score vs par" },
+              { v: "match", l: "Match Play", d: "Win holes, holes up / down" },
+            ].map(opt => (
+              <button
+                key={opt.v}
+                onClick={() => setGameSettings(prev => ({ ...prev, bestBallMode: opt.v as "stroke" | "match" }))}
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  (gameSettings.bestBallMode ?? "stroke") === opt.v
+                    ? "bg-primary-500 text-white"
+                    : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                }`}
+              >
+                <div className="font-semibold">{opt.l}</div>
+                <div className="text-[0.625rem] opacity-70 mt-0.5">{opt.d}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Best Ball counting scores */}
       {(selectedGame?.id === "best_ball_2" || selectedGame?.id === "best_ball_4") && (
         <div className="bg-card rounded-xl shadow-card p-4 space-y-3">
