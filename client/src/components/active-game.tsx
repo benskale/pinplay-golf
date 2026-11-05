@@ -34,7 +34,7 @@ interface ActiveGameProps {
       result: string,
       metadata: Record<string, any>,
     ) => void;
-    editHole: (holeNumber: number, newStrokes: Record<string, number>) => void;    pressCall: (side: 'A' | 'B', calledBy: string, startHole: number) => void;
+    editHole: (holeNumber: number, newStrokes: Record<string, number>) => void;    pressCall: (side: 'A' | 'B', calledBy: string, startHole: number, amount?: number) => void;
   
   };
   onAbort?: () => void;
