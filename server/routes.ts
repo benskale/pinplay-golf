@@ -1700,6 +1700,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Start a game within a tournament (auth required)
+  // Rule: a registered player can start their own round, and the tournament
+  // HOST can start a round for ANY group (so the host can assemble groups —
+  // "Mike is going out with these two guys" — and share the link).
   app.post("/api/tournaments/:id/games", async (req, res) => {
     try {
       if (!req.isAuthenticated?.() || !req.user) {
@@ -1713,10 +1716,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Tournament must be in progress to start games" });
       }
 
+      const isCreator = tournament.creatorId === user.id;
+
       // Check if player is registered (by userId for authed users, by session for guests)
       const tPlayers = await storage.getTournamentPlayers(req.params.id);
       const playerRecord = tPlayers.find(p => p.userId === user.id);
-      if (!playerRecord) {
+      if (!playerRecord && !isCreator) {
         return res.status(400).json({ message: "You must be registered for this tournament to start a game" });
       }
 
