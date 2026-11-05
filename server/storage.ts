@@ -1,6 +1,6 @@
 import { eq, desc, and, or, ilike, sql as sqlOp, count, asc } from "drizzle-orm";
 import { db, pool } from "./db";
-import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers, tournamentTeams, tournamentRounds, gameTemplates, globalGameTemplates, tournamentMatches, sideBets, gameParticipants } from "@shared/schema";
+import { games, users, otpCodes, oauthAccounts, favorites, tournaments, tournamentPlayers, tournamentTeams, tournamentRounds, gameTemplates, globalGameTemplates, tournamentMatches, sideBets, gameParticipants, courseProfiles } from "@shared/schema";
 import type { Game, InsertGame, UpdateGame, User, InsertUser, OAuthAccount, Favorite, Tournament, InsertTournament, TournamentPlayer, InsertTournamentPlayer, LeaderboardEntry, HoleDetail, HoleDetailResult, SkinsHoleDetail, TournamentTeam, TournamentRound, InsertTournamentRound, GameTemplate, InsertGameTemplate, TournamentMatch, InsertTournamentMatch, SideBet, InsertSideBet, GlobalGameTemplate } from "@shared/schema";
 import { generateInviteCode } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -78,6 +78,10 @@ export interface IStorage {
   deleteTournamentTeam(teamId: number): Promise<boolean>;
   assignPlayerToTeam(tournamentId: string, playerName: string, teamId: number): Promise<void>;
   removePlayerFromTeam(tournamentId: string, playerName: string): Promise<void>;
+
+  // Course Profiles (self-healing course data cache)
+  getCourseProfile(courseKey: string): Promise<{ courseKey: string; name: string; city: string; state: string; par: number | null; pars: number[] | null; hcpRanks: number[] | null; source: string } | null>;
+  upsertCourseProfile(profile: { courseKey: string; name: string; city?: string; state?: string; par?: number | null; pars?: number[] | null; hcpRanks?: number[] | null; source?: string }): Promise<void>;
 
   // Session store
   sessionStore: session.Store;
@@ -1466,6 +1470,59 @@ export class DatabaseStorage implements IStorage {
     await db.delete(gameTemplates).where(and(eq(gameTemplates.id, id), eq(gameTemplates.userId, userId)));
   }
 
+  // ── Course Profiles (self-healing course data cache) ────────────────────────
+  async getCourseProfile(courseKey: string) {
+    const rows = await db
+      .select()
+      .from(courseProfiles)
+      .where(eq(courseProfiles.courseKey, courseKey))
+      .limit(1);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      courseKey: r.courseKey,
+      name: r.name,
+      city: r.city,
+      state: r.state,
+      par: r.par ?? null,
+      pars: (r.pars as number[] | null) ?? null,
+      hcpRanks: (r.hcpRanks as number[] | null) ?? null,
+      source: r.source,
+    };
+  }
+
+  async upsertCourseProfile(profile: { courseKey: string; name: string; city?: string; state?: string; par?: number | null; pars?: number[] | null; hcpRanks?: number[] | null; source?: string }) {
+    // Never overwrite good ranks with nothing
+    const existing = await this.getCourseProfile(profile.courseKey);
+    const hcpRanks = profile.hcpRanks && profile.hcpRanks.length === 18 ? profile.hcpRanks : existing?.hcpRanks ?? null;
+    const pars = profile.pars && profile.pars.length === 18 ? profile.pars : existing?.pars ?? null;
+    await db
+      .insert(courseProfiles)
+      .values({
+        courseKey: profile.courseKey,
+        name: profile.name,
+        city: profile.city || "",
+        state: profile.state || "",
+        par: profile.par ?? existing?.par ?? null,
+        pars,
+        hcpRanks,
+        source: profile.source || "community",
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: courseProfiles.courseKey,
+        set: {
+          name: profile.name,
+          city: profile.city || existing?.city || "",
+          state: profile.state || existing?.state || "",
+          par: profile.par ?? existing?.par ?? null,
+          pars,
+          hcpRanks,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
   // ── Global Game Templates (community-shared custom games) ────────────────────
 
   async getGlobalGameTemplates(): Promise<GlobalGameTemplate[]> {
@@ -1970,6 +2027,9 @@ export class MemStorage implements IStorage {
   async getSideBets(_tournamentId: string): Promise<SideBet[]> { return []; }
   async getGameSideBets(_gameId: string): Promise<SideBet[]> { return []; }
   async createSideBet(_insertBet: InsertSideBet): Promise<SideBet> { throw new Error("Not implemented in MemStorage"); }
+
+  async getCourseProfile(_courseKey: string) { return null; }
+  async upsertCourseProfile(_profile: any): Promise<void> { /* MemStorage: no-op */ }
   async updateSideBetStatus(_id: number, _status: string, _result?: { winnerId?: number; winnerName?: string }): Promise<SideBet | undefined> { return undefined; }
   async deleteSideBet(_id: number): Promise<void> {}
   async getMultiDayLeaderboard(_tournamentId: string, _view?: string): Promise<{ leaderboard: LeaderboardEntry[]; rounds: TournamentRound[] }> { return { leaderboard: [], rounds: [] }; }

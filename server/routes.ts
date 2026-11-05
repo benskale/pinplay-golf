@@ -562,6 +562,33 @@ function recalcHolePoints(
   }
 }
 
+
+/**
+ * Self-healing course cache: when a game starts with a course and NON-DEFAULT
+ * hole handicap rankings (from an override, an upstream API with real data, or
+ * the player's manual entry), remember them for that course. Future games on
+ * the same course auto-fill even if upstream data degrades.
+ */
+async function rememberCourseProfile(courseName: string, city: string, state: string, pars: number[] | undefined, strokeIndexes: number[] | undefined, source = "community") {
+  try {
+    if (!courseName || !Array.isArray(strokeIndexes) || strokeIndexes.length !== 18) return;
+    const isDefault = strokeIndexes.every((v, i) => v === i + 1);
+    if (isDefault) return; // never learn the 1-18 fallback as "truth"
+    const key = `${courseName.trim().toLowerCase()}|${(city || "").trim().toLowerCase()}`;
+    await storage.upsertCourseProfile({
+      courseKey: key,
+      name: courseName.trim(),
+      city: (city || "").trim(),
+      state: (state || "").trim(),
+      pars: Array.isArray(pars) && pars.length === 18 ? pars : undefined,
+      hcpRanks: strokeIndexes,
+      source,
+    });
+  } catch (e) {
+    console.error("course profile cache write failed:", e);
+  }
+}
+
 async function fetchGolfApi(path: string) {
   const res = await fetch(`${GOLF_API_BASE}${path}`);
   if (!res.ok) throw new Error(`Golf API error: ${res.status}`);
@@ -789,8 +816,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       while (pars.length < 18) pars.push(4);
       while (hcpRanks.length < 18) hcpRanks.push(null as any);
-      const validHcpRanks = hcpRanks.length === 18 && hcpRanks.every(r => typeof r === "number" && r >= 1 && r <= 18) ? hcpRanks : null;
-      res.json({ id: data.id, name: data.name || data.course_name || data.club_name, city: data.city, state: data.state, par: data.par || data.par_total, pars: pars.slice(0, 18), hcpRanks: validHcpRanks });
+      let validHcpRanks = hcpRanks.length === 18 && hcpRanks.every(r => typeof r === "number" && r >= 1 && r <= 18) ? hcpRanks : null;
+      const courseName = data.name || data.course_name || data.club_name || "";
+
+      // Upstream had no (or partial) handicap rows: fall back to the community
+      // course-profile cache before giving up — a course played correctly once
+      // keeps its real rankings forever.
+      if (!validHcpRanks && courseName) {
+        const key = `${courseName.trim().toLowerCase()}|${(data.city || "").trim().toLowerCase()}`;
+        try {
+          const cached = await storage.getCourseProfile(key);
+          if (cached?.hcpRanks && cached.hcpRanks.length === 18) {
+            validHcpRanks = cached.hcpRanks;
+          }
+        } catch {}
+      }
+
+      res.json({ id: data.id, name: courseName, city: data.city, state: data.state, par: data.par || data.par_total, pars: pars.slice(0, 18), hcpRanks: validHcpRanks });
     } catch {
       res.status(500).json({ message: "Could not load course data" });
     }
@@ -827,6 +869,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Always store session ID so games can be linked if user logs in later
       (gameData as any).sessionId = req.sessionID;
       const game = await storage.createGame(gameData);
+      await rememberCourseProfile(gameData.courseName || "", "", "", (gameData.pars as number[]) || undefined, (gameData.strokeIndexes as number[]) || undefined);
       res.json(game);
     } catch (error) {
       res.status(400).json({ message: error instanceof Error ? error.message : "Invalid game data" });
@@ -1821,6 +1864,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const game = await storage.createGame(gameData);
+      await rememberCourseProfile(gameData.courseName || "", "", "", (gameData.pars as number[]) || undefined, (gameData.strokeIndexes as number[]) || undefined);
 
       // Update tournament player status to "playing"
       await storage.updateTournamentPlayerStatus(req.params.id, user.id, "playing");

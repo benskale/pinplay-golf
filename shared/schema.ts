@@ -472,6 +472,24 @@ export interface LeaderboardEntry {
 // ── Sessions (connect-pg-simple) ──────────────────────────────────────────────
 // Declared here so `npm run db:push` owns the table. Previously db:push saw it
 // as an extra table and offered to delete it, which dropped all logins.
+// ── Course Profiles (self-healing course data cache) ─────────────────────────
+// Whenever a game is created with a course + non-default hole handicap rankings,
+// the rankings are saved here keyed by canonical course key (name+city lowercased).
+// Future games on the same course auto-fill from this cache, so upstream data
+// degradation can never regress a course the community has already played correctly.
+export const courseProfiles = pgTable("course_profiles", {
+  id: serial("id").primaryKey(),
+  courseKey: varchar("course_key", { length: 300 }).notNull().unique(),
+  name: text("name").notNull(),
+  city: text("city").notNull().default(""),
+  state: text("state").notNull().default(""),
+  par: integer("par"),
+  pars: jsonb("pars").$type<number[]>(),
+  hcpRanks: jsonb("hcp_ranks").$type<number[]>(),
+  source: varchar("source", { length: 40 }).notNull().default("community"),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
 export const session = pgTable("session", {
   sid: varchar("sid", { length: 255 }).primaryKey(),
   sess: json("sess").notNull(),
