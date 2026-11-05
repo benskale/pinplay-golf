@@ -840,6 +840,8 @@ export class DatabaseStorage implements IStorage {
   // are on the same team. Best (lowest net) score per hole counts.
   private async getBestBallLeaderboard(tournamentId: string): Promise<LeaderboardEntry[]> {
     const tournamentGames = await this.getGamesByTournament(tournamentId);
+    const tPlayers = await this.getTournamentPlayers(tournamentId);
+    const tTeams = await this.getTournamentTeams(tournamentId);
     const entries: LeaderboardEntry[] = [];
     let teamNum = 0;
 
@@ -851,55 +853,78 @@ export class DatabaseStorage implements IStorage {
       const holeHistory = game.holeHistory as Array<any>;
       const holesCompleted = holeHistory.length;
 
-      teamNum++;
-      const teamName = `Team ${teamNum}`;
+      // A game can contain MULTIPLE teams going off together. Split by
+      // game.teams when present, else by tournament-roster team assignments,
+      // else one team = the whole group.
+      let gameTeams: string[][];
+      if (Array.isArray(game.teams) && game.teams.length > 0) {
+        gameTeams = game.teams as string[][];
+      } else {
+        const byTeamId = new Map<string, string[]>();
+        for (const p of players) {
+          const tid = tPlayers.find(tp => tp.playerName === p)?.teamId ?? null;
+          const key = tid === null ? `solo-${p}` : `team-${tid}`;
+          if (!byTeamId.has(key)) byTeamId.set(key, []);
+          byTeamId.get(key)!.push(p);
+        }
+        gameTeams = Array.from(byTeamId.values());
+      }
 
-      // Compute best-ball score per hole
-      let bestBallGross = 0;
-      let bestBallNet = 0;
-      const maxHoles = Math.max(...players.map(p => (scores[p] || []).length), 0);
+      for (const roster of gameTeams) {
+        const rosterPlayers = roster.filter(p => players.includes(p));
+        if (rosterPlayers.length === 0) continue;
+        teamNum++;
+        const rosterTeamIds = new Set(rosterPlayers.map(p => tPlayers.find(tp => tp.playerName === p)?.teamId ?? null));
+        const tTeam = tTeams.find(t => rosterTeamIds.has(t.id));
+        const teamName = tTeam?.teamName ?? `Team ${teamNum}`;
 
-      for (let holeIdx = 0; holeIdx < maxHoles; holeIdx++) {
-        let bestNet = Infinity;
-        let bestGrossForHole = Infinity;
+        // Compute best-ball score per hole for THIS team only
+        let bestBallGross = 0;
+        let bestBallNet = 0;
+        const maxHoles = Math.max(...rosterPlayers.map(p => (scores[p] || []).length), 0);
 
-        for (const playerName of players) {
-          const holeScores = scores[playerName] || [];
-          if (holeIdx >= holeScores.length) continue;
-          const gross = holeScores[holeIdx];
-          if (!gross || gross === 0) continue;
+        for (let holeIdx = 0; holeIdx < maxHoles; holeIdx++) {
+          let bestNet = Infinity;
+          let bestGrossForHole = Infinity;
 
-          const handicap = handicaps[playerName] ?? 0;
-          const strokeIdx = strokeIndexes[holeIdx] ?? (holeIdx + 1);
-          const hs = this.handicapStrokesForHole(handicap, strokeIdx);
-          const net = gross - hs;
+          for (const playerName of rosterPlayers) {
+            const holeScores = scores[playerName] || [];
+            if (holeIdx >= holeScores.length) continue;
+            const gross = holeScores[holeIdx];
+            if (!gross || gross === 0) continue;
 
-          if (net < bestNet) {
-            bestNet = net;
-            bestGrossForHole = gross;
+            const handicap = handicaps[playerName] ?? 0;
+            const strokeIdx = strokeIndexes[holeIdx] ?? (holeIdx + 1);
+            const hs = this.handicapStrokesForHole(handicap, strokeIdx);
+            const net = gross - hs;
+
+            if (net < bestNet) {
+              bestNet = net;
+              bestGrossForHole = gross;
+            }
+          }
+
+          if (bestNet !== Infinity) {
+            bestBallNet += bestNet;
+            bestBallGross += bestGrossForHole;
           }
         }
 
-        if (bestNet !== Infinity) {
-          bestBallNet += bestNet;
-          bestBallGross += bestGrossForHole;
-        }
+        entries.push({
+          position: 0,
+          playerName: teamName,
+          userId: null,
+          totalStrokes: bestBallGross,
+          netStrokes: bestBallNet,
+          handicap: 0,
+          holesCompleted,
+          complete: !game.active && holesCompleted > 0,
+          gameId: game.id,
+          teamName,
+          teamPlayers: rosterPlayers,
+          format: "best_ball",
+        });
       }
-
-      entries.push({
-        position: 0,
-        playerName: teamName,
-        userId: null,
-        totalStrokes: bestBallGross,
-        netStrokes: bestBallNet,
-        handicap: 0,
-        holesCompleted,
-        complete: !game.active && holesCompleted > 0,
-        gameId: game.id,
-        teamName,
-        teamPlayers: players,
-        format: "best_ball",
-      });
     }
 
     return this.assignPositions(entries);

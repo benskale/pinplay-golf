@@ -551,14 +551,14 @@ export default function TournamentPage() {
             </Button>
           )}
 
-          {/* Start My Round */}
+          {/* Start My Round / Start a Round (host can start any group) */}
           {tournament.isRegistered && isInProgress && (
             <Button
               onClick={handleStartRound}
               className="w-full py-3 rounded-xl font-semibold text-sm bg-green-600 hover:bg-green-700 text-white"
             >
               <Gamepad2 className="mr-2 h-4 w-4" />
-              Start My Round
+              {tournament.isCreator ? "Start a Round (any group)" : "Start My Round"}
             </Button>
           )}
 
