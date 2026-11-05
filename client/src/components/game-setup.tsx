@@ -1633,9 +1633,8 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
             </div>
           )}
 
-          {/* Stroke Index / Handicap Rankings — always editable */}
-          <>
-            {/* Warning when using default (uncustomised) HCP ranks — only matters for handicap play */}
+          {/* Stroke Index / Handicap Rankings — hidden entirely when course data provides ranks */}
+          {hcpRanksSource === "course" ? null : (<>
 
 
               <button
@@ -1646,9 +1645,6 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Hole HCP Rankings</span>
-                    {hcpRanksSource === "course" && (
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 font-medium">Auto-filled from course</span>
-                    )}
                     {hcpRanksSource === "manual" && (
                       <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 font-medium">Manual</span>
                     )}
@@ -1699,8 +1695,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                   ))}
                 </div>
               )}
-            </>
-            )}
+            </>)}
 
           <Button
             className="w-full bg-secondary-500 hover:bg-secondary-600 text-white py-3 rounded-lg font-semibold text-[0.9375rem] shadow-sm"
