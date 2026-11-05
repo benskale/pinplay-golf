@@ -1047,7 +1047,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
           <div className="flex items-center justify-between pt-1">
             <div>
               <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Auto-press at 2-down</p>
-              <p className="text-[0.6875rem] text-gray-400">Automatically starts a new bet when a side goes 2 down</p>
+              <p className="text-[0.6875rem] text-gray-400">Automatically calls a press for a side that falls 2 down</p>
             </div>
             <button
               onClick={() => setGameSettings(prev => ({ ...prev, autoPress: !prev.autoPress }))}
@@ -1306,7 +1306,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                   </div>
                 )}
                 <p className="text-[0.6875rem] text-violet-400">
-                  Multiplier: 2x per press (1 press = 2x, 2 presses = 4x, 3 presses = 8x)
+                  Each press is a separate side bet — it never changes the original bet's amount
                 </p>
               </>
             )}
