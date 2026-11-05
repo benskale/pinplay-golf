@@ -60,8 +60,8 @@ export function getNassauSettlement(game: Game, pointValue: number): {
   const overall = segState(1, 18);
   addLine("Overall 18", overall.diff, overall.finished, pointValue);
   presses.forEach((p, i) => {
-    const [lo, hi] = p.segment === "front" ? [1, 9] : [10, 18];
-    const st = segState(p.segment === "front" ? 1 : 10, hi, p.startHole);
+    const [lo, hi] = p.segment === "front" ? [1, 9] : p.segment === "back" ? [10, 18] : [1, 18];
+    const st = segState(lo, hi, p.startHole);
     addLine(`Press #${i + 1} (${p.calledBy?.split(" ")[0] || p.side}, from ${p.startHole})`, st.diff, st.finished, p.amount || pointValue);
   });
   const balances: Record<string, number> = {};

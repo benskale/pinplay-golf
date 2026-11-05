@@ -2723,8 +2723,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const pGame = await storage.getGame(currentGameId);
             if (!pGame) break;
             const side = message.side === "A" ? "A" : "B";
-            const startHole = pGame.currentHole;
-            const segment = startHole <= 9 ? "front" : "overall";
+            // A press is called AFTER a hole is decided and starts on the NEXT TEE.
+            const startHole = pGame.currentHole + 1;
+            if (startHole > 18) break; // called on 18: nothing left to press
+            // Nassau: the press runs to the end of the current nine-hole half
+            // (starting 1-9 -> thru 9; starting 10-18 -> thru 18).
+            // Other match games: the press restarts all-square and runs the
+            // remaining holes of the round (thru 18).
+            const segment = pGame.gameType === "nassau"
+              ? (startHole <= 9 ? "front" : "back")
+              : "overall";
             const presses = ((pGame.gameSettings as any)?.pressBets as any[]) ?? [];
             const unit = ((pGame.gameConfig as any)?.betPools?.[0]?.value as number) ?? 5;
             const press = {

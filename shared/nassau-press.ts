@@ -128,16 +128,18 @@ export function createPress(
   amount: number,
   existing: PressBet[],
 ): PressBet {
-  const segment: PressBet["segment"] = currentHole <= 9 ? "front" : "overall";
-  // NOTE: a press on holes 1-9 attaches to the front bet; on 10-18 it attaches
-  // to the *overall* bet by default (traditional). A back-segment press is
-  // created explicitly when pressing the back bet.
+  // A press is called after a hole is decided and starts on the NEXT TEE.
+  // Nassau: runs to the end of the current nine-hole half (1-9 -> thru 9,
+  // 10-18 -> thru 18). Other match games: restarts all-square and runs the
+  // remaining holes of the round (thru 18).
+  const startHole = currentHole + 1;
+  const segment: PressBet["segment"] = startHole <= 9 ? "front" : startHole <= 18 ? "back" : "overall";
   const n = existing.length + 1;
   return {
     id: `press-${n}`,
     side,
     calledBy,
-    startHole: currentHole,
+    startHole,
     segment,
     amount,
     status: "live",

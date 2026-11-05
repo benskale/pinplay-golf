@@ -632,7 +632,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                           <div key={p.id} className="text-xs flex items-center gap-2">
                             <span className="text-purple-600 font-medium">{p.calledBy.split(' ')[0]}</span>
                             <span className="text-gray-500">
-                              pressed from hole {p.startHole} · {p.segment === 'front' ? 'runs thru 9' : 'runs thru 18'} · ${p.amount}
+                              from hole {p.startHole} · {p.segment === 'front' ? 'runs thru 9' : p.segment === 'back' ? 'runs thru 18' : 'runs thru 18'} · ${p.amount}
                             </span>
                           </div>
                         ))}
