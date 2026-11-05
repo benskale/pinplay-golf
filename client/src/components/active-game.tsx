@@ -1190,16 +1190,17 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
 
               {/* ── NASSAU SEGMENT SCOREBOARD ── */}
               {game.gameType === "nassau" && (() => {
-                const hh = game.holeHistory as Array<{ hole: number; result?: string; strokes?: Record<string, number> }>;
+                const hh = game.holeHistory as Array<{ hole: number; points?: Record<string, number>; strokes?: Record<string, number> }>;
                 const [p1, p2] = game.players;
+                // Hole winners come from the engine's recorded POINTS (net, handicap-adjusted),
+                // never raw strokes — gross comparison would mis-score handicap matches.
                 const segDiff = (lo: number, hi: number) => {
                   let d = 0;
                   for (const h of hh) {
                     if (h.hole < lo || h.hole > hi) continue;
-                    const s = h.strokes || {};
-                    const a = s[p1], b = s[p2];
-                    if (a == null || b == null) continue;
-                    if (a < b) d += 1; else if (b < a) d -= 1;
+                    const pts = h.points || {};
+                    const a = pts[p1] ?? 0, b = pts[p2] ?? 0;
+                    d += a - b;
                   }
                   return d;
                 };
