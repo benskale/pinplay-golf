@@ -704,7 +704,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                       <div className="space-y-1.5">
                         {game.players.map(p => {
                           const lowestHdcp = Math.min(...game.players.map(q => game.handicaps[q] || 0));
-                          const diff = Math.max(0, (game.handicaps[p] || 0) - lowestHdcp);
+                          const diff = Math.round(Math.max(0, (game.handicaps[p] || 0) - lowestHdcp) * 10) / 10;
                           const strokeHoles = getStrokeHoles(game, p);
                           const getsStrokeOnThisHole = strokeHoles.includes(game.currentHole);
                           return (
@@ -714,7 +714,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                                 <span className="text-gray-400 dark:text-gray-500">plays scratch (no strokes)</span>
                               ) : (
                                 <span className={getsStrokeOnThisHole ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-700 dark:text-emerald-400"}>
-                                  {diff} stroke{diff !== 1 ? "s" : ""} on hole{strokeHoles.length !== 1 ? "s" : ""}{" "}
+                                  {Number.isInteger(diff) ? diff : diff.toFixed(1)} stroke{diff !== 1 ? "s" : ""} on hole{strokeHoles.length !== 1 ? "s" : ""}{" "}
                                   {strokeHoles.length <= 9
                                     ? strokeHoles.join(", ")
                                     : `${strokeHoles.slice(0, 6).join(", ")} …+${strokeHoles.length - 6}`}
