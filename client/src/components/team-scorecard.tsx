@@ -91,10 +91,20 @@ export default function TeamScorecard({ games, teams, players }: Props) {
 
   if (rows.length === 0) return null;
 
-  const front = (r: typeof rows[0]) => (r.holes.slice(0, 9).filter(v => v != null) as number[]).reduce((a, b) => a + b, 0);
-  const back = (r: typeof rows[0]) => (r.holes.slice(9).filter(v => v != null) as number[]).reduce((a, b) => a + b, 0);
-  const parFront = rows[0]?.pars.slice(0, 9).reduce((a, b) => a + b, 0) ?? 36;
-  const parBack = rows[0]?.pars.slice(9).reduce((a, b) => a + b, 0) ?? 36;
+  // Sort by to-par over holes played (leaderboard convention): -1 beats E beats +2,
+  // regardless of holes completed or raw strokes.
+  const totalSeg = (r: typeof rows[0]) => { let s = 0, par = 0; for (let i = 0; i < r.holes.length; i++) { if (r.holes[i] != null) { s += r.holes[i]!; par += r.pars[i] ?? 4; } } return s - par; };
+  rows.sort((a, b) => totalSeg(a) - totalSeg(b));
+
+  // Strokes AND par counted only over holes actually played in each segment:
+  // to-par = strokes − par(played holes), never against the full nine/18.
+  const seg = (r: typeof rows[0], from: number, to: number) => {
+    let strokes = 0, par = 0, played = 0;
+    for (let i = from; i < to && i < r.holes.length; i++) {
+      if (r.holes[i] != null) { strokes += r.holes[i]!; par += r.pars[i] ?? 4; played++; }
+    }
+    return { strokes, par, played };
+  };
   const toPar = (v: number, par: number) => { const d = v - par; return d === 0 ? "E" : d > 0 ? `+${d}` : `${d}`; };
 
   return (
@@ -142,7 +152,7 @@ export default function TeamScorecard({ games, teams, players }: Props) {
                   </div>
                 </td>
                 <td className="px-1.5 py-2 text-center font-bold text-gray-700 dark:text-gray-300">
-                  {(() => { const f = front(r); return f ? `${f} (${toPar(f, parFront)})` : "—"; })()}
+                  {(() => { const f = seg(r, 0, 9); return f.played ? `${f.strokes} (${toPar(f.strokes, f.par)})` : "—"; })()}
                 </td>
                 {r.holes.slice(0, 9).map((v, i) => (
                   <td key={i} className={`px-1.5 py-2 text-center font-semibold ${
@@ -154,7 +164,7 @@ export default function TeamScorecard({ games, teams, players }: Props) {
                   }`}>{v ?? "-"}</td>
                 ))}
                 <td className="px-1.5 py-2 text-center font-bold text-gray-700 dark:text-gray-300">
-                  {(() => { const b = back(r); return b ? `${b} (${toPar(b, parBack)})` : "—"; })()}
+                  {(() => { const b = seg(r, 9, 18); return b.played ? `${b.strokes} (${toPar(b.strokes, b.par)})` : "—"; })()}
                 </td>
                 {r.holes.slice(9).map((v, i) => (
                   <td key={i + 9} className={`px-1.5 py-2 text-center font-semibold ${
@@ -166,7 +176,7 @@ export default function TeamScorecard({ games, teams, players }: Props) {
                   }`}>{v ?? "-"}</td>
                 ))}
                 <td className="px-2 py-2 text-center font-bold text-gray-900 dark:text-white">
-                  {r.total != null ? `${r.total} (${toPar(r.total, parFront + parBack)})` : "—"}
+                  {(() => { const a = seg(r, 0, 18); return a.played ? `${a.strokes} (${toPar(a.strokes, a.par)})` : "—"; })()}
                 </td>
               </tr>
             ))}
