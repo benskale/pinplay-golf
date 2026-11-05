@@ -1052,9 +1052,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isCreator = tournament.creatorId === userId;
       }
 
+      // Derive live "playing" status from ACTIVE GAMES, not the stored status
+      // field — stale rows (from aborted starts or deleted games) otherwise
+      // lock players out of starting new rounds.
+      const activePlayers = new Set<string>();
+      for (const g of games) {
+        if (g.active !== false) {
+          for (const p of (g.players as string[]) || []) activePlayers.add(p);
+        }
+      }
+      const playersWithLiveStatus = players.map(p => ({
+        ...p,
+        status: activePlayers.has(p.playerName) ? "playing" : (p.status === "playing" ? "registered" : p.status),
+      }));
+
       res.json({
         ...tournament,
-        players,
+        players: playersWithLiveStatus,
         games,
         teams,
         creator,
@@ -1752,10 +1766,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Players already in a live game can't be started in another one
+      // (derived from active games — stored status can be stale)
+      const activeGamePlayers = new Set<string>();
+      for (const g of await storage.getTournamentGames(req.params.id)) {
+        if (g.active !== false) for (const p of (g.players as string[]) || []) activeGamePlayers.add(p);
+      }
       const requestedPlayers: string[] = Array.isArray(req.body.players) ? req.body.players : [];
       if (requestedPlayers.length > 0) {
         const alreadyPlaying = tPlayers
-          .filter(p => p.status === "playing" && requestedPlayers.includes(p.playerName));
+          .filter(p => activeGamePlayers.has(p.playerName) && requestedPlayers.includes(p.playerName));
         if (alreadyPlaying.length > 0) {
           const names = alreadyPlaying.map(p => p.playerName).join(", ");
           return res.status(400).json({

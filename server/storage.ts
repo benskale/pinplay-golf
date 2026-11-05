@@ -921,10 +921,21 @@ export class DatabaseStorage implements IStorage {
 
       // A game can contain MULTIPLE teams going off together (e.g. two 2-man
       // teams in one foursome). game.teams (array of rosters) holds the split;
-      // fall back to a single team = the whole game.
-      const gameTeams: string[][] = Array.isArray(game.teams) && game.teams.length > 0
-        ? (game.teams as string[][])
-        : [players];
+      // for games started before rosters were saved, derive the split from the
+      // tournament roster's team assignments.
+      let gameTeams: string[][];
+      if (Array.isArray(game.teams) && game.teams.length > 0) {
+        gameTeams = game.teams as string[][];
+      } else {
+        const byTeamId = new Map<string, string[]>();
+        for (const p of players) {
+          const tid = tPlayers.find(tp => tp.playerName === p)?.teamId ?? null;
+          const key = tid === null ? `solo-${p}` : `team-${tid}`;
+          if (!byTeamId.has(key)) byTeamId.set(key, []);
+          byTeamId.get(key)!.push(p);
+        }
+        gameTeams = Array.from(byTeamId.values());
+      }
 
       // Par of the holes played (same for every team in this game)
       const parPlayed = holeHistory.reduce((sum, h) => sum + (pars[h.hole - 1] ?? 4), 0);
@@ -935,10 +946,10 @@ export class DatabaseStorage implements IStorage {
         if (rosterPlayers.length === 0) continue;
         teamNum++;
         // Prefer the real team name/color from the tournament roster
-        const tTeam = tTeams.find(t =>
-          rosterPlayers.every(p => (tPlayers.find(tp => tp.playerName === p)?.teamId ?? null) === t.id) ||
-          rosterPlayers.some(p => (tPlayers.find(tp => tp.playerName === p)?.teamId ?? null) === t.id)
+        const rosterTeamIds = new Set(
+          rosterPlayers.map(p => tPlayers.find(tp => tp.playerName === p)?.teamId ?? null)
         );
+        const tTeam = tTeams.find(t => rosterTeamIds.has(t.id));
         const teamName = tTeam?.teamName ?? `Team ${teamNum}`;
 
         // Scramble gross: members share one score per hole; use the first member
