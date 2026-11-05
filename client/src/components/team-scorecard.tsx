@@ -142,7 +142,7 @@ export default function TeamScorecard({ games, teams, players }: Props) {
                   </div>
                 </td>
                 <td className="px-1.5 py-2 text-center font-bold text-gray-700 dark:text-gray-300">
-                  {front ? `${front} (${toPar(front, parFront)})` : "—"}
+                  {(() => { const f = front(r); return f ? `${f} (${toPar(f, parFront)})` : "—"; })()}
                 </td>
                 {r.holes.slice(0, 9).map((v, i) => (
                   <td key={i} className={`px-1.5 py-2 text-center font-semibold ${
@@ -154,7 +154,7 @@ export default function TeamScorecard({ games, teams, players }: Props) {
                   }`}>{v ?? "-"}</td>
                 ))}
                 <td className="px-1.5 py-2 text-center font-bold text-gray-700 dark:text-gray-300">
-                  {back ? `${back} (${toPar(back, parBack)})` : "—"}
+                  {(() => { const b = back(r); return b ? `${b} (${toPar(b, parBack)})` : "—"; })()}
                 </td>
                 {r.holes.slice(9).map((v, i) => (
                   <td key={i + 9} className={`px-1.5 py-2 text-center font-semibold ${
