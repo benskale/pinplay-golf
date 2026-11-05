@@ -53,8 +53,12 @@ export default function Home() {
     staleTime: 30_000,
   });
 
-  const activeGames = myGames.filter(g => g.active);
-  const completedGames = myGames.filter(g => !g.active);
+  // Tournament-linked games are represented on the home screen by their
+  // TOURNAMENT card ("Your Group Play"), not as raw round cards — showing both
+  // duplicates every group play as two entries.
+  const standaloneGames = myGames.filter(g => !g.tournamentId);
+  const activeGames = standaloneGames.filter(g => g.active);
+  const completedGames = standaloneGames.filter(g => !g.active);
   const mostRecentActive = activeGames.length > 0 ? activeGames[0] : null;
 
   // Guest game recovery - check localStorage for active games
@@ -64,8 +68,9 @@ export default function Home() {
     staleTime: 10_000,
   });
 
-  // For guests (not logged in), use recovered games
-  const guestActiveGames = user ? [] : guestGames.filter(g => g.active);
+  // For guests (not logged in), use recovered games (tournament-linked ones
+  // show as their tournament, not as raw rounds)
+  const guestActiveGames = user ? [] : guestGames.filter(g => g.active && !g.tournamentId);
   const guestMostRecent = guestActiveGames.length > 0 ? guestActiveGames[0] : null;
 
   return (
