@@ -614,6 +614,23 @@ export class DatabaseStorage implements IStorage {
       const holeHistory = game.holeHistory as Array<{ hole: number; strokes: Record<string, number> }>;
       const holesCompleted = holeHistory.length;
 
+      // Ground-truth gross from hole-by-hole scores (totalScores may hold
+      // per-game points, not strokes) and net relative to par of holes played
+      const pars = (game.pars as number[]) || [];
+      const strokeIdxs = (game.strokeIndexes as number[]) || [];
+      const grossFromHistory: Record<string, number> = {};
+      let parPlayedSum = 0;
+      const strokesReceivedPerPlayer: Record<string, number> = {};
+      for (const hole of holeHistory) {
+        parPlayedSum += pars[hole.hole - 1] ?? 4;
+        for (const [p, s] of Object.entries(hole.strokes || {})) {
+          grossFromHistory[p] = (grossFromHistory[p] || 0) + (Number(s) || 0);
+          const sIdx = strokeIdxs[hole.hole - 1] ?? hole.hole;
+          strokesReceivedPerPlayer[p] = (strokesReceivedPerPlayer[p] || 0)
+            + this.handicapStrokesForHole(handicaps[p] ?? 0, sIdx);
+        }
+      }
+
       for (const playerName of gamePlayers) {
         let matchedUserId: number | null = null;
         for (const tp of tPlayers) {
@@ -625,9 +642,9 @@ export class DatabaseStorage implements IStorage {
         // Include players even if userId is null (guests), but only if registered
         const tPlayer = tPlayers.find(tp => tp.playerName === playerName);
         if (!tPlayer) continue;
-        const totalStrokes = totalScores[playerName] ?? 0;
+        const totalStrokes = grossFromHistory[playerName] ?? 0;
         const handicap = handicaps[playerName] ?? 0;
-        const netStrokes = totalStrokes - Math.round(handicap);
+        const netStrokes = totalStrokes - parPlayedSum - (strokesReceivedPerPlayer[playerName] ?? 0);
 
         entries.push({
           position: 0,
@@ -664,6 +681,7 @@ export class DatabaseStorage implements IStorage {
       holeScores: number[];
       strokeIndexes: number[];
       totalGross: number;
+      netToPar: number;
       holesCompleted: number;
       complete: boolean;
     }> = [];
@@ -673,7 +691,23 @@ export class DatabaseStorage implements IStorage {
       const handicaps = game.handicaps as Record<string, number>;
       const strokeIndexes = (game.strokeIndexes as number[]) || [];
       const holeHistory = game.holeHistory as Array<any>;
-      const totalScores = game.totalScores as Record<string, number>;
+      const pars = (game.pars as number[]) || [];
+      // Ground truth for stroke totals is the hole-by-hole scores.
+      // (game.totalScores holds per-game points — skins won, wolf points —
+      // NOT stroke sums, so never use it as a gross stroke total here.)
+      const grossFromHistory: Record<string, number> = {};
+      for (const hole of holeHistory) {
+        for (const [p, s] of Object.entries(hole.strokes || {})) {
+          grossFromHistory[p] = (grossFromHistory[p] || 0) + (Number(s) || 0);
+        }
+      }
+      // Net strokes relative to par, through the holes actually played:
+      // sum(gross) - sum(par of played holes) - handicap strokes received on those holes.
+      const parOfPlayed: number[] = [];
+      for (const hole of holeHistory) {
+        parOfPlayed.push(pars[hole.hole - 1] ?? 4);
+      }
+      const parPlayedSum = parOfPlayed.reduce((a, b) => a + b, 0);
 
       for (const playerName of game.players as string[]) {
         const tp = tPlayers.find(p => p.playerName === playerName);
@@ -681,14 +715,23 @@ export class DatabaseStorage implements IStorage {
         const holeScores = scores[playerName] || [];
         if (holeScores.length === 0) continue;
 
+        const hc = handicaps[playerName] ?? 0;
+        // Handicap strokes received on the holes played so far
+        let strokesReceived = 0;
+        for (const hole of holeHistory) {
+          const sIdx = strokeIndexes[hole.hole - 1] ?? hole.hole;
+          strokesReceived += this.handicapStrokesForHole(hc, sIdx);
+        }
+
         allPlayers.push({
           playerName,
           userId: tp.userId,
           gameId: game.id,
-          handicap: handicaps[playerName] ?? 0,
+          handicap: hc,
           holeScores,
           strokeIndexes,
-          totalGross: totalScores[playerName] ?? 0,
+          totalGross: grossFromHistory[playerName] ?? 0,
+          netToPar: (grossFromHistory[playerName] ?? 0) - parPlayedSum - strokesReceived,
           holesCompleted: holeHistory.length,
           complete: !game.active && holeHistory.length > 0,
         });
@@ -746,7 +789,7 @@ export class DatabaseStorage implements IStorage {
       playerName: p.playerName,
       userId: p.userId,
       totalStrokes: p.totalGross,
-      netStrokes: p.totalGross - Math.round(p.handicap),
+      netStrokes: p.netToPar,
       handicap: p.handicap,
       holesCompleted: p.holesCompleted,
       complete: p.complete,
@@ -1049,13 +1092,28 @@ export class DatabaseStorage implements IStorage {
 
       const tp1 = tPlayers.find(p => p.playerName === p1);
       const tp2 = tPlayers.find(p => p.playerName === p2);
-      const totalScores = game.totalScores as Record<string, number>;
+      // Gross strokes from hole history (totalScores may hold points, not strokes)
+      const grossHist: Record<string, number> = {};
+      const parsArr = (game.pars as number[]) || [];
+      const strokeIdxArr = (game.strokeIndexes as number[]) || [];
+      let parPlayed = 0;
+      const strokesRecv: Record<string, number> = {};
+      for (const hole of (game.holeHistory as Array<any>) || []) {
+        parPlayed += parsArr[hole.hole - 1] ?? 4;
+        for (const [p, s] of Object.entries(hole.strokes || {})) {
+          grossHist[p] = (grossHist[p] || 0) + (Number(s) || 0);
+          const sIdx = strokeIdxArr[hole.hole - 1] ?? hole.hole;
+          strokesRecv[p] = (strokesRecv[p] || 0) + this.handicapStrokesForHole(handicaps[p] ?? 0, sIdx);
+        }
+      }
+      const grossOf = (p: string) => grossHist[p] ?? 0;
+      const netOf = (p: string) => grossOf(p) - parPlayed - (strokesRecv[p] ?? 0);
 
       if (tp1) {
         const st = statusFor(true);
         entries.push({
           position: 0, playerName: p1, userId: tp1.userId, avatarUrl: tp1.avatarUrl ?? null,
-          totalStrokes: totalScores[p1] ?? 0, netStrokes: (totalScores[p1] ?? 0) - Math.round(handicaps[p1] ?? 0),
+          totalStrokes: grossOf(p1), netStrokes: netOf(p1),
           handicap: handicaps[p1] ?? 0, holesCompleted, complete: !game.active && holesCompleted > 0, gameId: game.id,
           matchStatus: st.status, matchHolesUp: st.holesUp, format: "match_play",
         });
@@ -1064,7 +1122,7 @@ export class DatabaseStorage implements IStorage {
         const st = statusFor(false);
         entries.push({
           position: 0, playerName: p2, userId: tp2.userId, avatarUrl: tp2.avatarUrl ?? null,
-          totalStrokes: totalScores[p2] ?? 0, netStrokes: (totalScores[p2] ?? 0) - Math.round(handicaps[p2] ?? 0),
+          totalStrokes: grossOf(p2), netStrokes: netOf(p2),
           handicap: handicaps[p2] ?? 0, holesCompleted, complete: !game.active && holesCompleted > 0, gameId: game.id,
           matchStatus: st.status, matchHolesUp: st.holesUp, format: "match_play",
         });
