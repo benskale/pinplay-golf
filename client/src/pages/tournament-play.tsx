@@ -258,44 +258,64 @@ export default function TournamentPlayPage() {
       </div>
 
       <div className="max-w-md mx-auto px-4 pb-8 -mt-2 space-y-4">
-        {/* Team banner for team-format tournaments */}
-        {isTeamFormat && myTeam && (
-          <div
-            className="rounded-xl p-4"
-            style={{ backgroundColor: `${myTeam.teamColor}15`, borderLeftWidth: 4, borderLeftColor: myTeam.teamColor }}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-4 h-4 rounded-full" style={{ backgroundColor: myTeam.teamColor }} />
-              <span className="font-semibold text-sm" style={{ color: myTeam.teamColor }}>{myTeam.teamName}</span>
-              <span className="text-xs text-gray-500 ml-auto">{myTeamMembers.length} players</span>
+        {/* Team selection for team-format tournaments (scramble / best ball):
+            host sees ALL teams and can start any of them; players see theirs. */}
+        {isTeamFormat && (tournament.teams?.length ?? 0) > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 px-1">
+              <h2 className="font-semibold text-foreground text-sm">Teams</h2>
+              <span className="text-xs text-muted-foreground">
+                {isCreator ? "Start any team's round" : "Your team"}
+              </span>
             </div>
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {myTeamMembers.map(p => (
-                <span
-                  key={p.id}
-                  className="text-xs px-2 py-0.5 rounded-full font-medium"
-                  style={{ backgroundColor: `${myTeam.teamColor}20`, color: myTeam.teamColor }}
-                >
-                  {p.playerName}
-                </span>
-              ))}
-            </div>
-            <button
-              onClick={() => {
-                setSelectedPlayers(new Set(myTeamMembers.map(p => p.playerName)));
-                const def = getGameDefForTournament(tournament?.format || "stroke_play", myTeamMembers.length);
-                if (def) setSelectedGame(def);
-              }}
-              className="w-full py-2 text-xs font-semibold rounded-lg text-white transition-colors"
-              style={{ backgroundColor: myTeam.teamColor }}
-            >
-              Start Team Round ({myTeamMembers.length} players)
-            </button>
-            {myTeamMembers.length < 2 && (
-              <p className="text-xs text-red-500 mt-2 text-center">
-                Need at least 2 players on your team to start
-              </p>
-            )}
+            {(isCreator ? tournament.teams! : tournament.teams!.filter(t => t.id === myTeamId))
+              .map(team => {
+                const members = registeredPlayers.filter(p => p.teamId === team.id);
+                const memberNames = members.map(p => p.playerName);
+                const busyCount = members.filter(p => busyPlayers.has(p.playerName)).length;
+                const canStartTeam = members.length >= 2 && busyCount === 0;
+                return (
+                  <div
+                    key={team.id}
+                    className="rounded-xl p-4"
+                    style={{ backgroundColor: `${team.teamColor}15`, borderLeftWidth: 4, borderLeftColor: team.teamColor }}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="w-4 h-4 rounded-full" style={{ backgroundColor: team.teamColor }} />
+                      <span className="font-semibold text-sm" style={{ color: team.teamColor }}>{team.teamName}</span>
+                      <span className="text-xs text-gray-500 ml-auto">{members.length} players</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {members.map(p => (
+                        <span
+                          key={p.id}
+                          className={`text-xs px-2 py-0.5 rounded-full font-medium ${busyPlayers.has(p.playerName) ? "opacity-50 line-through" : ""}`}
+                          style={{ backgroundColor: `${team.teamColor}20`, color: team.teamColor }}
+                        >
+                          {p.playerName}{p.status === "playing" ? " · playing" : ""}
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedPlayers(new Set(memberNames));
+                        const def = getGameDefForTournament(tournament?.format || "scramble", memberNames.length);
+                        if (def) setSelectedGame(def);
+                      }}
+                      disabled={!canStartTeam}
+                      className="w-full py-2 text-xs font-semibold rounded-lg text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: team.teamColor }}
+                    >
+                      {!canStartTeam
+                        ? (members.length < 2 ? "Need at least 2 players" : `${busyCount} already in a live game`)
+                        : `Start Team Round (${members.length} players)`}
+                    </button>
+                  </div>
+                );
+              })}
+            <p className="text-xs text-muted-foreground text-center px-4">
+              Team rounds start the whole team at once. Need to adjust teams? Go back to the lobby.
+            </p>
           </div>
         )}
 
@@ -317,7 +337,8 @@ export default function TournamentPlayPage() {
           </div>
         )}
 
-        {/* Step 1: Select Players */}
+        {/* Step 1: Select Players (individual formats only — team formats use the team cards above) */}
+        {!isTeamFormat && (
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center gap-2 mb-4">
@@ -389,6 +410,7 @@ export default function TournamentPlayPage() {
             </div>
           </CardContent>
         </Card>
+        )}
 
         {/* Step 2: Game Format (locked from tournament setup) */}
         {playerNames.length >= 2 && playerNames.length <= 5 && (
