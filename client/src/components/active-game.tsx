@@ -1188,6 +1188,71 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                 </CardContent>
               </Card>
 
+              {/* ── NASSAU SEGMENT SCOREBOARD ── */}
+              {game.gameType === "nassau" && (() => {
+                const hh = game.holeHistory as Array<{ hole: number; result?: string; strokes?: Record<string, number> }>;
+                const [p1, p2] = game.players;
+                const segDiff = (lo: number, hi: number) => {
+                  let d = 0;
+                  for (const h of hh) {
+                    if (h.hole < lo || h.hole > hi) continue;
+                    const s = h.strokes || {};
+                    const a = s[p1], b = s[p2];
+                    if (a == null || b == null) continue;
+                    if (a < b) d += 1; else if (b < a) d -= 1;
+                  }
+                  return d;
+                };
+                const fmt = (d: number, played: number, total: number) => {
+                  if (played === 0) return "—";
+                  if (played < total) {
+                    if (d === 0) return "AS";
+                    return d > 0 ? `${p1.split(" ")[0]} ${d} up` : `${p2.split(" ")[0]} ${-d} up`;
+                  }
+                  if (d === 0) return "Halved";
+                  return d > 0 ? `${p1.split(" ")[0]} wins ${d}` : `${p2.split(" ")[0]} wins ${-d}`;
+                };
+                const rows = [
+                  { label: "Front 9", lo: 1, hi: 9 },
+                  { label: "Back 9", lo: 10, hi: 18 },
+                  { label: "Overall 18", lo: 1, hi: 18 },
+                ].map(r => {
+                  const played = hh.filter(h => h.hole >= r.lo && h.hole <= r.hi).length;
+                  const total = r.hi - r.lo + 1;
+                  return { ...r, played, total, diff: segDiff(r.lo, r.hi) };
+                });
+                return (
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Trophy className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                        <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">
+                          Nassau Scoreboard
+                        </h3>
+                      </div>
+                      <div className="space-y-1.5">
+                        {rows.map(r => (
+                          <div key={r.label} className="flex items-center justify-between text-sm py-1 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                            <span className="font-medium text-gray-700 dark:text-gray-300">{r.label}</span>
+                            <span className="text-xs text-gray-400 mr-3">thru {Math.min(r.played, r.total)}</span>
+                            <span className={`font-semibold ${
+                              r.played === r.total
+                                ? (r.diff === 0 ? "text-gray-500" : "text-emerald-600 dark:text-emerald-400")
+                                : "text-gray-700 dark:text-gray-300"
+                            }`}>
+                              {fmt(r.diff, r.played, r.total)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[0.65rem] text-gray-400 mt-2 text-center">
+                        Three separate matches: front, back, and overall. Presses settle independently.
+                      </p>
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+
               {/* ── LEADERBOARD ── */}
               <Card>
                 <CardContent className="p-4">
