@@ -1050,6 +1050,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const userId = (req.user as any).id;
         isRegistered = players.some(p => p.userId === userId);
         isCreator = tournament.creatorId === userId;
+      } else {
+        // Guest sessions count as registered if they joined this tournament by name
+        const guestJoin = (req.session as any)?.guestTournamentJoins?.[req.params.id];
+        if (guestJoin && players.some(p => p.playerName === guestJoin && p.userId === null)) {
+          isRegistered = true;
+        }
       }
 
       res.json({
@@ -1699,13 +1705,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Start a game within a tournament (auth required)
+  // Start a game within a tournament (logged-in players, or guests who joined by name)
   app.post("/api/tournaments/:id/games", async (req, res) => {
     try {
-      if (!req.isAuthenticated?.() || !req.user) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      const user = req.user as any;
       const tournament = await storage.getTournament(req.params.id);
       if (!tournament) return res.status(404).json({ message: "Tournament not found" });
 
@@ -1715,9 +1717,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if player is registered (by userId for authed users, by session for guests)
       const tPlayers = await storage.getTournamentPlayers(req.params.id);
-      const playerRecord = tPlayers.find(p => p.userId === user.id);
-      if (!playerRecord) {
-        return res.status(400).json({ message: "You must be registered for this tournament to start a game" });
+
+      let starterName: string | null = null;
+      let starterUserId: number | null = null;
+
+      if (req.isAuthenticated?.() && req.user) {
+        const user = req.user as any;
+        const playerRecord = tPlayers.find(p => p.userId === user.id);
+        if (!playerRecord) {
+          return res.status(400).json({ message: "You must be registered for this tournament to start a game" });
+        }
+        starterName = playerRecord.playerName;
+        starterUserId = user.id;
+      } else {
+        // Guest path: join-guest records the player name on the session; match it against
+        // this tournament's registered guest players.
+        const guestJoin = (req.session as any)?.guestTournamentJoins?.[req.params.id];
+        if (!guestJoin) {
+          return res.status(401).json({ message: "Join this game first, then start your round" });
+        }
+        const playerRecord = tPlayers.find(p => p.playerName === guestJoin && p.userId === null);
+        if (!playerRecord) {
+          return res.status(400).json({ message: "You must be registered for this tournament to start a game" });
+        }
+        starterName = playerRecord.playerName;
       }
 
       // Sanitize player names
@@ -1747,7 +1770,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const gameData = insertGameSchema.parse(req.body);
-      (gameData as any).userId = user.id;
+      (gameData as any).userId = starterUserId;
       (gameData as any).sessionId = req.sessionID;
       (gameData as any).tournamentId = req.params.id;
 
@@ -1778,12 +1801,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const game = await storage.createGame(gameData);
 
       // Update tournament player status to "playing"
-      await storage.updateTournamentPlayerStatus(req.params.id, user.id, "playing");
+      if (starterUserId != null) {
+        await storage.updateTournamentPlayerStatus(req.params.id, starterUserId, "playing");
+      }
+      if (starterName) {
+        await storage.updateTournamentPlayerStatusByName(req.params.id, starterName, "playing");
+      }
 
       // Also update any other tournament players in this game by name
       const gamePlayers = (gameData.players as string[]) || [];
       for (const gPlayer of gamePlayers) {
-        if (gPlayer !== user.name) {
+        if (gPlayer !== starterName) {
           await storage.updateTournamentPlayerStatusByName(req.params.id, gPlayer, "playing");
         }
       }
@@ -2387,6 +2415,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const tp = await storage.joinTournament(req.params.id, null, name, true);
       const players = await storage.getTournamentPlayers(req.params.id);
+
+      // Remember this session's guest identity for this tournament, so the guest
+      // can start their round later (start-game matches against this).
+      try {
+        const sess = req.session as any;
+        if (!sess.guestTournamentJoins) sess.guestTournamentJoins = {};
+        sess.guestTournamentJoins[req.params.id] = name;
+      } catch {}
+
       broadcastToTournament(req.params.id, {
         type: "tournament_updated",
         tournament: { ...tournament, players },
