@@ -1271,9 +1271,15 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
 
               {/* ── TEAM SCOREBOARD (any game with teams) ── */}
               {(() => {
-                const gameTeams = (Array.isArray(game.teams) && game.teams.length > 0
+                let gameTeams = (Array.isArray(game.teams) && game.teams.length > 0
                   ? game.teams as string[][]
                   : null);
+                if (!gameTeams && game.players.length === 4 &&
+                    ["best_ball_4", "nassau_4", "vegas", "alternate_shot_4", "shamble"].includes(game.gameType)) {
+                  // Own-ball team game started without an explicit teams array:
+                  // convention is first two vs last two (matches setup's fallback pairing).
+                  gameTeams = [game.players.slice(0, 2), game.players.slice(2)];
+                }
                 if (!gameTeams || gameTeams.length < 2) return null;
                 const hh = game.holeHistory as Array<{ hole: number; strokes?: Record<string, number> }>;
                 const pars = game.pars || [];
