@@ -367,6 +367,7 @@ export const wsMessageSchema = z.union([
     side: z.enum(["A", "B"]),
     calledBy: z.string(),
     startHole: z.number(),
+    amount: z.number().min(1).max(1000).optional(),
   }),
   z.object({
     type: z.literal("update_strokes"),

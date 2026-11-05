@@ -74,6 +74,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     (game.gameSettings?.pressBets as any) ?? [];
   const setPressMultiplier = () => {}; // legacy no-op (kept for residual refs)
   const [pendingPress, setPendingPress] = useState<{ from: string; fromSide: 'A' | 'B' } | null>(null);
+  const [pressAmount, setPressAmount] = useState<number | null>(null); // caller-chosen press stake
   const pressLog = pressBets.map(p => ({ from: p.calledBy, side: p.side, result: 'accepted' as const, multiplier: 1 }));
   const setPressLog = () => {}; // legacy no-op
 
@@ -287,8 +288,9 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
     if (!pendingPress) return;
     // Correct press semantics: record a NEW side bet starting on this hole
     // (shared/nassau-press.ts). Persisted via gameSettings.pressBets on the server.
-    gameActions.pressCall(pendingPress.fromSide, pendingPress.from, game.currentHole);
+    gameActions.pressCall(pendingPress.fromSide, pendingPress.from, game.currentHole, pressAmount ?? undefined);
     setPendingPress(null);
+    setPressAmount(null);
   };
 
   
@@ -646,8 +648,35 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                           <Flame className="w-4 h-4 inline text-purple-500 mr-1" />
                           {pendingPress.from.split(' ')[0]} calls a press!
                           <span className="block text-xs text-gray-500 mt-0.5">
-                            New side match from this hole to the end of the segment. Confirm to start it.
+                            New side match starting on the next tee, running to the end of the segment. Set the press amount and confirm.
                           </span>
+                          <div className="flex items-center justify-center gap-1.5 mt-2">
+                            <span className="text-xs text-gray-500">Press amount:</span>
+                            {[5, 10, 20].map(amt => (
+                              <button
+                                key={amt}
+                                onClick={() => setPressAmount(amt)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                                  (pressAmount ?? (game.gameSettings?.pressAmount as number) ?? 5) === amt
+                                    ? 'bg-purple-600 text-white'
+                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                                }`}
+                              >
+                                ${amt}
+                              </button>
+                            ))}
+                            <input
+                              type="number"
+                              min={1}
+                              placeholder="custom"
+                              value={pressAmount && ![5, 10, 20].includes(pressAmount) ? pressAmount : ''}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value);
+                                setPressAmount(isNaN(v) ? null : v);
+                              }}
+                              className="w-16 px-2 py-1 rounded-lg text-xs text-center border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                            />
+                          </div>
                         </div>
                         <div className="flex gap-2">
                           <Button

@@ -2734,7 +2734,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ? (startHole <= 9 ? "front" : "back")
               : "overall";
             const presses = ((pGame.gameSettings as any)?.pressBets as any[]) ?? [];
-            const unit = ((pGame.gameConfig as any)?.betPools?.[0]?.value as number) ?? 5;
+            const unit = (typeof message.amount === "number" && message.amount >= 1)
+              ? message.amount
+              : ((pGame.gameConfig as any)?.betPools?.[0]?.value as number) ?? 5;
             const press = {
               id: `press-${presses.length + 1}`,
               side,

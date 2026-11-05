@@ -48,9 +48,9 @@ export function useGame(
   );
 
   const pressCall = useCallback(
-    (side: "A" | "B", calledBy: string, startHole: number) => {
+    (side: "A" | "B", calledBy: string, startHole: number, amount?: number) => {
       if (!gameId) return;
-      sendMessage({ type: "press_call", gameId, side, calledBy, startHole });
+      sendMessage({ type: "press_call", gameId, side, calledBy, startHole, ...(amount != null ? { amount } : {}) });
     },
     [gameId, sendMessage],
   );
