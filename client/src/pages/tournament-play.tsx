@@ -85,6 +85,7 @@ export default function TournamentPlayPage() {
   const { user } = useAuth();
 
   const [selectedPlayers, setSelectedPlayers] = useState<Set<string>>(new Set());
+  const [selectedTeams, setSelectedTeams] = useState<Set<number>>(new Set());
   const [selectedGame, setSelectedGame] = useState<GameDef | null>(null);
   const [pars, setPars] = useState<number[]>([...DEFAULT_PARS]);
   const [strokeIndexes, setStrokeIndexes] = useState<number[]>([...DEFAULT_SI]);
@@ -258,66 +259,107 @@ export default function TournamentPlayPage() {
       </div>
 
       <div className="max-w-md mx-auto px-4 pb-8 -mt-2 space-y-4">
-        {/* Team selection for team-format tournaments (scramble / best ball):
-            host sees ALL teams and can start any of them; players see theirs. */}
-        {isTeamFormat && (tournament.teams?.length ?? 0) > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 px-1">
-              <h2 className="font-semibold text-foreground text-sm">Teams</h2>
-              <span className="text-xs text-muted-foreground">
-                {isCreator ? "Start any team's round" : "Your team"}
-              </span>
-            </div>
-            {(isCreator ? tournament.teams! : tournament.teams!.filter(t => t.id === myTeamId))
-              .map(team => {
-                const members = registeredPlayers.filter(p => p.teamId === team.id);
-                const memberNames = members.map(p => p.playerName);
-                const busyCount = members.filter(p => busyPlayers.has(p.playerName)).length;
-                const canStartTeam = members.length >= 2 && busyCount === 0;
-                return (
-                  <div
-                    key={team.id}
-                    className="rounded-xl p-4"
-                    style={{ backgroundColor: `${team.teamColor}15`, borderLeftWidth: 4, borderLeftColor: team.teamColor }}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="w-4 h-4 rounded-full" style={{ backgroundColor: team.teamColor }} />
-                      <span className="font-semibold text-sm" style={{ color: team.teamColor }}>{team.teamName}</span>
-                      <span className="text-xs text-gray-500 ml-auto">{members.length} players</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                      {members.map(p => (
-                        <span
-                          key={p.id}
-                          className={`text-xs px-2 py-0.5 rounded-full font-medium ${busyPlayers.has(p.playerName) ? "opacity-50 line-through" : ""}`}
-                          style={{ backgroundColor: `${team.teamColor}20`, color: team.teamColor }}
-                        >
-                          {p.playerName}{p.status === "playing" ? " · playing" : ""}
-                        </span>
-                      ))}
-                    </div>
+        {/* Team selection for team-format tournaments (scramble / best ball).
+            Select ONE OR MORE teams — multiple 2-man teams can go off together
+            in the same group. Host can select any teams; players see theirs first. */}
+        {isTeamFormat && (tournament.teams?.length ?? 0) > 0 && (() => {
+          const allTeams = tournament.teams || [];
+          const visibleTeams = isCreator
+            ? allTeams
+            : allTeams.filter(t => t.id === myTeamId || selectedTeams.has(t.id));
+          const selectedRoster: string[] = [];
+          let anyBusy = false;
+          for (const t of visibleTeams) {
+            if (!selectedTeams.has(t.id)) continue;
+            for (const m of registeredPlayers.filter(p => p.teamId === t.id)) {
+              selectedRoster.push(m.playerName);
+              if (busyPlayers.has(m.playerName)) anyBusy = true;
+            }
+          }
+          const canStartTeams = selectedRoster.length >= 2 && selectedRoster.length <= 5 && !anyBusy;
+          return (
+          <Card>
+            <CardContent className="pt-5">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
+                  {selectedRoster.length}
+                </div>
+                <h2 className="font-semibold text-foreground">Select Teams</h2>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">
+                Tap one or more teams going out together{isCreator ? "" : " (your team first)"}.
+              </p>
+              <div className="space-y-2">
+                {visibleTeams.map(team => {
+                  const members = registeredPlayers.filter(p => p.teamId === team.id);
+                  const isSel = selectedTeams.has(team.id);
+                  const teamBusy = members.some(p => busyPlayers.has(p.playerName));
+                  return (
                     <button
-                      onClick={() => {
-                        setSelectedPlayers(new Set(memberNames));
-                        const def = getGameDefForTournament(tournament?.format || "scramble", memberNames.length);
-                        if (def) setSelectedGame(def);
-                      }}
-                      disabled={!canStartTeam}
-                      className="w-full py-2 text-xs font-semibold rounded-lg text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ backgroundColor: team.teamColor }}
+                      key={team.id}
+                      onClick={() =>
+                        setSelectedTeams(prev => {
+                          const next = new Set(prev);
+                          if (next.has(team.id)) next.delete(team.id);
+                          else next.add(team.id);
+                          return next;
+                        })
+                      }
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
+                        teamBusy
+                          ? "border-border bg-muted/40 opacity-55 cursor-not-allowed"
+                          : isSel
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/40"
+                      }`}
                     >
-                      {!canStartTeam
-                        ? (members.length < 2 ? "Need at least 2 players" : `${busyCount} already in a live game`)
-                        : `Start Team Round (${members.length} players)`}
+                      <span
+                        className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold text-white"
+                        style={{ backgroundColor: team.teamColor }}
+                      >
+                        {members.length}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground truncate">{team.teamName}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {members.map(m => m.playerName).join(", ")}
+                          {teamBusy && " · in a live game"}
+                        </p>
+                      </div>
+                      {isSel && <CheckCircle className="w-5 h-5 text-primary flex-shrink-0" />}
                     </button>
-                  </div>
-                );
-              })}
-            <p className="text-xs text-muted-foreground text-center px-4">
-              Team rounds start the whole team at once. Need to adjust teams? Go back to the lobby.
-            </p>
-          </div>
-        )}
+                  );
+                })}
+              </div>
+              <div className="mt-3 text-center">
+                <span className="text-xs text-muted-foreground">
+                  {selectedRoster.length} players selected
+                  {selectedRoster.length > 0 && selectedRoster.length < 2 && " (need at least 2)"}
+                  {selectedRoster.length > 5 && " (max 5 per group)"}
+                </span>
+              </div>
+              {selectedTeams.size > 0 && (
+                <Button
+                  className="w-full py-3 rounded-xl font-semibold text-sm mt-3"
+                  disabled={!canStartTeams}
+                  onClick={() => {
+                    setSelectedPlayers(new Set(selectedRoster));
+                    const def = getGameDefForTournament(tournament?.format || "scramble", selectedRoster.length);
+                    if (def) setSelectedGame(def);
+                  }}
+                >
+                  {anyBusy
+                    ? "Some players are in a live game"
+                    : `Select Format for ${selectedRoster.length} Players`}
+                </Button>
+              )}
+              <p className="text-xs text-muted-foreground text-center mt-3">
+                Multiple 2-man teams can go off together — select both teams.
+              </p>
+            </CardContent>
+          </Card>
+          );
+        })()}
 
         {/* Team-format warning: not on a team */}
         {isTeamFormat && !myTeam && (
