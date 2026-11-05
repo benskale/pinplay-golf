@@ -18,6 +18,14 @@ const GOLF_API_BASE = "https://api.opengolfapi.org/v1";
 // Known course data overrides — corrects bad OpenGolfAPI data (wrong pars, missing handicap ranks)
 // Add entries here when the API returns incorrect scorecard data for a course.
 const COURSE_OVERRIDES: Record<string, { name: string; par: number; pars: number[]; hcpRanks: number[] }> = {
+  // Baylands Golf Links (formerly Palo Alto Municipal GC), Palo Alto CA — pars in OpenGolfAPI but
+  // no handicap row. Men's hdcp from GolfPass scorecard (cross-checks with course card).
+  "021e3ee1-644d-4a21-a548-e56cd0122eb5": {
+    name: "Baylands Golf Links",
+    par: 72,
+    pars: [5, 4, 5, 3, 4, 4, 4, 3, 5, 4, 4, 3, 5, 4, 3, 4, 3, 5],
+    hcpRanks: [17, 3, 5, 15, 9, 1, 13, 11, 7, 2, 4, 16, 10, 8, 18, 6, 14, 12],
+  },
   // Presidio Golf Course, San Francisco CA — OpenGolfAPI degraded to pars-only (no handicap row).
   // Data from the course's official scorecard PDF (presidiogolf.com, PGC AO2024 v01), men's hdcp row.
   "514d7002-95eb-415b-a7f8-babb1e35772e": {
