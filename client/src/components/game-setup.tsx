@@ -819,6 +819,9 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
       {/* ── STAKES — Dollar value per point / per hole ── */}
       {(() => {
         const gameId = selectedGame?.id || "stroke_play";
+        // Nassau uses its own segment amounts (Nassau Segments card) — the generic
+        // stakes picker would be redundant, so it's hidden for nassau.
+        if (gameId === "nassau") return null;
         const isStrokeBased = gameId === "stroke_play";
         const isHoleBased = ["skins", "match_play", "nassau"].includes(gameId);
         const label = isHoleBased ? "per hole" : isStrokeBased ? "buy-in" : "per point";
