@@ -1241,7 +1241,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Allow pressing</p>
-                <p className="text-[0.6875rem] text-gray-400">Double down on a hole — opponent must accept or concede</p>
+                <p className="text-[0.6875rem] text-gray-400">A trailing side can call a new side bet starting on the next tee, restarting from all-square</p>
               </div>
               <button
                 onClick={() => setPressSettings(prev => ({ ...prev, enabled: !prev.enabled }))}
@@ -1253,7 +1253,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
             {pressSettings.enabled && (
               <>
                 <div>
-                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Max presses per hole</p>
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Max presses per segment</p>
                   <div className="flex gap-2">
                     {[1, 2, 3, 99].map(n => (
                       <button
@@ -1271,7 +1271,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                   </div>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Who can press</p>
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Who can call a press</p>
                   <div className="flex gap-2">
                     {[
                       { label: "Anyone", value: "anyone" },
