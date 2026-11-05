@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import {
+  Pencil,
   ArrowLeft, Trophy, Users, Share2, Copy, Play, XCircle,
   Loader2, Calendar, MapPin, Gamepad2, ExternalLink,
   Crown, CheckCircle, Clock, UserPlus, Flag, DollarSign, Swords
@@ -310,6 +311,23 @@ export default function TournamentPage() {
     },
   });
 
+  // Rename (creator only)
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const renameMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("PATCH", `/api/tournaments/${tournamentId}`, { name });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tournaments", tournamentId] });
+      setEditingName(false);
+      toast({ title: "Renamed" });
+    },
+    onError: (err: Error) => toast({ title: "Couldn't rename", description: err.message, variant: "destructive" }),
+  });
+
   // Start My Round — navigate to a new game linked to tournament
   const handleStartRound = () => {
     setLocation(`/tournament/${tournamentId}/play`);
@@ -380,9 +398,34 @@ export default function TournamentPage() {
               <Crown className="w-5 h-5 text-yellow-400" />
               <span className="text-xs font-semibold text-yellow-400/80 uppercase tracking-wider">Group Play</span>
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight leading-tight">
-              {tournament.name}
-            </h1>
+            {editingName ? (
+              <div className="flex items-center justify-center gap-2 px-4">
+                <input
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-lg font-bold text-center w-64"
+                  autoFocus
+                />
+                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" disabled={renameMutation.isPending || !nameDraft.trim()}
+                  onClick={() => renameMutation.mutate(nameDraft.trim())}>
+                  Save
+                </Button>
+                <Button size="sm" variant="ghost" className="text-white/60" onClick={() => setEditingName(false)}>Cancel</Button>
+              </div>
+            ) : (
+              <h1 className="text-2xl font-bold text-white tracking-tight leading-tight flex items-center justify-center gap-2">
+                {tournament.name}
+                {tournament.isCreator && (
+                  <button
+                    onClick={() => { setNameDraft(tournament.name); setEditingName(true); }}
+                    className="text-white/40 hover:text-white/80 transition-colors"
+                    aria-label="Rename"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                )}
+              </h1>
+            )}
 
             <div className="flex items-center justify-center gap-4 mt-3 text-sm text-white/60">
               {tournament.courseName && (
