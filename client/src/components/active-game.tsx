@@ -627,17 +627,32 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                       </div>
                     </div>
 
-                    {/* Live presses (side matches) */}
+                    {/* Live presses (side matches) with running score */}
                     {pressBets.filter(p => p.status === 'live').length > 0 && (
                       <div className="space-y-1 mb-2">
-                        {pressBets.filter(p => p.status === 'live').map((p) => (
-                          <div key={p.id} className="text-xs flex items-center gap-2">
-                            <span className="text-purple-600 font-medium">{p.calledBy.split(' ')[0]}</span>
-                            <span className="text-gray-500">
-                              from hole {p.startHole} · {p.segment === 'front' ? 'runs thru 9' : p.segment === 'back' ? 'runs thru 18' : 'runs thru 18'} · ${p.amount}
-                            </span>
-                          </div>
-                        ))}
+                        {pressBets.filter(p => p.status === 'live').map((p) => {
+                          const [pp1, pp2] = game.players;
+                          const segHi = p.segment === 'front' ? 9 : 18;
+                          let d = 0; let played = 0;
+                          for (const h of (game.holeHistory as Array<{ hole: number; points?: Record<string, number> }>)) {
+                            if (h.hole < p.startHole || h.hole > segHi) continue;
+                            const pts = h.points || {};
+                            d += (pts[pp1] ?? 0) - (pts[pp2] ?? 0);
+                            played++;
+                          }
+                          const callerFirst = p.calledBy.split(' ')[0];
+                          const other = p.calledBy === pp1 ? pp2 : pp1;
+                          const otherFirst = other.split(' ')[0];
+                          const stand = d === 0 ? 'AS' : d > 0 ? `${pp1.split(' ')[0]} ${d} up` : `${pp2.split(' ')[0]} ${-d} up`;
+                          return (
+                            <div key={p.id} className="text-xs flex items-center gap-2 flex-wrap">
+                              <span className="text-purple-600 font-medium">{callerFirst}</span>
+                              <span className="text-gray-500">
+                                from hole {p.startHole} · {p.segment === 'front' ? 'thru 9' : 'thru 18'} · ${p.amount} · <span className="font-semibold text-purple-600 dark:text-purple-400">{stand}</span> (thru {played})
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -1254,7 +1269,8 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                 );
               })()}
 
-              {/* ── LEADERBOARD ── */}
+              {/* ── LEADERBOARD ── (hidden for nassau: the Nassau Scoreboard is the truth) */}
+              {game.gameType !== "nassau" && (
               <Card>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
@@ -1341,6 +1357,8 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                   </div>
                 </CardContent>
               </Card>
+
+              )}
 
               {/* ── LIVE SETTLEMENT (who owes whom) ── */}
               {(() => {
@@ -1528,6 +1546,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                   </Card>
                 );
               })()}
+
 
               {/* ── HOLE HISTORY ── */}
               <Card>
