@@ -322,8 +322,10 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
         });
         setStrokeIndexes(derived);
         setHcpRanksSource("course");
+        setShowSISetup(false); // stay collapsed — nothing for the user to do
       } else {
         setHcpRanksSource("default");
+        setShowSISetup(true); // no data at all: only then surface manual entry
       }
       // Data quality check — if pars total doesn't match claimed course par, warn and auto-expand editor
       const parsTotal = (detail.pars || []).reduce((a: number, b: number) => a + b, 0);
@@ -1634,11 +1636,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
           {/* Stroke Index / Handicap Rankings — always editable */}
           <>
             {/* Warning when using default (uncustomised) HCP ranks — only matters for handicap play */}
-            {useHandicap && hcpRanksSource === "default" && (
-              <div className="mb-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
-                <span className="font-semibold">HCP ranks not set.</span> Search for your course above to auto-fill them, or enter them manually below. Without correct HCP ranks, strokes will be awarded on holes 1–4 by default instead of the actual hardest holes.
-              </div>
-            )}
+
 
               <button
                 type="button"
@@ -1702,6 +1700,7 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
                 </div>
               )}
             </>
+            )}
 
           <Button
             className="w-full bg-secondary-500 hover:bg-secondary-600 text-white py-3 rounded-lg font-semibold text-[0.9375rem] shadow-sm"
