@@ -1269,6 +1269,102 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                 );
               })()}
 
+              {/* ── TEAM SCOREBOARD (any game with teams) ── */}
+              {(() => {
+                const gameTeams = (Array.isArray(game.teams) && game.teams.length > 0
+                  ? game.teams as string[][]
+                  : null);
+                if (!gameTeams || gameTeams.length < 2) return null;
+                const hh = game.holeHistory as Array<{ hole: number; strokes?: Record<string, number> }>;
+                const pars = game.pars || [];
+                const strokeIdxs = (game.strokeIndexes as number[]) || [];
+                const hcps = game.handicaps || {};
+                const isScrambleLike = ["team_scramble", "scramble", "shamble"].includes(game.gameType);
+                // best-ball team score per hole (or shared scramble score = first member with a score)
+                const teamRows = gameTeams.map((roster, ti) => {
+                  let gross = 0, net = 0, parPlayed = 0;
+                  const played = hh.length;
+                  for (const h of hh) {
+                    const par = pars[h.hole - 1] ?? 4;
+                    parPlayed += par;
+                    const s = h.strokes || {};
+                    if (isScrambleLike) {
+                      const scorer = roster.find(p => s[p] != null && s[p] > 0);
+                      if (scorer != null) { gross += s[scorer]; net += s[scorer]; }
+                      else { gross += par; net += par; }
+                    } else {
+                      // best ball (net): lowest net among roster; lowest gross among roster for gross
+                      let bg = Infinity, bn = Infinity;
+                      for (const p of roster) {
+                        const g4 = s[p];
+                        if (g4 == null || g4 === 0) continue;
+                        const sIdx = strokeIdxs[h.hole - 1] ?? h.hole;
+                        const strokes = Math.floor((hcps[p] || 0) / 18) + (((hcps[p] || 0) % 18) >= sIdx ? 1 : 0);
+                        const n4 = g4 - strokes;
+                        if (g4 < bg) bg = g4;
+                        if (n4 < bn) bn = n4;
+                      }
+                      if (bg !== Infinity) gross += bg;
+                      if (bn !== Infinity) net += bn;
+                    }
+                  }
+                  const fmtToPar = (v: number) => { const d = v - parPlayed; return played === 0 ? "—" : d === 0 ? "E" : d > 0 ? `+${d}` : `${d}`; };
+                  return {
+                    name: `Team ${String.fromCharCode(65 + ti)}`,
+                    members: roster,
+                    gross, net,
+                    grossToPar: fmtToPar(gross),
+                    netToPar: fmtToPar(net),
+                    played,
+                  };
+                });
+                const leader = teamRows.reduce((best, r) => (r.net < best.net ? r : best), teamRows[0]);
+                return (
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Users className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                        <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">
+                          Team Scores
+                        </h3>
+                        <span className="text-[0.65rem] text-muted-foreground ml-auto">{isScrambleLike ? "one ball per team" : "best ball"}</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {teamRows.map(r => (
+                          <div key={r.name} className={`flex items-center justify-between px-3 py-2 rounded-xl ${
+                            r === leader && r.played > 0
+                              ? "bg-amber-50 dark:bg-amber-950/25 ring-1 ring-amber-200 dark:ring-amber-800"
+                              : "bg-gray-50 dark:bg-gray-800/50"
+                          }`}>
+                            <div className="min-w-0">
+                              <p className="text-[0.875rem] font-semibold text-gray-800 dark:text-gray-200">{r.name}</p>
+                              <p className="text-[0.65rem] text-muted-foreground truncate">{r.members.map(m => m.split(" ")[0]).join(" · ")}</p>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <div className="text-center">
+                                <p className="text-[0.6rem] text-muted-foreground uppercase tracking-wide">Gross</p>
+                                <p className="text-sm font-bold tabular-nums text-gray-700 dark:text-gray-300">
+                                  {r.played === 0 ? "—" : `${r.gross} (${r.grossToPar})`}
+                                </p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-[0.6rem] text-muted-foreground uppercase tracking-wide">Net</p>
+                                <p className="text-sm font-bold tabular-nums text-gray-700 dark:text-gray-300">
+                                  {r.played === 0 ? "—" : `${r.net} (${r.netToPar})`}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[0.65rem] text-gray-400 mt-2 text-center">
+                        Thru {hh.length} · gross and net (handicap-adjusted) per team.
+                      </p>
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+
               {/* ── LEADERBOARD ── (hidden for nassau: the Nassau Scoreboard is the truth) */}
               {game.gameType !== "nassau" && (
               <Card>
