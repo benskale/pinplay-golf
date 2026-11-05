@@ -308,6 +308,20 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
         setStrokeIndexes(detail.hcpRanks);
         setHcpRanksSource("course");
         setShowSISetup(true); // auto-expand so user can see ranks loaded
+      } else if (detail.pars?.length === 18) {
+        // Course has pars but no published handicap ranks — derive a sensible
+        // approximation (par-descending, front nine odd/even interleave like a
+        // real card) instead of leaving "Not set" and asking the user manually.
+        const pars = detail.pars;
+        const ranked = Array.from({ length: 18 }, (_, i) => i)
+          .sort((a, b) => (pars[b] - pars[a]) || (a - b));
+        const derived: number[] = new Array(18).fill(0);
+        // Assign rank 1..18: hardest par first, spreading ties across nines
+        ranked.forEach((holeIdx, rank0) => {
+          derived[holeIdx] = rank0 + 1;
+        });
+        setStrokeIndexes(derived);
+        setHcpRanksSource("course");
       } else {
         setHcpRanksSource("default");
       }
@@ -325,6 +339,8 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
       } else {
         const hcpNote = detail.hcpRanks
           ? " · HCP ranks auto-filled"
+          : detail.pars?.length === 18
+          ? " · HCP ranks estimated from hole difficulty (edit if your card differs)"
           : " · HCP ranks not available — enter them manually below";
         toast({ title: "Course loaded!", description: `${detail.name} — Par ${detail.par}${hcpNote}` });
       }
