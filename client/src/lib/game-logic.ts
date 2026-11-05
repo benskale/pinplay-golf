@@ -478,7 +478,8 @@ export function getGameStatus(game: Game): string {
     return `${leader.split(" ")[0]} ${upBy} UP · ${holesLeft} to play`;
   }
 
-  if (["best_ball_4", "nassau_4"].includes(gameType)) {
+  if (gameType === "nassau_4") {
+    // Nassau is match play — holes-up status is correct.
     const [teamA, teamB] = teams.length === 2 ? teams : [[players[0], players[1]], [players[2], players[3]]];
     const scoreA = teamA.reduce((s, p) => s + (totalScores[p] || 0), 0);
     const scoreB = teamB.reduce((s, p) => s + (totalScores[p] || 0), 0);
@@ -486,6 +487,31 @@ export function getGameStatus(game: Game): string {
     const leader = scoreA > scoreB ? teamA : teamB;
     const up = Math.abs(scoreA - scoreB);
     return `${leader.map(p => p.split(" ")[0]).join("+")} ${up} UP · ${holesLeft} to play`;
+  }
+
+  if (gameType === "best_ball_4") {
+    // Best ball is a STROKE game — the status shows the leading team's best-ball
+    // total vs par, not a match-play "UP" count.
+    const [teamA, teamB] = teams.length === 2 ? teams : [[players[0], players[1]], [players[2], players[3]]];
+    const bestBallTotal = (team: string[]) => {
+      let total = 0;
+      for (let hIdx = 0; hIdx < holeHistory.length; hIdx++) {
+        const hole = holeHistory[hIdx];
+        const best = team.reduce((min, p) => {
+          const s = hole.strokes?.[p];
+          return s != null && s > 0 ? Math.min(min, s) : min;
+        }, Infinity);
+        if (best !== Infinity) total += best;
+      }
+      return total;
+    };
+    const parsPlayed = (game.pars || []).slice(0, holeHistory.length).reduce((a, b) => a + b, 0);
+    const grossA = bestBallTotal(teamA);
+    const grossB = bestBallTotal(teamB);
+    const toPar = (v: number) => { const d = v - parsPlayed; return d === 0 ? "E" : d > 0 ? `+${d}` : `${d}`; };
+    if (grossA === grossB) return `Teams tied at ${grossA} (${toPar(grossA)}) · ${holesLeft} to play`;
+    const leader = grossA < grossB ? teamA : teamB;
+    return `${leader.map(p => p.split(" ")[0]).join("+")} leading ${Math.min(grossA, grossB)} (${toPar(Math.min(grossA, grossB))}) · ${holesLeft} to play`;
   }
 
   if (gameType === "team_best_ball") {
