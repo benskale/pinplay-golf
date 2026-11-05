@@ -18,6 +18,14 @@ const GOLF_API_BASE = "https://api.opengolfapi.org/v1";
 // Known course data overrides — corrects bad OpenGolfAPI data (wrong pars, missing handicap ranks)
 // Add entries here when the API returns incorrect scorecard data for a course.
 const COURSE_OVERRIDES: Record<string, { name: string; par: number; pars: number[]; hcpRanks: number[] }> = {
+  // Presidio Golf Course, San Francisco CA — OpenGolfAPI degraded to pars-only (no handicap row).
+  // Data from the course's official scorecard PDF (presidiogolf.com, PGC AO2024 v01), men's hdcp row.
+  "514d7002-95eb-415b-a7f8-babb1e35772e": {
+    name: "Presidio Golf Course",
+    par: 72,
+    pars: [4, 5, 4, 3, 4, 4, 3, 4, 5, 5, 4, 4, 3, 4, 3, 4, 4, 5],
+    hcpRanks: [7, 15, 1, 17, 13, 3, 5, 9, 11, 10, 4, 2, 12, 14, 16, 8, 6, 18],
+  },
   // Rock Hill Country Club, Rock Hill SC — API returns all par-5 for holes 1-13 and no handicap data
   "56d19e5f-ed82-4cf3-b9d1-d6066decb863": {
     name: "Rock Hill Country Club",
