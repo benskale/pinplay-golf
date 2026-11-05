@@ -68,6 +68,7 @@ interface TournamentDetail {
   settings: Record<string, any> | null;
   players: TournamentPlayer[];
   teams?: TournamentTeam[];
+  isCreator?: boolean;
 }
 
 interface CourseDetail {
@@ -146,6 +147,17 @@ export default function TournamentPlayPage() {
     });
   };
 
+  // Never pre-select players who are already in a live game
+  useEffect(() => {
+    if (tournament?.players) {
+      const playing = tournament.players.filter(p => p.status === "playing").map(p => p.playerName);
+      setSelectedPlayers(prev => {
+        const next = new Set(Array.from(prev).filter(n => !playing.includes(n)));
+        return next.size === prev.size ? prev : next;
+      });
+    }
+  }, [tournament?.players]);
+
   const createGameMutation = useMutation({
     mutationFn: async () => {
       const settings = tournament?.settings || {};
@@ -215,6 +227,10 @@ export default function TournamentPlayPage() {
 
   const registeredPlayers = tournament.players || [];
   const canStart = playerNames.length >= 2 && playerNames.length <= 5 && selectedGame !== null;
+  const isCreator = !!tournament.isCreator;
+
+  // Players already in a live game can't be picked into another one
+  const busyPlayers = new Set(registeredPlayers.filter(p => p.status === "playing").map(p => p.playerName));
 
   // Team context for team-format tournaments
   const isTeamFormat = tournament.format === "best_ball" || tournament.format === "scramble";
@@ -235,7 +251,9 @@ export default function TournamentPlayPage() {
           </button>
           <h1 className="text-2xl font-bold text-white">{tournament.name}</h1>
           <p className="text-sm text-white/60 mt-1">{tournament.courseName}</p>
-          <p className="text-xs text-white/40 mt-0.5">Start Your Round</p>
+          <p className="text-xs text-white/40 mt-0.5">
+            {isCreator ? "Start a Round (host) — pick any group" : "Start Your Round"}
+          </p>
         </div>
       </div>
 
@@ -315,12 +333,16 @@ export default function TournamentPlayPage() {
               <div className="space-y-2">
                 {registeredPlayers.map((p) => {
                   const isSelected = selectedPlayers.has(p.playerName);
+                  const isBusy = busyPlayers.has(p.playerName);
                   return (
                     <button
                       key={p.id}
                       onClick={() => togglePlayer(p.playerName)}
+                      disabled={isBusy}
                       className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
-                        isSelected
+                        isBusy
+                          ? "border-border bg-muted/40 opacity-55 cursor-not-allowed"
+                          : isSelected
                           ? "border-primary bg-primary/10"
                           : "border-border hover:border-primary/40"
                       }`}
@@ -341,11 +363,17 @@ export default function TournamentPlayPage() {
                             <span className="ml-1.5 text-xs text-muted-foreground">(Guest)</span>
                           )}
                         </p>
-                        <p className="text-xs text-muted-foreground capitalize">{p.status}</p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {isBusy ? "In a live game" : p.status}
+                        </p>
                       </div>
-                      {isSelected && (
+                      {isBusy ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/40 px-2 py-0.5 rounded-full flex-shrink-0">
+                          Playing
+                        </span>
+                      ) : isSelected ? (
                         <CheckCircle className="w-5 h-5 text-primary flex-shrink-0" />
-                      )}
+                      ) : null}
                     </button>
                   );
                 })}

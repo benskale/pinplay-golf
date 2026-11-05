@@ -1751,6 +1751,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.body.courseName = req.body.courseName.trim().replace(/[\x00-\x1F\x7F<>]/g, "").slice(0, 200);
       }
 
+      // Players already in a live game can't be started in another one
+      const requestedPlayers: string[] = Array.isArray(req.body.players) ? req.body.players : [];
+      if (requestedPlayers.length > 0) {
+        const alreadyPlaying = tPlayers
+          .filter(p => p.status === "playing" && requestedPlayers.includes(p.playerName));
+        if (alreadyPlaying.length > 0) {
+          const names = alreadyPlaying.map(p => p.playerName).join(", ");
+          return res.status(400).json({
+            message: `${names} ${alreadyPlaying.length === 1 ? "is" : "are"} already in a live game`,
+          });
+        }
+      }
+
       const gameData = insertGameSchema.parse(req.body);
       (gameData as any).userId = user.id;
       (gameData as any).sessionId = req.sessionID;
