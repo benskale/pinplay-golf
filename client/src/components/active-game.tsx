@@ -1286,6 +1286,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                 const strokeIdxs = (game.strokeIndexes as number[]) || [];
                 const hcps = game.handicaps || {};
                 const isScrambleLike = ["team_scramble", "scramble", "shamble"].includes(game.gameType);
+                const isVegas = game.gameType === "vegas";
                 // best-ball team score per hole (or shared scramble score = first member with a score)
                 const teamRows = gameTeams.map((roster, ti) => {
                   let gross = 0, net = 0, parPlayed = 0;
@@ -1294,7 +1295,16 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                     const par = pars[h.hole - 1] ?? 4;
                     parPlayed += par;
                     const s = h.strokes || {};
-                    if (isScrambleLike) {
+                    if (isVegas) {
+                      // Vegas: the team's two scores combine into one number (low score is the tens
+                      // digit, high score the units). 4 and 5 makes 45. Team total = sum over holes.
+                      const scores = roster.map(p => s[p]).filter((v): v is number => v != null && v > 0);
+                      if (scores.length === roster.length) {
+                        const lo = Math.min(...scores), hi = Math.max(...scores);
+                        gross += lo * 10 + hi;
+                        net += lo * 10 + hi;
+                      }
+                    } else if (isScrambleLike) {
                       const scorer = roster.find(p => s[p] != null && s[p] > 0);
                       if (scorer != null) { gross += s[scorer]; net += s[scorer]; }
                       else { gross += par; net += par; }
@@ -1333,7 +1343,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                         <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">
                           Team Scores
                         </h3>
-                        <span className="text-[0.65rem] text-muted-foreground ml-auto">{isScrambleLike ? "one ball per team" : "best ball"}</span>
+                        <span className="text-[0.65rem] text-muted-foreground ml-auto">{game.gameType === "vegas" ? "low score is the tens digit" : isScrambleLike ? "one ball per team" : "best ball"}</span>
                       </div>
                       <div className="space-y-1.5">
                         {teamRows.map(r => (
@@ -1346,6 +1356,14 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                               <p className="text-[0.875rem] font-semibold text-gray-800 dark:text-gray-200">{r.name}</p>
                               <p className="text-[0.65rem] text-muted-foreground truncate">{r.members.map(m => m.split(" ")[0]).join(" · ")}</p>
                             </div>
+                            {game.gameType === "vegas" ? (
+                              <div className="text-center">
+                                <p className="text-[0.6rem] text-muted-foreground uppercase tracking-wide">Vegas</p>
+                                <p className="text-sm font-bold tabular-nums text-gray-700 dark:text-gray-300">
+                                  {r.played === 0 ? "—" : r.gross}
+                                </p>
+                              </div>
+                            ) : (
                             <div className="flex items-center gap-3 flex-shrink-0">
                               <div className="text-center">
                                 <p className="text-[0.6rem] text-muted-foreground uppercase tracking-wide">Gross</p>
@@ -1360,11 +1378,12 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                                 </p>
                               </div>
                             </div>
+                            )}
                           </div>
                         ))}
                       </div>
                       <p className="text-[0.65rem] text-gray-400 mt-2 text-center">
-                        Thru {hh.length} · gross and net (handicap-adjusted) per team.
+                        {game.gameType === "vegas" ? `Thru ${hh.length} · team scores are the combined vegas number, low ball first.` : `Thru ${hh.length} · gross and net (handicap-adjusted) per team.`}
                       </p>
                     </CardContent>
                   </Card>
