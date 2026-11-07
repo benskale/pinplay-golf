@@ -1291,11 +1291,23 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                 const teamRows = gameTeams.map((roster, ti) => {
                   let gross = 0, net = 0, parPlayed = 0;
                   const played = hh.length;
+                  const isNassau4 = game.gameType === "nassau_4";
                   for (const h of hh) {
                     const par = pars[h.hole - 1] ?? 4;
                     parPlayed += par;
                     const s = h.strokes || {};
-                    if (isVegas) {
+                    if (isNassau4) {
+                      // Match play: count holes won on best net ball.
+                      const other = gameTeams[1 - ti];
+                      const bestNet = (ros: string[]) => ros.reduce((min, p) => {
+                        const g4 = s[p];
+                        if (g4 == null || g4 === 0) return min;
+                        const sIdx = strokeIdxs[h.hole - 1] ?? h.hole;
+                        const st = Math.floor((hcps[p] || 0) / 18) + (((hcps[p] || 0) % 18) >= sIdx ? 1 : 0);
+                        return Math.min(min, g4 - st);
+                      }, Infinity);
+                      if (bestNet(roster) < bestNet(other)) { gross += 1; net += 1; }
+                    } else if (isVegas) {
                       // Vegas: the team's two scores combine into one number (low score is the tens
                       // digit, high score the units). 4 and 5 makes 45. Team total = sum over holes.
                       const scores = roster.map(p => s[p]).filter((v): v is number => v != null && v > 0);
@@ -1334,7 +1346,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                     played,
                   };
                 });
-                const leader = teamRows.reduce((best, r) => (r.net < best.net ? r : best), teamRows[0]);
+                const leader = teamRows.reduce((best, r) => (game.gameType === "nassau_4" ? (r.net > best.net ? r : best) : (r.net < best.net ? r : best)), teamRows[0]);
                 return (
                   <Card>
                     <CardContent className="p-4">
@@ -1343,7 +1355,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                         <h3 className="text-[0.9375rem] font-semibold text-gray-800 dark:text-gray-200 leading-none">
                           Team Scores
                         </h3>
-                        <span className="text-[0.65rem] text-muted-foreground ml-auto">{game.gameType === "vegas" ? "low score is the tens digit" : isScrambleLike ? "one ball per team" : "best ball"}</span>
+                        <span className="text-[0.65rem] text-muted-foreground ml-auto">{game.gameType === "vegas" ? "low score is the tens digit" : game.gameType === "nassau_4" ? "match play · best net ball" : isScrambleLike ? "one ball per team" : "best ball"}</span>
                       </div>
                       <div className="space-y-1.5">
                         {teamRows.map(r => (
@@ -1359,6 +1371,13 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                             {game.gameType === "vegas" ? (
                               <div className="text-center">
                                 <p className="text-[0.6rem] text-muted-foreground uppercase tracking-wide">Vegas</p>
+                                <p className="text-sm font-bold tabular-nums text-gray-700 dark:text-gray-300">
+                                  {r.played === 0 ? "—" : r.gross}
+                                </p>
+                              </div>
+                            ) : game.gameType === "nassau_4" ? (
+                              <div className="text-center">
+                                <p className="text-[0.6rem] text-muted-foreground uppercase tracking-wide">Holes won</p>
                                 <p className="text-sm font-bold tabular-nums text-gray-700 dark:text-gray-300">
                                   {r.played === 0 ? "—" : r.gross}
                                 </p>
@@ -1383,7 +1402,7 @@ export default function ActiveGame({ game, myPlayer, gameActions, onAbort }: Act
                         ))}
                       </div>
                       <p className="text-[0.65rem] text-gray-400 mt-2 text-center">
-                        {game.gameType === "vegas" ? `Thru ${hh.length} · team scores are the combined vegas number, low ball first.` : `Thru ${hh.length} · gross and net (handicap-adjusted) per team.`}
+                        {game.gameType === "vegas" ? `Thru ${hh.length} · team scores are the combined vegas number, low ball first.` : game.gameType === "nassau_4" ? `Thru ${hh.length} · holes won on best net ball. Match status is in the Nassau Scoreboard.` : `Thru ${hh.length} · gross and net (handicap-adjusted) per team.`}
                       </p>
                     </CardContent>
                   </Card>
