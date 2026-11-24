@@ -67,6 +67,25 @@ const COURSE_OVERRIDES: Record<string, { name: string; par: number; pars: number
     pars: [4, 4, 3, 5, 4, 3, 4, 5, 4, 3, 4, 5, 3, 5, 4, 3, 4, 4],
     hcpRanks: [7, 3, 9, 13, 1, 11, 15, 17, 5, 18, 2, 8, 6, 16, 12, 10, 14, 4],
   },
+  // Foothills Golf Club, Phoenix AZ — OpenGolfAPI carries TWO rows for this course and BOTH
+  // scorecards are wrong (pars sum to 68; course-level par 68 on the "Foothills Golf Club"
+  // row, garbage phone 11219560899 marks it as a bad dedupe). Real par is 72 (course site,
+  // GolfPass, TeeOff). Data read off the course's official scorecard PNG (thefoothillsgc.com,
+  // men's HCP row); black-tee yardages cross-checked.
+  "1564ebd1-4f1b-4757-9759-7f527f69e2ed": {
+    name: "Foothills Golf Club",
+    par: 72,
+    pars: [4, 5, 4, 3, 4, 4, 3, 5, 4, 4, 4, 5, 3, 4, 4, 3, 5, 4],
+    hcpRanks: [3, 7, 1, 17, 11, 15, 13, 9, 5, 6, 10, 12, 16, 14, 2, 18, 8, 4],
+  },
+  // Same physical course, second upstream row ("Foothills Golf Club (Phoenix)") — same
+  // wrong scorecard, same fix.
+  "ca481b87-356a-4beb-816c-03fbfea3e4ac": {
+    name: "Foothills Golf Club",
+    par: 72,
+    pars: [4, 5, 4, 3, 4, 4, 3, 5, 4, 4, 4, 5, 3, 4, 4, 3, 5, 4],
+    hcpRanks: [3, 7, 1, 17, 11, 15, 13, 9, 5, 6, 10, 12, 16, 14, 2, 18, 8, 4],
+  },
 };
 
 /**
