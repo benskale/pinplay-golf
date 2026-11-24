@@ -794,7 +794,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ courses });
   });
 
-  // Golf course detail
+  /**
+ * Scorecard plausibility gate (Ben, Nov 24): OpenGolfAPI serves defective
+ * scorecards for ~20% of courses (17 of 90 audited in our target market:
+ * 9-hole cards on 18-hole courses, field-par != scorecard sum, all-par-4
+ * padding, etc). Users who hit one get a silently corrupted game.
+ * The gate flags suspicious data so the client can warn the user and offer
+ * manual correction instead of trusting bad numbers.
+ */
+function scorecardWarnings(pars: number[], parField: number | null | undefined, rawHoleCount: number): string[] {
+  const w: string[] = [];
+  if (rawHoleCount === 0) {
+    w.push("No scorecard data upstream (pars defaulted to all 4s)");
+  } else if (rawHoleCount !== 18) {
+    w.push(`Upstream scorecard has ${rawHoleCount} holes, not 18 (padded or truncated)`);
+  }
+  const sum = pars.slice(0, 18).reduce((a, b) => a + b, 0);
+  if (pars.length === 18 && sum !== parField) {
+    w.push(`Hole pars sum to ${sum} but course par says ${parField}`);
+  }
+  const n3 = pars.slice(0, 18).filter(p => p === 3).length;
+  if (pars.length === 18 && (n3 < 2 || n3 > 6)) {
+    w.push(`Implausible hole mix (${n3} par 3s) — scorecard may be wrong`);
+  }
+  return w;
+}
+
+// Golf course detail
   app.get("/api/courses/:id", async (req, res) => {
     // OSM courses have no upstream scorecard — serve override if we have one, else 404
     if (req.params.id.startsWith("osm-")) {
@@ -833,6 +859,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = await fetchGolfApi(`/courses/${req.params.id}`);
       const pars: number[] = [];
       const hcpRanks: number[] = [];
+      const rawHoleCount = Array.isArray(data.scorecard) ? data.scorecard.length : 0;
       if (Array.isArray(data.scorecard) && data.scorecard.length > 0) {
         const sorted = [...data.scorecard].sort((a: any, b: any) => (a.hole ?? a.hole_number ?? 0) - (b.hole ?? b.hole_number ?? 0));
         sorted.forEach((h: any) => {
@@ -859,7 +886,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch {}
       }
 
-      res.json({ id: data.id, name: courseName, city: data.city, state: data.state, par: data.par || data.par_total, pars: pars.slice(0, 18), hcpRanks: validHcpRanks });
+      const parField = data.par || data.par_total;
+      const warnings = scorecardWarnings(pars, parField, rawHoleCount);
+      res.json({ id: data.id, name: courseName, city: data.city, state: data.state, par: parField, pars: pars.slice(0, 18), hcpRanks: validHcpRanks, warnings });
     } catch {
       res.status(500).json({ message: "Could not load course data" });
     }

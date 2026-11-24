@@ -41,6 +41,7 @@ interface CourseDetail {
   par: number;
   pars: number[];
   hcpRanks: number[] | null; // HCP rank per hole (1=hardest), null if unavailable
+  warnings?: string[]; // server-side scorecard plausibility flags (bad upstream data)
 }
 
 const DEFAULT_PARS = Array(18).fill(4);
@@ -327,15 +328,21 @@ export default function GameSetup({ onGameCreated, onStepChange }: GameSetupProp
         setHcpRanksSource("default");
         setShowSISetup(true); // no data at all: only then surface manual entry
       }
-      // Data quality check — if pars total doesn't match claimed course par, warn and auto-expand editor
+      // Data quality check — server-side plausibility flags take priority; fall back to
+      // the legacy local pars-total check. Either way: warn + auto-expand the par editor
+      // so the user corrects bad upstream data in seconds instead of playing a corrupt card.
+      const serverWarnings = detail.warnings || [];
       const parsTotal = (detail.pars || []).reduce((a: number, b: number) => a + b, 0);
       const coursePar = detail.par || 0;
-      if (coursePar > 0 && Math.abs(parsTotal - coursePar) > 1) {
+      const localWarning = coursePar > 0 && Math.abs(parsTotal - coursePar) > 1;
+      if (serverWarnings.length > 0 || localWarning) {
         setShowParSetup(true);
         setShowSISetup(true);
         toast({
           title: "Scorecard data may be wrong",
-          description: `Hole pars add up to ${parsTotal} but course says par ${coursePar}. Check and correct below before starting.`,
+          description: serverWarnings.length > 0
+            ? `${serverWarnings[0]}. Check and correct the pars below before starting.`
+            : `Hole pars add up to ${parsTotal} but course says par ${coursePar}. Check and correct below before starting.`,
           variant: "destructive",
         });
       } else {

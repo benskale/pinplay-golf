@@ -76,6 +76,7 @@ interface CourseDetail {
   name: string;
   pars: number[];
   hcpRanks: number[] | null;
+  warnings?: string[]; // server-side scorecard plausibility flags
 }
 
 export default function TournamentPlayPage() {
@@ -117,6 +118,18 @@ export default function TournamentPlayPage() {
   useEffect(() => {
     if (courseData?.pars && courseData.pars.length === 18) setPars(courseData.pars);
     if (courseData?.hcpRanks && courseData.hcpRanks.length === 18) setStrokeIndexes(courseData.hcpRanks);
+  }, [courseData]);
+
+  // Warn when the course's upstream scorecard is flagged as bad — scores
+  // entered against wrong pars corrupt every format's math.
+  useEffect(() => {
+    if (courseData?.warnings && courseData.warnings.length > 0) {
+      toast({
+        title: "Scorecard data may be wrong",
+        description: `${courseData.warnings[0]}. Check the course card before relying on to-par numbers.`,
+        variant: "destructive",
+      });
+    }
   }, [courseData]);
 
   // Auto-select the current user
