@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Game from "@/pages/game";
 import AuthPage from "@/pages/auth";
+import NativeAuthSuccessPage from "@/pages/native-auth-success";
 import ProfilePage from "@/pages/profile";
 import PrivacyPage from "@/pages/privacy";
 import SupportPage from "@/pages/support";
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/game/:gameId" component={Game} />
       <Route path="/auth" component={AuthPage} />
+      <Route path="/auth/native-success" component={NativeAuthSuccessPage} />
       <Route path="/profile" component={ProfilePage} />
       <Route path="/privacy" component={PrivacyPage} />
       <Route path="/support" component={SupportPage} />

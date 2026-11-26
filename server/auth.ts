@@ -423,8 +423,14 @@ export function setupAuth(app: Express) {
           return res.redirect("/auth?error=oauth_failed");
         }
         await linkSessionGames(req, (user as User).id);
-        // Redirect to home/profile on success
-        res.redirect("/");
+        // Native app webviews drop session cookies on cold start, which locked
+        // users out after Google sign-in (the webview looked logged in, the app
+        // shell had no credential). Land on a token page instead: it stores the
+        // signed Bearer token in localStorage (which DOES persist in the
+        // webview), and the main.tsx fetch wrapper attaches it to every API
+        // call. Hash fragment so the token never appears in server logs.
+        const token = issueAuthToken((user as User).id);
+        res.redirect(`/auth/native-success#${encodeURIComponent(token)}`);
       });
     })(req, res, next);
   });
