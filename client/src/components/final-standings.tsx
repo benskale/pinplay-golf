@@ -784,6 +784,16 @@ export function FinalStandings({ game, onNewGame }: FinalStandingsProps) {
               Start New Game
             </Button>
           )}
+          {/* Plain exit back to Home — viewing an old round previously had no
+              way out except starting a new game. */}
+          <Button
+            variant="ghost"
+            className="w-full text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 py-3 rounded-xl"
+            onClick={() => setLocation("/")}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Home
+          </Button>
         </div>
       </main>
 
