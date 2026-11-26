@@ -78,8 +78,42 @@ export function serveStatic(app: Express) {
 
   app.use(express.static(distPath));
 
-  // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
+  // SEO/AI files that must not fall through to the SPA catch-all
+  app.get("/sitemap.xml", (_req, res) => {
+    res.type("application/xml").send(
+      '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      '  <url><loc>https://pinplay.golf/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>\n' +
+      '</urlset>'
+    );
+  });
+  app.get("/robots.txt", (_req, res) => {
+    res.type("text/plain").send(
+      "User-agent: *\nAllow: /\n\nSitemap: https://pinplay.golf/sitemap.xml\n"
+    );
+  });
+  app.get("/llms.txt", (_req, res) => {
+    res.type("text/plain").send(
+      "# PinPlay Golf\n\n" +
+      "Real-time multiplayer golf scoring app for 23 game formats: Wolf, Skins, Nassau, Match Play, Stableford, Vegas and more.\n\n" +
+      "- [Home](https://pinplay.golf/): start or join a game with a code.\n" +
+      "- [Tournament view](https://pinplay.golf/tournament/): public live-score pages for events.\n" +
+      "- [Join a game](https://pinplay.golf/join/): enter an invite code to join a round.\n"
+    );
+  });
+
+  // SPA catch-all: serves index.html for page routes, but 404s for
+  // unknown file-like paths. Returning 200 for every URL is a soft-404
+  // that Google treats as a low-quality site signal.
+  app.use("*", (req, res) => {
+    const isFileLike = /\.[a-z0-9]{2,5}$/i.test(req.baseUrl) && !req.baseUrl.startsWith("/api");
+    if (isFileLike && !path.extname(path.join(distPath, "index.html"))) {
+      // unreachable in practice; kept for type narrowing
+    }
+    if (isFileLike) {
+      res.status(404).sendFile(path.resolve(distPath, "index.html"));
+      return;
+    }
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
